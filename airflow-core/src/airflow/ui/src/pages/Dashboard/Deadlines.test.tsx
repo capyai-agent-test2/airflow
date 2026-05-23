@@ -18,6 +18,7 @@
  */
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
+import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Wrapper } from "src/utils/Wrapper";
@@ -97,6 +98,7 @@ vi.mock("openapi/queries", () => ({
 }));
 
 const { useDeadlinesServiceGetDeadlines } = await import("openapi/queries");
+const { useAutoRefresh } = await import("src/utils");
 
 describe("Dashboard Deadlines", () => {
   it("renders upcoming and recently missed deadlines with Dag and run links", () => {
@@ -128,5 +130,34 @@ describe("Dashboard Deadlines", () => {
 
     expect(screen.getByText("No upcoming deadlines.")).toBeInTheDocument();
     expect(screen.getByText("No deadlines were missed in the last 24 hours.")).toBeInTheDocument();
+  });
+
+  it("refreshes the deadline filters over time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-23T12:00:00Z"));
+    vi.mocked(useAutoRefresh).mockReturnValue(1000);
+    vi.mocked(useDeadlinesServiceGetDeadlines).mockReturnValue({
+      data: { deadlines: [], total_entries: 0 },
+      error: null,
+      isLoading: false,
+    } as ReturnType<typeof useDeadlinesServiceGetDeadlines>);
+
+    render(<Deadlines />, { wrapper: Wrapper });
+
+    const firstUpcomingCall = vi.mocked(useDeadlinesServiceGetDeadlines).mock.calls[0]?.[0];
+    const firstMissedCall = vi.mocked(useDeadlinesServiceGetDeadlines).mock.calls[1]?.[0];
+
+    vi.setSystemTime(new Date("2026-05-23T12:01:00Z"));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    const laterUpcomingCall = vi.mocked(useDeadlinesServiceGetDeadlines).mock.calls.at(-2)?.[0];
+    const laterMissedCall = vi.mocked(useDeadlinesServiceGetDeadlines).mock.calls.at(-1)?.[0];
+
+    expect(firstUpcomingCall?.deadlineTimeGte).not.toBe(laterUpcomingCall?.deadlineTimeGte);
+    expect(firstMissedCall?.lastUpdatedAtGte).not.toBe(laterMissedCall?.lastUpdatedAtGte);
+
+    vi.useRealTimers();
   });
 });

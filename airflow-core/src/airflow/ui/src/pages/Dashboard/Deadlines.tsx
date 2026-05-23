@@ -18,7 +18,7 @@
  */
 import { Badge, Box, Flex, Heading, HStack, Separator, Skeleton, Text, VStack } from "@chakra-ui/react";
 import dayjs from "dayjs";
-import { useRef } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FiAlertTriangle, FiClock } from "react-icons/fi";
 import { Link } from "react-router-dom";
@@ -30,6 +30,15 @@ import Time from "src/components/Time";
 import { useAutoRefresh } from "src/utils";
 
 const LIMIT = 5;
+
+const buildDeadlineFilters = () => {
+  const now = dayjs();
+
+  return {
+    missedSince: now.subtract(1, "day").toISOString(),
+    pendingFrom: now.toISOString(),
+  };
+};
 
 type DeadlineListProps = {
   readonly deadlines: Array<DeadlineResponse>;
@@ -91,16 +100,20 @@ const DeadlineList = ({ deadlines, emptyText, isLoading }: DeadlineListProps) =>
 export const Deadlines = () => {
   const { t: translate } = useTranslation("dashboard");
   const refetchInterval = useAutoRefresh({ checkPendingRuns: true });
-  const filters = useRef(
-    (() => {
-      const now = dayjs();
+  const [filters, setFilters] = useState(buildDeadlineFilters);
 
-      return {
-        missedSince: now.subtract(1, "day").toISOString(),
-        pendingFrom: now.toISOString(),
-      };
-    })(),
-  ).current;
+  useEffect(() => {
+    if (refetchInterval === false) {
+      return undefined;
+    }
+    const intervalId = globalThis.setInterval(() => {
+      setFilters(buildDeadlineFilters());
+    }, refetchInterval);
+
+    return () => {
+      globalThis.clearInterval(intervalId);
+    };
+  }, [refetchInterval]);
 
   const {
     data: pendingData,
