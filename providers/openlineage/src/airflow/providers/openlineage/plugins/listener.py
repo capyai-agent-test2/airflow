@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import threading
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from functools import cache
@@ -818,9 +819,15 @@ class OpenLineageListener:
 
     def _execute(self, callable, callable_name: str, use_fork: bool = False):
         if use_fork:
-            self._fork_execute(callable, callable_name)
-        else:
-            callable()
+            if threading.active_count() == 1:
+                self._fork_execute(callable, callable_name)
+                return
+            self.log.debug(
+                "Skipping fork for OpenLineage %s because the current process has %s active threads.",
+                callable_name,
+                threading.active_count(),
+            )
+        callable()
 
     def _terminate_with_wait(self, process: psutil.Process):
         process.terminate()
