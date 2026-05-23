@@ -265,7 +265,7 @@ ARG_AUTH_PASSWORD = Arg(
 ARG_DAG_ID = Arg(
     flags=("dag_id",),
     type=str,
-    help="The Dag ID of the Dag to pause or unpause",
+    help="The Dag ID",
 )
 ARG_DAG_RUN_ID = Arg(
     flags=("dag_run_id",),
