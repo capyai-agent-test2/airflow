@@ -108,7 +108,6 @@ repos:
             ^common/messaging/.*\.py$|
             ^datadog/.*\.py$|
             ^dingding/.*\.py$|
-            ^discord/.*\.py$|
             ^exasol/.*\.py$|
             ^facebook/.*\.py$|
             ^ftp/.*\.py$|

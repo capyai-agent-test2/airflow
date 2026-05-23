@@ -148,7 +148,6 @@ body:
         - datadog
         - dbt-cloud
         - dingding
-        - discord
         - docker
         - edge3
         - elasticsearch

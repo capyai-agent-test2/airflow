@@ -129,9 +129,6 @@ labelPRBasedOnFilePath:
   provider:dingding:
     - providers/dingding/**
 
-  provider:discord:
-    - providers/discord/**
-
   provider:docker:
     - providers/docker/**
 
