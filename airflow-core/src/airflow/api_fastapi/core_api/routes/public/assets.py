@@ -18,10 +18,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING, Annotated, cast
 
-from fastapi import Depends, HTTPException, status
-from sqlalchemy import and_, delete, func, select
+from fastapi import Depends, HTTPException, Query, status
+from sqlalchemy import Text, and_, delete, func, or_, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import joinedload, subqueryload
 
@@ -123,6 +124,51 @@ class OnlyActiveFilter(BaseParam[bool]):
     @classmethod
     def depends(cls, only_active: bool = True) -> OnlyActiveFilter:
         return cls().set_value(only_active)
+
+
+class AssetEventType(str, Enum):
+    """Supported asset event producer types."""
+
+    MANUAL = "manual"
+    TASK = "task"
+    TRIGGER = "trigger"
+
+
+class EventTypeFilter(BaseParam[AssetEventType | None]):
+    """Filter asset events by their producer type."""
+
+    def to_orm(self, select: Select) -> Select:
+        if self.value is None and self.skip_none:
+            return select
+
+        if self.value == AssetEventType.MANUAL:
+            return select.where(
+                and_(
+                    AssetEvent.source_dag_id.is_(None),
+                    AssetEvent.source_task_id.is_(None),
+                    AssetEvent.extra.cast(Text).contains('"from_rest_api"'),
+                )
+            )
+        if self.value == AssetEventType.TASK:
+            return select.where(
+                or_(
+                    AssetEvent.source_dag_id.is_not(None),
+                    AssetEvent.source_task_id.is_not(None),
+                )
+            )
+        if self.value == AssetEventType.TRIGGER:
+            return select.where(
+                and_(
+                    AssetEvent.source_dag_id.is_(None),
+                    AssetEvent.source_task_id.is_(None),
+                    AssetEvent.extra.cast(Text).contains('"from_trigger"'),
+                )
+            )
+        raise ValueError(f"Unsupported asset event type filter: {self.value}")
+
+    @classmethod
+    def depends(cls, event_type: AssetEventType | None = Query(default=None)) -> EventTypeFilter:
+        return cls().set_value(event_type)
 
 
 @assets_router.get(
@@ -318,6 +364,7 @@ def get_asset_events(
     source_map_index: Annotated[
         FilterParam[int | None], Depends(filter_param_factory(AssetEvent.source_map_index, int | None))
     ],
+    event_type: Annotated[EventTypeFilter, Depends(EventTypeFilter.depends)],
     name_pattern: QueryAssetNamePatternSearch,
     name_prefix_pattern: QueryAssetNamePrefixPatternSearch,
     timestamp_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("timestamp", AssetEvent))],
@@ -336,6 +383,7 @@ def get_asset_events(
             source_task_id,
             source_run_id,
             source_map_index,
+            event_type,
             name_pattern,
             name_prefix_pattern,
             timestamp_range,

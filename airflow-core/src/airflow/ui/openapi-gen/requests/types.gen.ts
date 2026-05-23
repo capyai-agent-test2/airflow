@@ -76,6 +76,11 @@ export type AssetEventResponse = {
 };
 
 /**
+ * Supported asset event producer types.
+ */
+export type AssetEventType = 'manual' | 'task' | 'trigger';
+
+/**
  * Asset serializer for responses.
  */
 export type AssetResponse = {
@@ -2552,6 +2557,7 @@ export type GetAssetAliasResponse = unknown;
 
 export type GetAssetEventsData = {
     assetId?: number | null;
+    eventType?: AssetEventType | null;
     limit?: number;
     /**
      * SQL LIKE expression — use `%` / `_` wildcards (e.g. `%customer_%`). or the pipe `|` operator for OR logic (e.g. `dag1 | dag2`). Regular expressions are **not** supported.

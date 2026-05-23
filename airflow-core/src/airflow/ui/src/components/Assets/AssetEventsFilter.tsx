@@ -23,6 +23,7 @@ import { useFiltersHandler, type FilterableSearchParamsKeys } from "src/utils/us
 const FILTER_KEYS: Array<FilterableSearchParamsKeys> = [
   SearchParamsKeys.ASSET_EVENT_DATE_RANGE,
   SearchParamsKeys.DAG_ID,
+  SearchParamsKeys.EVENT_TYPE,
   SearchParamsKeys.TASK_ID,
 ];
 

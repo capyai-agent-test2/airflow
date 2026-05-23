@@ -157,8 +157,12 @@ export const useFilterConfigs = () => {
     },
     [SearchParamsKeys.EVENT_TYPE]: {
       label: translate("browse:auditLog.filters.eventType"),
-      supportsAdvancedSearch: true,
-      type: FilterTypes.TEXT,
+      options: [
+        { label: translate("browse:assetEvent.filters.manual"), value: "manual" },
+        { label: translate("browse:assetEvent.filters.task"), value: "task" },
+        { label: translate("browse:assetEvent.filters.trigger"), value: "trigger" },
+      ],
+      type: FilterTypes.SELECT,
     },
     [SearchParamsKeys.EXECUTOR_CLASS]: {
       hotkeyDisabled: true,
