@@ -44,6 +44,104 @@ if TYPE_CHECKING:
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _DISALLOWED_SQL_TOKENS = (";", "--", "/*", "*/")
+_QUERY_TAGS_SESSION_CONFIG_KEY = "query_tags"
+
+
+def _escape_query_tag_component(value: str) -> str:
+    return value.replace("\\", "\\\\").replace(":", "\\:").replace(",", "\\,")
+
+
+def _unescape_query_tag_component(value: str) -> str:
+    unescaped: list[str] = []
+    is_escaped = False
+    for char in value:
+        if is_escaped:
+            unescaped.append(char)
+            is_escaped = False
+            continue
+        if char == "\\":
+            is_escaped = True
+            continue
+        unescaped.append(char)
+    if is_escaped:
+        unescaped.append("\\")
+    return "".join(unescaped)
+
+
+def _split_query_tag_string(value: str, separator: str) -> list[str]:
+    items: list[str] = []
+    current: list[str] = []
+    is_escaped = False
+    for char in value:
+        if is_escaped:
+            current.append(char)
+            is_escaped = False
+            continue
+        if char == "\\":
+            current.append(char)
+            is_escaped = True
+            continue
+        if char == separator:
+            items.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    items.append("".join(current))
+    return items
+
+
+def _deserialize_query_tags(query_tags: str) -> dict[str, str | None]:
+    parsed_tags: dict[str, str | None] = {}
+    for entry in _split_query_tag_string(query_tags, ","):
+        if not entry:
+            continue
+        key_and_value = _split_query_tag_string(entry, ":")
+        key = _unescape_query_tag_component(key_and_value[0])
+        value = _unescape_query_tag_component(":".join(key_and_value[1:])) if len(key_and_value) > 1 else None
+        parsed_tags[key] = value
+    return parsed_tags
+
+
+def _serialize_query_tags(query_tags: dict[str, str | None]) -> str:
+    return ",".join(
+        _escape_query_tag_component(key)
+        if value is None
+        else f"{_escape_query_tag_component(key)}:{_escape_query_tag_component(value)}"
+        for key, value in query_tags.items()
+    )
+
+
+def _build_airflow_query_tags(operator: BaseOperator, context: Context | None) -> dict[str, str]:
+    if not context:
+        return {}
+
+    task_instance = context.get("ti")
+    airflow_query_tags = {
+        "airflow_dag_id": getattr(task_instance, "dag_id", None) or getattr(operator, "dag_id", None),
+        "airflow_task_id": getattr(task_instance, "task_id", None) or operator.task_id,
+        "airflow_run_id": getattr(task_instance, "run_id", None),
+    }
+    return {key: value for key, value in airflow_query_tags.items() if value is not None}
+
+
+def _get_session_configuration_with_airflow_query_tags(
+    session_configuration: dict[str, str] | None,
+    operator: BaseOperator,
+    context: Context | None,
+) -> dict[str, str] | None:
+    airflow_query_tags = _build_airflow_query_tags(operator, context)
+    if not airflow_query_tags and session_configuration is None:
+        return None
+
+    merged_session_configuration = dict(session_configuration or {})
+    configured_query_tags = merged_session_configuration.get(_QUERY_TAGS_SESSION_CONFIG_KEY)
+    merged_query_tags = airflow_query_tags.copy()
+
+    if isinstance(configured_query_tags, str) and configured_query_tags:
+        merged_query_tags.update(_deserialize_query_tags(configured_query_tags))
+
+    merged_session_configuration[_QUERY_TAGS_SESSION_CONFIG_KEY] = _serialize_query_tags(merged_query_tags)
+    return merged_session_configuration
 
 
 class DatabricksSqlOperator(SQLExecuteQueryOperator):
@@ -152,6 +250,12 @@ class DatabricksSqlOperator(SQLExecuteQueryOperator):
 
     def get_db_hook(self) -> DatabricksSqlHook:
         return self._hook
+
+    def execute(self, context: Context):
+        self.session_configuration = _get_session_configuration_with_airflow_query_tags(
+            self.session_configuration, self, context
+        )
+        return super().execute(context)
 
     def _should_run_output_processing(self) -> bool:
         return self.do_xcom_push or bool(self._output_path)
@@ -515,6 +619,9 @@ FILEFORMAT = {self._file_format}
         return sql.strip()
 
     def execute(self, context: Context) -> Any:
+        self.session_config = _get_session_configuration_with_airflow_query_tags(
+            self.session_config, self, context
+        )
         self._sql = self._create_sql_query()
         self.log.info("Executing: %s", self._sql)
         hook = self._get_hook()

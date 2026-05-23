@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 from collections import namedtuple
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -453,3 +454,60 @@ def test_parse_gcs_path():
     bucket, object_name = op._parse_gcs_path("gs://my-bucket/path/to/file.parquet")
     assert bucket == "my-bucket"
     assert object_name == "path/to/file.parquet"
+
+
+def test_exec_adds_airflow_query_tags_to_session_configuration():
+    task_instance = SimpleNamespace(dag_id="example_dag", task_id=TASK_ID, run_id="manual__2026-05-23")
+
+    with patch("airflow.providers.databricks.operators.databricks_sql.DatabricksSqlHook") as db_mock_class:
+        op = DatabricksSqlOperator(task_id=TASK_ID, sql="SELECT 42", do_xcom_push=True)
+        db_mock = db_mock_class.return_value
+        db_mock.run.return_value = []
+        db_mock.descriptions = [[]]
+
+        op.execute({"ti": task_instance})
+
+        db_mock_class.assert_called_once_with(
+            DEFAULT_CONN_ID,
+            http_path=None,
+            session_configuration={
+                "query_tags": "airflow_dag_id:example_dag,airflow_task_id:databricks-sql-operator,"
+                "airflow_run_id:manual__2026-05-23"
+            },
+            sql_endpoint_name=None,
+            http_headers=None,
+            catalog=None,
+            schema=None,
+            caller="DatabricksSqlOperator",
+        )
+
+
+def test_exec_merges_existing_query_tags_into_session_configuration():
+    task_instance = SimpleNamespace(dag_id="example_dag", task_id=TASK_ID, run_id="manual__2026-05-23")
+
+    with patch("airflow.providers.databricks.operators.databricks_sql.DatabricksSqlHook") as db_mock_class:
+        op = DatabricksSqlOperator(
+            task_id=TASK_ID,
+            sql="SELECT 42",
+            do_xcom_push=True,
+            session_configuration={"query_tags": r"team:eng\,data,airflow_task_id:custom_task"},
+        )
+        db_mock = db_mock_class.return_value
+        db_mock.run.return_value = []
+        db_mock.descriptions = [[]]
+
+        op.execute({"ti": task_instance})
+
+        db_mock_class.assert_called_once_with(
+            DEFAULT_CONN_ID,
+            http_path=None,
+            session_configuration={
+                "query_tags": "airflow_dag_id:example_dag,airflow_task_id:custom_task,"
+                r"airflow_run_id:manual__2026-05-23,team:eng\,data"
+            },
+            sql_endpoint_name=None,
+            http_headers=None,
+            catalog=None,
+            schema=None,
+            caller="DatabricksSqlOperator",
+        )

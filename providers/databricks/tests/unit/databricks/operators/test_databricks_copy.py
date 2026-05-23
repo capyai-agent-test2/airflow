@@ -17,6 +17,7 @@
 # under the License.
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -522,3 +523,65 @@ def test_get_openlineage_facets():
         "externalQuery": ExternalQueryRunFacet(externalQueryId="query_id", source="scheme://host")
     }
     assert result.job_facets == {"sql": SQLJobFacet(query=op._sql)}
+
+
+def test_execute_adds_airflow_query_tags_to_session_configuration():
+    task_instance = SimpleNamespace(dag_id="example_dag", task_id=TASK_ID, run_id="manual__2026-05-23")
+
+    with mock.patch(
+        "airflow.providers.databricks.operators.databricks_sql.DatabricksSqlHook"
+    ) as db_mock_class:
+        op = DatabricksCopyIntoOperator(
+            file_location=COPY_FILE_LOCATION,
+            file_format="JSON",
+            table_name="test",
+            task_id=TASK_ID,
+        )
+
+        op.execute({"ti": task_instance})
+
+        db_mock_class.assert_called_once_with(
+            DEFAULT_CONN_ID,
+            http_path=None,
+            session_configuration={
+                "query_tags": "airflow_dag_id:example_dag,airflow_task_id:databricks-sql-operator,"
+                "airflow_run_id:manual__2026-05-23"
+            },
+            sql_endpoint_name=None,
+            http_headers=None,
+            catalog=None,
+            schema=None,
+            caller="DatabricksCopyIntoOperator",
+        )
+        db_mock_class.return_value.run.assert_called_once()
+
+
+def test_execute_merges_existing_query_tags_into_session_configuration():
+    task_instance = SimpleNamespace(dag_id="example_dag", task_id=TASK_ID, run_id="manual__2026-05-23")
+
+    with mock.patch(
+        "airflow.providers.databricks.operators.databricks_sql.DatabricksSqlHook"
+    ) as db_mock_class:
+        op = DatabricksCopyIntoOperator(
+            file_location=COPY_FILE_LOCATION,
+            file_format="JSON",
+            table_name="test",
+            task_id=TASK_ID,
+            session_configuration={"query_tags": r"team:eng\,data,airflow_task_id:custom_task"},
+        )
+
+        op.execute({"ti": task_instance})
+
+        db_mock_class.assert_called_once_with(
+            DEFAULT_CONN_ID,
+            http_path=None,
+            session_configuration={
+                "query_tags": "airflow_dag_id:example_dag,airflow_task_id:custom_task,"
+                r"airflow_run_id:manual__2026-05-23,team:eng\,data"
+            },
+            sql_endpoint_name=None,
+            http_headers=None,
+            catalog=None,
+            schema=None,
+            caller="DatabricksCopyIntoOperator",
+        )
