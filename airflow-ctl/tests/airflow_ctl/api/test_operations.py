@@ -48,6 +48,8 @@ from airflowctl.api.datamodels.generated import (
     BulkCreateActionPoolBody,
     BulkCreateActionVariableBody,
     BulkResponse,
+    ClearTaskInstanceCollectionResponse,
+    ClearTaskInstancesBody,
     Config,
     ConfigOption,
     ConfigSection,
@@ -91,6 +93,11 @@ from airflowctl.api.datamodels.generated import (
     QueuedEventCollectionResponse,
     QueuedEventResponse,
     ReprocessBehavior,
+    TaskCollectionResponse,
+    TaskInstanceCollectionResponse,
+    TaskInstanceResponse,
+    TaskInstanceState,
+    TaskResponse,
     TriggerDAGRunPostBody,
     VariableBody,
     VariableCollectionResponse,
@@ -1549,6 +1556,151 @@ class TestVersionOperations:
         client = make_api_client(transport=httpx.MockTransport(handle_request))
         response = client.version.get()
         assert response == self.version_info
+
+
+class TestTasksOperations:
+    dag_id = "test_dag"
+    task_id = "test_task"
+    task_response = TaskResponse(
+        task_id=task_id,
+        task_display_name=task_id,
+        owner="airflow",
+        depends_on_past=False,
+        wait_for_downstream=False,
+        retries=1,
+        retry_exponential_backoff=False,
+        extra_links=[],
+    )
+    task_collection_response = TaskCollectionResponse(tasks=[task_response], total_entries=1)
+
+    def test_get(self):
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == f"/api/v2/dags/{self.dag_id}/tasks/{self.task_id}"
+            return httpx.Response(200, json=json.loads(self.task_response.model_dump_json()))
+
+        client = make_api_client(transport=httpx.MockTransport(handle_request))
+        response = client.tasks.get(dag_id=self.dag_id, task_id=self.task_id)
+        assert response == self.task_response
+
+    def test_list(self):
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == f"/api/v2/dags/{self.dag_id}/tasks"
+            assert request.url.params["order_by"] == "task_id"
+            return httpx.Response(200, json=json.loads(self.task_collection_response.model_dump_json()))
+
+        client = make_api_client(transport=httpx.MockTransport(handle_request))
+        response = client.tasks.list(dag_id=self.dag_id)
+        assert response == self.task_collection_response
+
+
+class TestTaskInstancesOperations:
+    dag_id = "test_dag"
+    dag_run_id = "manual__2025-01-24T00:00:00+00:00"
+    task_id = "test_task"
+    map_index = 3
+    task_instance_response = TaskInstanceResponse(
+        id=uuid.uuid4(),
+        task_id=task_id,
+        dag_id=dag_id,
+        dag_run_id=dag_run_id,
+        map_index=-1,
+        logical_date=datetime.datetime(2025, 1, 24, 0, 0, 0),
+        run_after=datetime.datetime(2025, 1, 24, 0, 0, 0),
+        start_date=datetime.datetime(2025, 1, 24, 0, 1, 0),
+        end_date=None,
+        duration=1.0,
+        state=TaskInstanceState.QUEUED,
+        try_number=1,
+        max_tries=1,
+        task_display_name=task_id,
+        dag_display_name=dag_id,
+        hostname="localhost",
+        unixname="airflow",
+        pool="default_pool",
+        pool_slots=1,
+        queue="default",
+        priority_weight=1,
+        operator="EmptyOperator",
+        operator_name="EmptyOperator",
+        queued_when=datetime.datetime(2025, 1, 24, 0, 0, 30),
+        scheduled_when=datetime.datetime(2025, 1, 24, 0, 0, 15),
+        pid=123,
+        executor="LocalExecutor",
+        executor_config="{}",
+    )
+    task_instance_collection_response = TaskInstanceCollectionResponse(
+        task_instances=[task_instance_response],
+        total_entries=1,
+    )
+    clear_task_instances_body = ClearTaskInstancesBody(dag_run_id=dag_run_id, task_ids=[task_id])
+    clear_task_instances_response = ClearTaskInstanceCollectionResponse(
+        task_instances=[task_instance_response],
+        total_entries=1,
+    )
+
+    def test_get(self):
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == (
+                f"/api/v2/dags/{self.dag_id}/dagRuns/{self.dag_run_id}/taskInstances/{self.task_id}"
+            )
+            return httpx.Response(200, json=json.loads(self.task_instance_response.model_dump_json()))
+
+        client = make_api_client(transport=httpx.MockTransport(handle_request))
+        response = client.task_instances.get(
+            dag_id=self.dag_id,
+            dag_run_id=self.dag_run_id,
+            task_id=self.task_id,
+        )
+        assert response == self.task_instance_response
+
+    def test_get_mapped(self):
+        mapped_task_instance_response = self.task_instance_response.model_copy(
+            update={"map_index": self.map_index}
+        )
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == (
+                f"/api/v2/dags/{self.dag_id}/dagRuns/{self.dag_run_id}/taskInstances/{self.task_id}/{self.map_index}"
+            )
+            return httpx.Response(200, json=json.loads(mapped_task_instance_response.model_dump_json()))
+
+        client = make_api_client(transport=httpx.MockTransport(handle_request))
+        response = client.task_instances.get(
+            dag_id=self.dag_id,
+            dag_run_id=self.dag_run_id,
+            task_id=self.task_id,
+            map_index=self.map_index,
+        )
+        assert response == mapped_task_instance_response
+
+    def test_list(self):
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == f"/api/v2/dags/{self.dag_id}/dagRuns/{self.dag_run_id}/taskInstances"
+            assert request.url.params["limit"] == "100"
+            assert request.url.params["offset"] == "0"
+            assert request.url.params["order_by"] == "map_index"
+            return httpx.Response(
+                200, json=json.loads(self.task_instance_collection_response.model_dump_json())
+            )
+
+        client = make_api_client(transport=httpx.MockTransport(handle_request))
+        response = client.task_instances.list(dag_id=self.dag_id, dag_run_id=self.dag_run_id)
+        assert response == self.task_instance_collection_response
+
+    def test_clear(self):
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == f"/api/v2/dags/{self.dag_id}/clearTaskInstances"
+            request_body = json.loads(request.content)
+            assert request_body["dag_run_id"] == self.dag_run_id
+            assert request_body["task_ids"] == [self.task_id]
+            return httpx.Response(200, json=json.loads(self.clear_task_instances_response.model_dump_json()))
+
+        client = make_api_client(transport=httpx.MockTransport(handle_request))
+        response = client.task_instances.clear(
+            dag_id=self.dag_id,
+            clear_task_instances=self.clear_task_instances_body,
+        )
+        assert response == self.clear_task_instances_response
 
 
 class TestAuthOperations:
