@@ -27,6 +27,17 @@
 Changelog
 ---------
 
+5.0.3
+.....
+
+Breaking changes
+~~~~~~~~~~~~~~~~
+
+* ``Drop DSA SSH key support and require paramiko 4``
+
+DSA keys are no longer supported for SSH connections. Generate an RSA, ECDSA,
+or Ed25519 key and update the connection before upgrading.
+
 5.0.2
 .....
 

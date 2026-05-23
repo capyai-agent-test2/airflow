@@ -27,6 +27,17 @@
 Changelog
 ---------
 
+5.8.1
+.....
+
+Breaking changes
+~~~~~~~~~~~~~~~~
+
+* ``Require paramiko 4 and remove DSA SSH key support inherited from the SSH provider``
+
+SFTP connections using DSA keys must be updated to RSA, ECDSA, or Ed25519
+before upgrading.
+
 5.8.0
 .....
 
