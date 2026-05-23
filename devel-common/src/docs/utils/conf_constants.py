@@ -267,7 +267,6 @@ def get_autodoc_mock_imports() -> list[str]:
         "smbclient",
         "snowflake",
         "sqlalchemy-drill",
-        "telegram",
         "tenacity",
         "vertica_python",
         "winrm",

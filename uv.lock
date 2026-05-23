@@ -47,7 +47,6 @@ apache-airflow-providers-ftp = false
 apache-airflow-providers-jenkins = false
 apache-airflow-shared-listeners = false
 apache-airflow-shared-providers-discovery = false
-apache-airflow-providers-telegram = false
 apache-airflow-providers-celery = false
 apache-airflow-providers-docker = false
 apache-airflow-providers-sendgrid = false
@@ -100,9 +99,9 @@ apache-airflow-providers-mongo = false
 apache-airflow-providers-apprise = false
 apache-airflow-providers-apache-impala = false
 apache-airflow-ctl = false
+apache-airflow-providers-zendesk = false
 apache-airflow-providers-github = false
 apache-airflow-providers-snowflake = false
-apache-airflow-providers-zendesk = false
 apache-airflow-providers-presto = false
 apache-airflow-providers-airbyte = false
 apache-airflow-providers-apache-hive = false
@@ -260,7 +259,6 @@ members = [
     "apache-airflow-providers-ssh",
     "apache-airflow-providers-standard",
     "apache-airflow-providers-tableau",
-    "apache-airflow-providers-telegram",
     "apache-airflow-providers-teradata",
     "apache-airflow-providers-trino",
     "apache-airflow-providers-vertica",
@@ -1075,7 +1073,6 @@ all = [
     { name = "apache-airflow-providers-ssh" },
     { name = "apache-airflow-providers-standard" },
     { name = "apache-airflow-providers-tableau" },
-    { name = "apache-airflow-providers-telegram" },
     { name = "apache-airflow-providers-teradata" },
     { name = "apache-airflow-providers-trino" },
     { name = "apache-airflow-providers-vertica" },
@@ -1422,9 +1419,6 @@ statsd = [
 tableau = [
     { name = "apache-airflow-providers-tableau" },
 ]
-telegram = [
-    { name = "apache-airflow-providers-telegram" },
-]
 teradata = [
     { name = "apache-airflow-providers-teradata" },
 ]
@@ -1725,8 +1719,6 @@ requires-dist = [
     { name = "apache-airflow-providers-standard", marker = "extra == 'standard'", editable = "providers/standard" },
     { name = "apache-airflow-providers-tableau", marker = "extra == 'all'", editable = "providers/tableau" },
     { name = "apache-airflow-providers-tableau", marker = "extra == 'tableau'", editable = "providers/tableau" },
-    { name = "apache-airflow-providers-telegram", marker = "extra == 'all'", editable = "providers/telegram" },
-    { name = "apache-airflow-providers-telegram", marker = "extra == 'telegram'", editable = "providers/telegram" },
     { name = "apache-airflow-providers-teradata", marker = "extra == 'all'", editable = "providers/teradata" },
     { name = "apache-airflow-providers-teradata", marker = "extra == 'teradata'", editable = "providers/teradata" },
     { name = "apache-airflow-providers-trino", marker = "extra == 'all'", editable = "providers/trino" },
@@ -1753,7 +1745,7 @@ requires-dist = [
     { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.30.0" },
     { name = "uv", marker = "extra == 'uv'", specifier = ">=0.11.14" },
 ]
-provides-extras = ["all-core", "async", "graphviz", "gunicorn", "kerberos", "memray", "otel", "statsd", "all-task-sdk", "airbyte", "akeyless", "alibaba", "amazon", "apache-cassandra", "apache-drill", "apache-druid", "apache-flink", "apache-hdfs", "apache-hive", "apache-iceberg", "apache-impala", "apache-kafka", "apache-kylin", "apache-livy", "apache-pig", "apache-pinot", "apache-spark", "apache-tinkerpop", "apprise", "arangodb", "asana", "atlassian-jira", "celery", "cloudant", "cncf-kubernetes", "cohere", "common-ai", "common-compat", "common-io", "common-messaging", "common-sql", "databricks", "datadog", "dbt-cloud", "dingding", "discord", "docker", "edge3", "elasticsearch", "exasol", "fab", "facebook", "ftp", "git", "github", "google", "grpc", "hashicorp", "http", "imap", "influxdb", "informatica", "jdbc", "jenkins", "keycloak", "microsoft-azure", "microsoft-mssql", "microsoft-psrp", "microsoft-winrm", "mongo", "mysql", "neo4j", "odbc", "openai", "openfaas", "openlineage", "opensearch", "opsgenie", "oracle", "pagerduty", "papermill", "pgvector", "pinecone", "postgres", "presto", "qdrant", "redis", "salesforce", "samba", "segment", "sendgrid", "sftp", "singularity", "slack", "smtp", "snowflake", "sqlite", "ssh", "standard", "tableau", "telegram", "teradata", "trino", "vertica", "vespa", "weaviate", "yandex", "ydb", "zendesk", "all", "aiobotocore", "apache-atlas", "apache-webhdfs", "amazon-aws-auth", "cloudpickle", "github-enterprise", "google-auth", "ldap", "pandas", "polars", "rabbitmq", "sentry", "s3fs", "uv"]
+provides-extras = ["all-core", "async", "graphviz", "gunicorn", "kerberos", "memray", "otel", "statsd", "all-task-sdk", "airbyte", "akeyless", "alibaba", "amazon", "apache-cassandra", "apache-drill", "apache-druid", "apache-flink", "apache-hdfs", "apache-hive", "apache-iceberg", "apache-impala", "apache-kafka", "apache-kylin", "apache-livy", "apache-pig", "apache-pinot", "apache-spark", "apache-tinkerpop", "apprise", "arangodb", "asana", "atlassian-jira", "celery", "cloudant", "cncf-kubernetes", "cohere", "common-ai", "common-compat", "common-io", "common-messaging", "common-sql", "databricks", "datadog", "dbt-cloud", "dingding", "discord", "docker", "edge3", "elasticsearch", "exasol", "fab", "facebook", "ftp", "git", "github", "google", "grpc", "hashicorp", "http", "imap", "influxdb", "informatica", "jdbc", "jenkins", "keycloak", "microsoft-azure", "microsoft-mssql", "microsoft-psrp", "microsoft-winrm", "mongo", "mysql", "neo4j", "odbc", "openai", "openfaas", "openlineage", "opensearch", "opsgenie", "oracle", "pagerduty", "papermill", "pgvector", "pinecone", "postgres", "presto", "qdrant", "redis", "salesforce", "samba", "segment", "sendgrid", "sftp", "singularity", "slack", "smtp", "snowflake", "sqlite", "ssh", "standard", "tableau", "teradata", "trino", "vertica", "vespa", "weaviate", "yandex", "ydb", "zendesk", "all", "aiobotocore", "apache-atlas", "apache-webhdfs", "amazon-aws-auth", "cloudpickle", "github-enterprise", "google-auth", "ldap", "pandas", "polars", "rabbitmq", "sentry", "s3fs", "uv"]
 
 [package.metadata.requires-dev]
 ci-image = [
@@ -7656,43 +7648,6 @@ requires-dist = [
     { name = "apache-airflow", editable = "." },
     { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
     { name = "tableauserverclient", specifier = ">=0.27,!=0.39" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "apache-airflow", editable = "." },
-    { name = "apache-airflow-devel-common", editable = "devel-common" },
-    { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
-    { name = "apache-airflow-task-sdk", editable = "task-sdk" },
-]
-docs = [{ name = "apache-airflow-devel-common", extras = ["docs"], editable = "devel-common" }]
-
-[[package]]
-name = "apache-airflow-providers-telegram"
-version = "4.9.4"
-source = { editable = "providers/telegram" }
-dependencies = [
-    { name = "apache-airflow" },
-    { name = "apache-airflow-providers-common-compat" },
-    { name = "python-telegram-bot" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "apache-airflow" },
-    { name = "apache-airflow-devel-common" },
-    { name = "apache-airflow-providers-common-compat" },
-    { name = "apache-airflow-task-sdk" },
-]
-docs = [
-    { name = "apache-airflow-devel-common", extra = ["docs"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "apache-airflow", editable = "." },
-    { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
-    { name = "python-telegram-bot", specifier = ">=20.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -14454,6 +14409,11 @@ dependencies = [
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/48/a2/5d27e81d24eef64668bf702bfe0e091cc48388b4666f36e025243eb9d827/jpype1-1.7.1.tar.gz", hash = "sha256:3cd88838dc3d2d546f7eaeadaaff864e590010c15f2b6a44b6f37e60796a14b2", size = 783791, upload-time = "2026-05-06T23:55:10.664Z" }
 wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/c0/2c41dedfb65060fa05d152b3f57e7c3658c86257d92de365a3c1fcb80779/jpype1-1.7.1-1-cp310-cp310-macosx_11_0_universal2.whl", hash = "sha256:6590cbdb6208e4522fd99ae5f5f4bed5de707122385bc48446a1e7d7b56357ef", size = 571509, upload-time = "2026-05-19T20:19:30.416Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/5e/5611d50222d146a060dbf22e69c4017545341ea6b289a591d5a9bdaad718/jpype1-1.7.1-1-cp311-cp311-macosx_11_0_universal2.whl", hash = "sha256:4c81ee11aee5ed938d7415877cd9c7a0cc9cbf1dac87f7eab928e641323a385b", size = 571633, upload-time = "2026-05-19T20:19:33.536Z" },
+    { url = "https://files.pythonhosted.org/packages/79/32/8b2279b12364f260111c7843bf9ede7dc442d5521d6d2ca728b3d522d445/jpype1-1.7.1-1-cp312-cp312-macosx_11_0_universal2.whl", hash = "sha256:b3ddd9f9099202212a34679dfb95dda590bcfbd23289559d104e24abec9120d1", size = 569654, upload-time = "2026-05-19T20:19:36.41Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/67/5caa0de30bcb1c8786cc988144a68908e0624de20cfed470a67b1dd1f60c/jpype1-1.7.1-1-cp313-cp313-macosx_11_0_universal2.whl", hash = "sha256:6d491a81281407f8a68552eb3c0e635e576e066c069268dc29a1ea27bb4778ae", size = 569800, upload-time = "2026-05-19T20:19:38.877Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/1d/9ee10b1aad9f01ea6ac6159981120eb5ace01962f9cfaa7de6b911de3eb8/jpype1-1.7.1-1-cp314-cp314-macosx_11_0_universal2.whl", hash = "sha256:ace0ba1a67561358fa5b57b8e93ed8bcf16f0a8d5cba79c875089c56827adf8e", size = 569753, upload-time = "2026-05-19T20:19:41.514Z" },
     { url = "https://files.pythonhosted.org/packages/04/ff/44a6f285d4c07014cb64379b8863caaefad1cc976d36923073d097b1d461/jpype1-1.7.1-cp310-cp310-macosx_14_0_x86_64.whl", hash = "sha256:472b2f53002f5fdf118d2e6b8c6b5441d6e3ca3cf1b1bdb163442be76c8b2859", size = 375560, upload-time = "2026-05-06T23:53:48.669Z" },
     { url = "https://files.pythonhosted.org/packages/42/c5/98c5ba221de29b341298341c07ad2221beae565886d18c2e6b821928db15/jpype1-1.7.1-cp310-cp310-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:80c4c8cbab99040b8b56f28ff834e0b089aefccaabe3b472b8b43bb1e4658b86", size = 408119, upload-time = "2026-05-06T23:53:51.382Z" },
     { url = "https://files.pythonhosted.org/packages/37/3f/d3b7fd287d5bae63af0ae935b2f2c01291d18ea2e6cd706db8e4dda15354/jpype1-1.7.1-cp310-cp310-manylinux_2_24_i686.manylinux_2_28_i686.whl", hash = "sha256:9c9a08d06016afbe5391daaf843b9e76c79022181685bbb23b64cd3f9aaec30d", size = 454716, upload-time = "2026-05-06T23:53:53.937Z" },
@@ -19743,19 +19703,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/87/c7/5e1547c44e31da50a460df93af11a535ace568ef89d7a811069ead340c4a/python-slugify-8.0.4.tar.gz", hash = "sha256:59202371d1d05b54a9e7720c5e038f928f45daaffe41dd10822f3907b937c856", size = 10921, upload-time = "2024-02-08T18:32:45.488Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a4/62/02da182e544a51a5c3ccf4b03ab79df279f9c60c5e82d5e8bec7ca26ac11/python_slugify-8.0.4-py2.py3-none-any.whl", hash = "sha256:276540b79961052b66b7d116620b36518847f52d5fd9e3a70164fc8c50faa6b8", size = 10051, upload-time = "2024-02-08T18:32:43.911Z" },
-]
-
-[[package]]
-name = "python-telegram-bot"
-version = "22.7"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpcore", marker = "python_full_version >= '3.14'" },
-    { name = "httpx" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e4/25/2258161b1069e66d6c39c0a602dbe57461d4767dc0012539970ea40bc9d6/python_telegram_bot-22.7.tar.gz", hash = "sha256:784b59ea3852fe4616ad63b4a0264c755637f5d725e87755ecdee28300febf61", size = 1516454, upload-time = "2026-03-16T09:36:03.174Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/f7/0e2f89dd62f45d46d4ea0d8aec5893ce5b37389638db010c117f46f11450/python_telegram_bot-22.7-py3-none-any.whl", hash = "sha256:d72eed532cf763758cd9331b57a6d790aff0bb4d37d8f4e92149436fe21c6475", size = 745365, upload-time = "2026-03-16T09:36:01.498Z" },
 ]
 
 [[package]]

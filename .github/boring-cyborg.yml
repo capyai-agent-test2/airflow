@@ -294,9 +294,6 @@ labelPRBasedOnFilePath:
   provider:tableau:
     - providers/tableau/**
 
-  provider:telegram:
-    - providers/telegram/**
-
   provider:teradata:
     - providers/teradata/**
 

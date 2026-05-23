@@ -203,7 +203,6 @@ body:
         - ssh
         - standard
         - tableau
-        - telegram
         - teradata
         - trino
         - vertica
