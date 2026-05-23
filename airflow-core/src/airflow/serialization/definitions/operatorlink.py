@@ -90,3 +90,14 @@ class XComOperatorLink(LoggingMixin):
             # This avoids the XComModel.deserialize_value() call that could
             # instantiate arbitrary classes from untrusted XCom data.
             return str(parsed_value)
+
+
+@attrs.define()
+class StaticOperatorLink(LoggingMixin):
+    """Operator link class that serves a statically serialized URL."""
+
+    name: str
+    url: str
+
+    def get_link(self, operator: Operator, *, ti_key: TaskInstanceKey) -> str:
+        return self.url

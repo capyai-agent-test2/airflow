@@ -73,7 +73,7 @@ from airflow.serialization.definitions.baseoperator import SerializedBaseOperato
 from airflow.serialization.definitions.dag import SerializedDAG
 from airflow.serialization.definitions.mappedoperator import SerializedMappedOperator
 from airflow.serialization.definitions.notset import NOTSET
-from airflow.serialization.definitions.operatorlink import XComOperatorLink
+from airflow.serialization.definitions.operatorlink import StaticOperatorLink, XComOperatorLink
 from airflow.serialization.definitions.param import SerializedParam
 from airflow.serialization.definitions.xcom_arg import SchedulerPlainXComArg
 from airflow.serialization.encoders import ensure_serialized_asset
@@ -105,6 +105,7 @@ from tests_common.test_utils.mock_operators import (
     CustomOperator,
     GithubLink,
     MockOperator,
+    StaticLinkOperator,
 )
 from tests_common.test_utils.providers import (
     IGNORE_MODULE_IMPORT_ERRORS,
@@ -3296,6 +3297,26 @@ def test_mapped_task_with_operator_extra_links_property():
     }
     assert mapped_task.global_operator_extra_link_dict == {"airflow": AirflowLink(), "github": GithubLink()}
     assert mapped_task.extra_links == sorted({"airflow", "github"})
+
+
+def test_static_operator_extra_links_serialize_without_xcom():
+    with DAG("test-static-link-dag", schedule=None, start_date=datetime(2020, 1, 1)) as dag:
+        StaticLinkOperator(task_id="task")
+
+    serialized_dag = DagSerialization.to_dict(dag)
+    serialized_task = serialized_dag["dag"]["tasks"][0]["__var"]
+    assert serialized_task["_operator_extra_links"] == {
+        "Static Docs": {"type": "static", "value": "https://airflow.apache.org/docs/"}
+    }
+
+    deserialized_dag = DagSerialization.from_dict(serialized_dag)
+    deserialized_task = deserialized_dag.task_dict["task"]
+    assert deserialized_task.operator_extra_links == [
+        StaticOperatorLink(name="Static Docs", url="https://airflow.apache.org/docs/")
+    ]
+    assert deserialized_task.operator_extra_link_dict == {
+        "Static Docs": StaticOperatorLink(name="Static Docs", url="https://airflow.apache.org/docs/")
+    }
 
 
 def empty_function(*args, **kwargs):

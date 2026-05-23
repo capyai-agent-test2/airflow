@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from airflow.sdk.definitions._internal.node import DAGNode as TaskSDKDAGNode
     from airflow.sdk.definitions.operator_resources import Resources
     from airflow.serialization.definitions.dag import SerializedDAG
-    from airflow.serialization.definitions.operatorlink import XComOperatorLink
+    from airflow.serialization.definitions.operatorlink import StaticOperatorLink, XComOperatorLink
     from airflow.task.trigger_rule import TriggerRule
     from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
     from airflow.triggers.base import StartTriggerArgs
@@ -96,7 +96,7 @@ class SerializedMappedOperator(DAGNode):
     # Needed for serialization.
     task_id: str
     params: SerializedParamsDict = attrs.field(init=False, factory=SerializedParamsDict)
-    operator_extra_links: Collection[XComOperatorLink]
+    operator_extra_links: Collection[XComOperatorLink | StaticOperatorLink]
     template_ext: Sequence[str]
     template_fields: Collection[str]
     template_fields_renderers: dict[str, str]
@@ -367,7 +367,7 @@ class SerializedMappedOperator(DAGNode):
         )
 
     @functools.cached_property
-    def operator_extra_link_dict(self) -> dict[str, XComOperatorLink]:
+    def operator_extra_link_dict(self) -> dict[str, XComOperatorLink | StaticOperatorLink]:
         """Returns dictionary of all extra links for the operator."""
         op_extra_links_from_plugin: dict[str, Any] = {}
         from airflow import plugins_manager
