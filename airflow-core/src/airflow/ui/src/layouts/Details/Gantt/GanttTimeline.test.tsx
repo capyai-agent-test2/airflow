@@ -51,8 +51,8 @@ const TestWrapper = ({ children }: PropsWithChildren) => (
   </Wrapper>
 );
 
-// Shared time range: 10:00 → 10:10 UTC on 2024-03-14
-const MIN_MS = new Date("2024-03-14T10:00:00Z").getTime();
+// Shared time range: 09:58 → 10:10 UTC on 2024-03-14
+const MIN_MS = new Date("2024-03-14T09:58:00Z").getTime();
 const MAX_MS = new Date("2024-03-14T10:10:00Z").getTime();
 
 const BASE_NODE: GridTask = {

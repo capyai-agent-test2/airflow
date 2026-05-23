@@ -28,6 +28,7 @@ import {
   buildGanttTimeAxisTicks,
   buildMaxTryByTaskId,
   GANTT_TIME_AXIS_TICK_COUNT,
+  getGanttSegmentBoundsInRange,
   gridSummariesToTaskIdMap,
   transformGanttData,
 } from "./utils";
@@ -115,6 +116,21 @@ describe("buildGanttRowSegments", () => {
     expect(segments).toHaveLength(2);
     expect(segments[0]?.map((segment) => segment.taskId)).toEqual(["t1"]);
     expect(segments[1]?.map((segment) => segment.taskId)).toEqual(["t2"]);
+  });
+});
+
+describe("getGanttSegmentBoundsInRange", () => {
+  it("clips a segment to the selected time range", () => {
+    const item: GanttDataItem = { taskId: "t1", x: [10, 30], y: "t1" };
+
+    expect(getGanttSegmentBoundsInRange(item, 20, 40)).toEqual([20, 30]);
+  });
+
+  it("returns undefined when a segment falls entirely outside the selected time range", () => {
+    const item: GanttDataItem = { taskId: "t1", x: [10, 20], y: "t1" };
+
+    expect(getGanttSegmentBoundsInRange(item, 20, 40)).toBeUndefined();
+    expect(getGanttSegmentBoundsInRange(item, 25, 40)).toBeUndefined();
   });
 });
 

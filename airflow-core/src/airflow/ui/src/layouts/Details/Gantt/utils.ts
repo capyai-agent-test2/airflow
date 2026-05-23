@@ -227,6 +227,17 @@ export const buildGanttRowSegments = (
   return flatNodes.map((node) => byTaskId.get(node.id) ?? []);
 };
 
+export const getGanttSegmentBoundsInRange = (
+  segment: GanttDataItem,
+  minMs: number,
+  maxMs: number,
+): [number, number] | undefined => {
+  const startMs = Math.max(segment.x[0], minMs);
+  const endMs = Math.min(segment.x[1], maxMs);
+
+  return endMs > startMs ? [startMs, endMs] : undefined;
+};
+
 export const computeGanttTimeRangeMs = ({
   ganttItems,
   selectedRun,

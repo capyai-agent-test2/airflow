@@ -40,6 +40,7 @@ import {
   GANTT_TIME_AXIS_TICK_COUNT,
   buildGanttTimeAxisTicks,
   buildMaxTryByTaskId,
+  getGanttSegmentBoundsInRange,
   getGanttSegmentTo,
   gridSummariesToTaskIdMap,
 } from "./utils";
@@ -169,8 +170,15 @@ export const GanttTimeline = ({
   const baseSearchParams = new URLSearchParams(search);
 
   const segmentLayout = (segment: GanttDataItem) => {
-    const leftPct = ((segment.x[0] - minMs) / spanMs) * 100;
-    const widthPct = ((segment.x[1] - segment.x[0]) / spanMs) * 100;
+    const visibleBounds = getGanttSegmentBoundsInRange(segment, minMs, maxMs);
+
+    if (visibleBounds === undefined) {
+      return undefined;
+    }
+
+    const [visibleStartMs, visibleEndMs] = visibleBounds;
+    const leftPct = ((visibleStartMs - minMs) / spanMs) * 100;
+    const widthPct = ((visibleEndMs - visibleStartMs) / spanMs) * 100;
     const widthPx = (widthPct / 100) * bodyWidthPx;
     const minBoost = widthPx < MIN_BAR_WIDTH_PX && bodyWidthPx > 0 ? MIN_BAR_WIDTH_PX - widthPx : 0;
     const widthPctAdjusted = bodyWidthPx > 0 ? ((widthPx + minBoost) / bodyWidthPx) * 100 : widthPct;
@@ -283,12 +291,18 @@ export const GanttTimeline = ({
             // from the filtered list so the adjacent execution bar keeps rounded corners.
             const segments =
               bodyWidthPx > 0
-                ? allSegments.filter((segment) =>
-                    segment.state !== "scheduled" && segment.state !== "queued"
+                ? allSegments.filter((segment) => {
+                    const layout = segmentLayout(segment);
+
+                    if (layout === undefined) {
+                      return false;
+                    }
+
+                    return segment.state !== "scheduled" && segment.state !== "queued"
                       ? true
-                      : segmentLayout(segment).widthPx >= MIN_SEGMENT_RENDER_PX,
-                  )
-                : allSegments;
+                      : layout.widthPx >= MIN_SEGMENT_RENDER_PX;
+                  })
+                : allSegments.filter((segment) => segmentLayout(segment) !== undefined);
             const taskId = node.id;
             const isSelected = selectedTaskId === taskId || selectedGroupId === taskId;
             const isHovered = hoveredTaskId === taskId;
@@ -321,7 +335,13 @@ export const GanttTimeline = ({
                   w="100%"
                 >
                   {segments.map((segment, segIndex) => {
-                    const { leftPct, widthPct } = segmentLayout(segment);
+                    const layout = segmentLayout(segment);
+
+                    if (layout === undefined) {
+                      return undefined;
+                    }
+
+                    const { leftPct, widthPct } = layout;
                     const to = getGanttSegmentTo({
                       dagId,
                       item: segment,
