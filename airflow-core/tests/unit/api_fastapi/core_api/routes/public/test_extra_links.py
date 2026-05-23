@@ -29,7 +29,7 @@ from airflow.utils.types import DagRunTriggeredByType, DagRunType
 
 from tests_common.test_utils.compat import BaseOperatorLink
 from tests_common.test_utils.db import clear_db_dags, clear_db_runs, clear_db_xcom
-from tests_common.test_utils.mock_operators import CustomOperator
+from tests_common.test_utils.mock_operators import CustomOperator, StaticLinkOperator
 
 pytestmark = pytest.mark.db_test
 
@@ -79,6 +79,7 @@ class TestGetExtraLinks:
     task_single_link = "TEST_SINGLE_LINK"
     task_multiple_links = "TEST_MULTIPLE_LINKS"
     task_mapped = "TEST_MAPPED_TASK"
+    task_static_link = "TEST_STATIC_LINK"
     default_time = timezone.datetime(2020, 1, 1)
     plugin_name = "test_plugin"
 
@@ -125,6 +126,7 @@ class TestGetExtraLinks:
             _ = CustomOperator.partial(task_id=self.task_mapped).expand(
                 bash_command=["TEST_LINK_VALUE_1", "TEST_LINK_VALUE_2"]
             )
+            StaticLinkOperator(task_id=self.task_static_link)
         return dag
 
     @pytest.mark.parametrize(
@@ -187,6 +189,20 @@ class TestGetExtraLinks:
         assert (
             response.json()
             == ExtraLinkCollectionResponse(extra_links={"Google Custom": None}, total_entries=1).model_dump()
+        )
+
+    def test_should_respond_200_static_link_without_xcom(self, test_client):
+        response = test_client.get(
+            f"/dags/{self.dag_id}/dagRuns/{self.dag_run_id}/taskInstances/{self.task_static_link}/links",
+        )
+
+        assert response.status_code == 200
+        assert (
+            response.json()
+            == ExtraLinkCollectionResponse(
+                extra_links={"Static Docs": "https://airflow.apache.org/docs/"},
+                total_entries=1,
+            ).model_dump()
         )
 
     def test_should_respond_200_multiple_links(self, test_client, session):

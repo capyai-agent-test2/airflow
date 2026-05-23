@@ -55,6 +55,15 @@ class BaseOperatorLink(metaclass=ABCMeta):
         """
         return f"_link_{self.__class__.__name__}"
 
+    def get_static_link(self, operator: BaseOperator) -> str | None:
+        """
+        Return a statically serializable URL for this link, if available.
+
+        When this returns a URL, serialized Dags can render the operator-defined
+        extra link without storing a per-task-instance XCom copy.
+        """
+        return None
+
     @abstractmethod
     def get_link(self, operator: BaseOperator, *, ti_key: TaskInstanceKey) -> str:
         """

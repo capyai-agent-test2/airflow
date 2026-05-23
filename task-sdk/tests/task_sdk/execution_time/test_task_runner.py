@@ -2568,6 +2568,42 @@ class TestRuntimeTaskInstance:
                 )
             ]
 
+    def test_static_operator_extra_links_skip_xcom_persistence(
+        self, create_runtime_ti, mock_supervisor_comms, time_machine
+    ):
+        """Test that statically serializable links do not write per-task-instance XCom rows."""
+        instant = timezone.datetime(2024, 12, 3, 10, 0)
+        time_machine.move_to(instant, tick=False)
+
+        class StaticLink(BaseOperatorLink):
+            name = "static_docs"
+
+            def get_static_link(self, operator):
+                return "https://airflow.apache.org/docs/"
+
+            def get_link(self, operator, *, ti_key):
+                return self.get_static_link(operator)
+
+        class DummyTestOperator(BaseOperator):
+            operator_extra_links = (StaticLink(),)
+
+            def execute(self, context):
+                pass
+
+        task = DummyTestOperator(task_id="task_with_static_operator_extra_links")
+        runtime_ti = create_runtime_ti(task=task)
+        runtime_ti.start_date = instant
+        runtime_ti.end_date = instant
+
+        with mock.patch.object(XCom, "_set_xcom_in_db") as mock_xcom_set:
+            finalize(
+                runtime_ti,
+                log=mock.MagicMock(),
+                state=TaskInstanceState.SUCCESS,
+                context=runtime_ti.get_template_context(),
+            )
+            mock_xcom_set.assert_not_called()
+
     @pytest.mark.parametrize(
         ("cmd", "rendered_cmd"),
         [

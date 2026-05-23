@@ -81,7 +81,7 @@ from airflow.serialization.definitions.baseoperator import SerializedBaseOperato
 from airflow.serialization.definitions.dag import SerializedDAG
 from airflow.serialization.definitions.deadline import SerializedDeadlineAlert
 from airflow.serialization.definitions.node import DAGNode
-from airflow.serialization.definitions.operatorlink import XComOperatorLink
+from airflow.serialization.definitions.operatorlink import StaticOperatorLink, XComOperatorLink
 from airflow.serialization.definitions.param import SerializedParam, SerializedParamsDict
 from airflow.serialization.definitions.taskgroup import SerializedMappedTaskGroup, SerializedTaskGroup
 from airflow.serialization.definitions.xcom_arg import SchedulerXComArg, deserialize_xcom_arg
@@ -1038,7 +1038,8 @@ class OperatorSerialization(DAGNode, BaseSerialization):
             serialize_op["_operator_extra_links"] = cls._serialize_operator_extra_links(
                 op.operator_extra_links.__get__(op)
                 if isinstance(op.operator_extra_links, property)
-                else op.operator_extra_links
+                else op.operator_extra_links,
+                op,
             )
 
         # Store all template_fields as they are if there are JSON Serializable
@@ -1461,8 +1462,8 @@ class OperatorSerialization(DAGNode, BaseSerialization):
 
     @classmethod
     def _deserialize_operator_extra_links(
-        cls, encoded_op_links: dict[str, str]
-    ) -> dict[str, XComOperatorLink]:
+        cls, encoded_op_links: dict[str, str | dict[str, str]]
+    ) -> dict[str, XComOperatorLink | StaticOperatorLink]:
         """
         Deserialize Operator Links if the Classes are registered in Airflow Plugins.
 
@@ -1476,7 +1477,7 @@ class OperatorSerialization(DAGNode, BaseSerialization):
         plugins_manager.get_operator_extra_links()
         op_predefined_extra_links = {}
 
-        for name, xcom_key in encoded_op_links.items():
+        for name, encoded_link in encoded_op_links.items():
             # Get the name and xcom_key of the encoded operator and use it to create a XComOperatorLink object
             # during deserialization.
             #
@@ -1489,15 +1490,18 @@ class OperatorSerialization(DAGNode, BaseSerialization):
             #     'raise_error': 'key'
             # }
 
-            op_predefined_extra_link = XComOperatorLink(name=name, xcom_key=xcom_key)
+            if isinstance(encoded_link, dict):
+                op_predefined_extra_link = StaticOperatorLink(name=name, url=encoded_link["value"])
+            else:
+                op_predefined_extra_link = XComOperatorLink(name=name, xcom_key=encoded_link)
             op_predefined_extra_links.update({op_predefined_extra_link.name: op_predefined_extra_link})
 
         return op_predefined_extra_links
 
     @classmethod
     def _serialize_operator_extra_links(
-        cls, operator_extra_links: Iterable[BaseOperatorLink]
-    ) -> dict[str, str]:
+        cls, operator_extra_links: Iterable[BaseOperatorLink], operator: BaseOperator
+    ) -> dict[str, str | dict[str, str]]:
         """
         Serialize Operator Links.
 
@@ -1507,9 +1511,17 @@ class OperatorSerialization(DAGNode, BaseSerialization):
         ``{'link-name-1': 'xcom-key-1'}``
 
         :param operator_extra_links: Operator Link
+        :param operator: Operator that owns the links
         :return: Serialized Operator Link
         """
-        return {link.name: link.xcom_key for link in operator_extra_links}
+        serialized_links: dict[str, str | dict[str, str]] = {}
+        for link in operator_extra_links:
+            static_link = link.get_static_link(operator)
+            if static_link is not None:
+                serialized_links[link.name] = {"type": "static", "value": static_link}
+            else:
+                serialized_links[link.name] = link.xcom_key
+        return serialized_links
 
     @classmethod
     def serialize(cls, var: Any, *, strict: bool = False) -> Any:

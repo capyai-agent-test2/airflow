@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from airflow.sdk import Context
     from airflow.serialization.definitions.dag import SerializedDAG
     from airflow.serialization.definitions.mappedoperator import SerializedMappedOperator
-    from airflow.serialization.definitions.operatorlink import XComOperatorLink
+    from airflow.serialization.definitions.operatorlink import StaticOperatorLink, XComOperatorLink
     from airflow.serialization.definitions.taskgroup import SerializedMappedTaskGroup, SerializedTaskGroup
     from airflow.task.trigger_rule import TriggerRule
     from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
@@ -110,7 +110,7 @@ class SerializedBaseOperator(DAGNode):
     has_on_success_callback: bool = False
     has_on_skipped_callback: bool = False
 
-    operator_extra_links: Collection[XComOperatorLink] = []
+    operator_extra_links: Collection[XComOperatorLink | StaticOperatorLink] = []
     on_failure_fail_dagrun: bool = False
 
     outlets: Sequence = []
@@ -255,7 +255,7 @@ class SerializedBaseOperator(DAGNode):
         return [self]
 
     @functools.cached_property
-    def operator_extra_link_dict(self) -> dict[str, XComOperatorLink]:
+    def operator_extra_link_dict(self) -> dict[str, XComOperatorLink | StaticOperatorLink]:
         """All extra links for the operator."""
         return {link.name: link for link in self.operator_extra_links}
 

@@ -58,6 +58,18 @@ class AirflowLink(BaseOperatorLink):
         return "https://airflow.apache.org"
 
 
+class StaticDocsLink(BaseOperatorLink):
+    """Operator Link for static documentation."""
+
+    name = "Static Docs"
+
+    def get_static_link(self, operator):
+        return "https://airflow.apache.org/docs/"
+
+    def get_link(self, operator, *, ti_key):
+        return self.get_static_link(operator)
+
+
 class EmptyExtraLinkTestOperator(BaseOperator):
     """
     Empty test operator with extra link.
@@ -78,6 +90,12 @@ class EmptyNoExtraLinkTestOperator(BaseOperator):
     """
 
     operator_extra_links = ()
+
+
+class StaticLinkOperator(BaseOperator):
+    """Operator for testing statically serialized extra links."""
+
+    operator_extra_links = (StaticDocsLink(),)
 
 
 @attr.s(auto_attribs=True)

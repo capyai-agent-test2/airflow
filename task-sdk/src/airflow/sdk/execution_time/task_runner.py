@@ -2002,6 +2002,8 @@ def finalize(
     # Pushing xcom for each operator extra links defined on the operator only.
     for oe in task.operator_extra_links:
         try:
+            if oe.get_static_link(task) is not None:
+                continue
             link, xcom_key = oe.get_link(operator=task, ti_key=ti), oe.xcom_key  # type: ignore[arg-type]
             log.debug("Setting xcom for operator extra link", link=link, xcom_key=xcom_key)
             _xcom_push_to_db(ti, key=xcom_key, value=link)
