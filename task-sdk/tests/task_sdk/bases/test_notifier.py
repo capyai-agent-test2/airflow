@@ -97,3 +97,13 @@ class TestBaseNotifier:
             }
         )
         assert notifier.message == "task: some_task"
+
+    def test_notifier_call_without_template_fields_skips_dag_template_env(self):
+        notifier = BaseNotifier()
+        notifier.notify = MagicMock()
+        dag = object()
+        context: Context = {"dag": dag}
+
+        notifier(context)
+
+        notifier.notify.assert_called_once_with(context)
