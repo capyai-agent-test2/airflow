@@ -68,6 +68,7 @@ from airflowctl.api.datamodels.generated import (
     ProviderCollectionResponse,
     QueuedEventCollectionResponse,
     QueuedEventResponse,
+    TaskInstanceResponse,
     TriggerDAGRunPostBody,
     VariableBody,
     VariableCollectionResponse,
@@ -665,6 +666,23 @@ class JobsOperations(BaseOperations):
             params["is_alive"] = is_alive
 
         return super().execute_list(path="jobs", data_model=JobCollectionResponse, params=params)
+
+
+class TasksOperations(BaseOperations):
+    """Task operations."""
+
+    def state(
+        self, dag_id: str, dag_run_id: str, task_id: str, map_index: int | None = None
+    ) -> TaskInstanceResponse | ServerResponseError:
+        """Get a task instance."""
+        path = f"dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{task_id}"
+        if map_index is not None:
+            path = f"{path}/{map_index}"
+        try:
+            self.response = self.client.get(path)
+            return TaskInstanceResponse.model_validate_json(self.response.content)
+        except ServerResponseError as e:
+            raise e
 
 
 class PoolsOperations(BaseOperations):

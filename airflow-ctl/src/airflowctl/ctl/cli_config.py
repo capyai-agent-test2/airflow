@@ -267,6 +267,22 @@ ARG_DAG_ID = Arg(
     type=str,
     help="The Dag ID of the Dag to pause or unpause",
 )
+ARG_DAG_RUN_ID = Arg(
+    flags=("dag_run_id",),
+    type=str,
+    help="The Dag run ID of the task instance",
+)
+ARG_TASK_ID = Arg(
+    flags=("task_id",),
+    type=str,
+    help="The task ID of the task instance",
+)
+ARG_MAP_INDEX = Arg(
+    flags=("--map-index",),
+    type=int,
+    default=None,
+    help="The map index of the mapped task instance",
+)
 
 ARG_ACTION_ON_EXISTING_KEY = Arg(
     flags=("-a", "--action-on-existing-key"),
@@ -395,7 +411,12 @@ class CommandFactory:
         self.excluded_parameters = ["schema_"]
         # This list is used to determine if the command/operation needs to output data
         self.output_command_list = ["list", "get", "create", "delete", "update", "trigger", "add", "edit"]
-        self.exclude_operation_names = ["LoginOperations", "VersionOperations", "BaseOperations"]
+        self.exclude_operation_names = [
+            "LoginOperations",
+            "VersionOperations",
+            "BaseOperations",
+            "TasksOperations",
+        ]
         self.exclude_method_names = [
             "error",
             "__init__",
@@ -979,6 +1000,20 @@ DAG_COMMANDS = (
     ),
 )
 
+TASK_COMMANDS = (
+    ActionCommand(
+        name="state",
+        help="Print the current state of a task instance",
+        func=lazy_load_command("airflowctl.ctl.commands.task_command.state"),
+        args=(
+            ARG_DAG_ID,
+            ARG_DAG_RUN_ID,
+            ARG_TASK_ID,
+            ARG_MAP_INDEX,
+        ),
+    ),
+)
+
 POOL_COMMANDS = (
     ActionCommand(
         name="import",
@@ -1027,6 +1062,11 @@ core_commands: list[CLICommand] = [
         name="dags",
         help="Manage Airflow Dags",
         subcommands=DAG_COMMANDS,
+    ),
+    GroupCommand(
+        name="tasks",
+        help="Manage Airflow tasks",
+        subcommands=TASK_COMMANDS,
     ),
     GroupCommand(
         name="pools",
