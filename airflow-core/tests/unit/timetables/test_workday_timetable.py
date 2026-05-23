@@ -23,7 +23,7 @@ import pendulum
 import pytest
 
 from airflow._shared.timezones.timezone import utc
-from airflow.example_dags.plugins.workday import AfterWorkdayTimetable
+from airflow.example_plugins.workday import AfterWorkdayTimetable
 from airflow.timetables.base import DagRunInfo, DataInterval, TimeRestriction, Timetable
 
 START_DATE = pendulum.DateTime(2021, 9, 4, tzinfo=utc)  # This is a Saturday.

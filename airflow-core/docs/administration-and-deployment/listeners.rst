@@ -45,21 +45,21 @@ Beginning with Airflow 3, listeners are also notified whenever a state change is
 
 - ``on_dag_run_running``
 
-.. exampleinclude:: /../src/airflow/example_dags/plugins/event_listener.py
+.. exampleinclude:: /../src/airflow/example_plugins/event_listener.py
     :language: python
     :start-after: [START howto_listen_dagrun_running_task]
     :end-before: [END howto_listen_dagrun_running_task]
 
 - ``on_dag_run_success``
 
-.. exampleinclude:: /../src/airflow/example_dags/plugins/event_listener.py
+.. exampleinclude:: /../src/airflow/example_plugins/event_listener.py
     :language: python
     :start-after: [START howto_listen_dagrun_success_task]
     :end-before: [END howto_listen_dagrun_success_task]
 
 - ``on_dag_run_failed``
 
-.. exampleinclude:: /../src/airflow/example_dags/plugins/event_listener.py
+.. exampleinclude:: /../src/airflow/example_plugins/event_listener.py
     :language: python
     :start-after: [START howto_listen_dagrun_failure_task]
     :end-before: [END howto_listen_dagrun_failure_task]
@@ -77,28 +77,28 @@ of a :class:`~airflow.sdk.execution_time.task_runner.RuntimeTaskInstance` instan
 
 - ``on_task_instance_running``
 
-.. exampleinclude:: /../src/airflow/example_dags/plugins/event_listener.py
+.. exampleinclude:: /../src/airflow/example_plugins/event_listener.py
     :language: python
     :start-after: [START howto_listen_ti_running_task]
     :end-before: [END howto_listen_ti_running_task]
 
 - ``on_task_instance_success``
 
-.. exampleinclude:: /../src/airflow/example_dags/plugins/event_listener.py
+.. exampleinclude:: /../src/airflow/example_plugins/event_listener.py
     :language: python
     :start-after: [START howto_listen_ti_success_task]
     :end-before: [END howto_listen_ti_success_task]
 
 - ``on_task_instance_failed``
 
-.. exampleinclude:: /../src/airflow/example_dags/plugins/event_listener.py
+.. exampleinclude:: /../src/airflow/example_plugins/event_listener.py
     :language: python
     :start-after: [START howto_listen_ti_failure_task]
     :end-before: [END howto_listen_ti_failure_task]
 
 - ``on_task_instance_skipped``
 
-.. exampleinclude:: /../src/airflow/example_dags/plugins/event_listener.py
+.. exampleinclude:: /../src/airflow/example_plugins/event_listener.py
     :language: python
     :start-after: [START howto_listen_ti_skipped_task]
     :end-before: [END howto_listen_ti_skipped_task]

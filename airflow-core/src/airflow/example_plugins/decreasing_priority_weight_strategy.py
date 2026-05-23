@@ -14,13 +14,31 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 from __future__ import annotations
 
-from airflow.example_dags.plugins import event_listener
+from typing import TYPE_CHECKING
+
 from airflow.plugins_manager import AirflowPlugin
+from airflow.task.priority_strategy import PriorityWeightStrategy
+
+if TYPE_CHECKING:
+    from airflow.models import TaskInstance
 
 
-class MetadataCollectionPlugin(AirflowPlugin):
-    name = "MetadataCollectionPlugin"
-    listeners = [event_listener]
+# [START custom_priority_weight_strategy]
+class DecreasingPriorityStrategy(PriorityWeightStrategy):
+    """A priority weight strategy that decreases the priority weight with each attempt of the DAG task."""
+
+    def get_weight(self, ti: TaskInstance) -> int:
+        try_number = ti.try_number or 0
+        return max(3 - try_number + 1, 1)
+
+
+class DecreasingPriorityWeightStrategyPlugin(AirflowPlugin):
+    """Register the example priority weight strategy."""
+
+    name = "decreasing_priority_weight_strategy_plugin"
+    priority_weight_strategies = [DecreasingPriorityStrategy]
+
+
+# [END custom_priority_weight_strategy]

@@ -34,7 +34,7 @@ def on_task_instance_running(
     previous_state: TaskInstanceState | None, task_instance: RuntimeTaskInstance | TaskInstance
 ):
     """
-    Called when task state changes to RUNNING.
+    Handle a task state change to RUNNING.
 
     previous_task_state and task_instance object can be used to retrieve more information about current
     task_instance that is running, its dag_run, task and dag information.
@@ -68,7 +68,7 @@ def on_task_instance_success(
     previous_state: TaskInstanceState | None, task_instance: RuntimeTaskInstance | TaskInstance
 ):
     """
-    Called when task state changes to SUCCESS.
+    Handle a task state change to SUCCESS.
 
     previous_task_state and task_instance object can be used to retrieve more information about current
     task_instance that has succeeded, its dag_run, task and dag information.
@@ -102,7 +102,7 @@ def on_task_instance_failed(
     error: None | str | BaseException,
 ):
     """
-    Called when task state changes to FAILED.
+    Handle a task state change to FAILED.
 
     previous_task_state, task_instance object and error can be used to retrieve more information about current
     task_instance that has failed, its dag_run, task and dag information.
@@ -141,7 +141,7 @@ def on_task_instance_skipped(
     previous_state: TaskInstanceState | None, task_instance: RuntimeTaskInstance | TaskInstance
 ):
     """
-    Called when a task instance skips itself during execution.
+    Handle a task instance skipping itself during execution.
 
     This hook is called only when a task has started execution and then
     intentionally skips itself (e.g., by raising AirflowSkipException).
@@ -176,9 +176,7 @@ def on_task_instance_skipped(
 # [START howto_listen_dagrun_success_task]
 @hookimpl
 def on_dag_run_success(dag_run: DagRun, msg: str):
-    """
-    This method is called when dag run state changes to SUCCESS.
-    """
+    """Handle a dag run state change to SUCCESS."""
     print("Dag run in success state")
     start_date = dag_run.start_date
     end_date = dag_run.end_date
@@ -192,9 +190,7 @@ def on_dag_run_success(dag_run: DagRun, msg: str):
 # [START howto_listen_dagrun_failure_task]
 @hookimpl
 def on_dag_run_failed(dag_run: DagRun, msg: str):
-    """
-    This method is called when dag run state changes to FAILED.
-    """
+    """Handle a dag run state change to FAILED."""
     print("Dag run  in failure state")
     dag_id = dag_run.dag_id
     run_id = dag_run.run_id
@@ -210,9 +206,7 @@ def on_dag_run_failed(dag_run: DagRun, msg: str):
 # [START howto_listen_dagrun_running_task]
 @hookimpl
 def on_dag_run_running(dag_run: DagRun, msg: str):
-    """
-    This method is called when dag run state changes to RUNNING.
-    """
+    """Handle a dag run state change to RUNNING."""
     print("Dag run  in running state")
     queued_at = dag_run.queued_at
 
