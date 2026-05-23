@@ -33,6 +33,16 @@ imaplib_string = "airflow.providers.imap.hooks.imap.imaplib"
 open_string = "airflow.providers.imap.hooks.imap.open"
 
 
+def _build_fake_mail(attachment_name: str, payload: bytes = b"SWQsTmFtZQoxLEZlbGl4") -> bytes:
+    return (
+        f"Content-Type: multipart/mixed; "
+        f"boundary=123\r\n--123\r\n"
+        f"Content-Disposition: attachment; "
+        f'filename="{attachment_name}";'
+        f"Content-Transfer-Encoding: base64\r\n{payload.decode('ascii')}\r\n--123--"
+    ).encode()
+
+
 def _create_fake_imap(mock_imaplib, with_mail=False, attachment_name="test1.csv", use_ssl=True):
     if use_ssl:
         mock_conn = Mock(spec=imaplib.IMAP4_SSL)
@@ -46,14 +56,7 @@ def _create_fake_imap(mock_imaplib, with_mail=False, attachment_name="test1.csv"
     if with_mail:
         mock_conn.select.return_value = ("OK", [])
         mock_conn.search.return_value = ("OK", [b"1"])
-        mail_string = (
-            f"Content-Type: multipart/mixed; "
-            f"boundary=123\r\n--123\r\n"
-            f"Content-Disposition: attachment; "
-            f'filename="{attachment_name}";'
-            f"Content-Transfer-Encoding: base64\r\nSWQsTmFtZQoxLEZlbGl4\r\n--123--"
-        )
-        mock_conn.fetch.return_value = ("OK", [(b"", mail_string.encode("utf-8"))])
+        mock_conn.fetch.return_value = ("OK", [(b"", _build_fake_mail(attachment_name))])
         mock_conn.close.return_value = ("OK", [])
 
     mock_conn.logout.return_value = ("OK", [])
@@ -407,6 +410,40 @@ class TestImapHook:
 
         mock_imaplib.IMAP4_SSL.return_value.search.assert_called_once_with(None, mail_filter)
         assert mock_open_method.call_count == 1
+
+    @patch(imaplib_string)
+    def test_download_mail_attachments_preserves_duplicate_filenames(self, mock_imaplib, tmp_path):
+        mock_conn = _create_fake_imap(mock_imaplib, with_mail=True)
+        mock_conn.search.return_value = ("OK", [b"1 2"])
+        mock_conn.fetch.side_effect = [
+            ("OK", [(b"", _build_fake_mail("test1.csv", payload=b"first"))]),
+            ("OK", [(b"", _build_fake_mail("test1.csv", payload=b"second"))]),
+        ]
+
+        with ImapHook() as imap_hook:
+            imap_hook.download_mail_attachments(name="test1.csv", local_output_directory=str(tmp_path))
+
+        assert (tmp_path / "test1.csv").read_bytes() == b"first"
+        assert (tmp_path / "test1_1.csv").read_bytes() == b"second"
+
+    @patch(imaplib_string)
+    def test_download_mail_attachments_overwrites_duplicate_filenames_when_requested(
+        self, mock_imaplib, tmp_path
+    ):
+        mock_conn = _create_fake_imap(mock_imaplib, with_mail=True)
+        mock_conn.search.return_value = ("OK", [b"1 2"])
+        mock_conn.fetch.side_effect = [
+            ("OK", [(b"", _build_fake_mail("test1.csv", payload=b"first"))]),
+            ("OK", [(b"", _build_fake_mail("test1.csv", payload=b"second"))]),
+        ]
+
+        with ImapHook() as imap_hook:
+            imap_hook.download_mail_attachments(
+                name="test1.csv", local_output_directory=str(tmp_path), overwrite=True
+            )
+
+        assert (tmp_path / "test1.csv").read_bytes() == b"second"
+        assert not (tmp_path / "test1_1.csv").exists()
 
     @patch(imaplib_string)
     def test_retrieve_mail_attachments_with_max_mails(self, mock_imaplib):

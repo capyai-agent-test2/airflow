@@ -187,6 +187,7 @@ class ImapHook(BaseHook):
         name: str,
         local_output_directory: str,
         *,
+        overwrite: bool = False,
         check_regex: bool = False,
         latest_only: bool = False,
         max_mails: int | None = None,
@@ -200,6 +201,8 @@ class ImapHook(BaseHook):
         :param name: The name of the attachment that will be downloaded.
         :param local_output_directory: The output directory on the local machine
             where the files will be downloaded to.
+        :param overwrite: If set to True, existing files with the same name will be overwritten.
+            If set to False, conflicting filenames will be suffixed to preserve all attachments.
         :param check_regex: Checks the name for a regular expression.
         :param latest_only: If set to True it will only download the first matched attachment.
         :param max_mails: Maximum number of latest emails to process. Must be a positive integer, or None when unlimited. Defaults to None.
@@ -219,7 +222,7 @@ class ImapHook(BaseHook):
         if not mail_attachments:
             self._handle_not_found_mode(not_found_mode)
 
-        self._create_files(mail_attachments, local_output_directory)
+        self._create_files(mail_attachments, local_output_directory, overwrite=overwrite)
 
     def _handle_not_found_mode(self, not_found_mode: str) -> None:
         if not_found_mode not in ("raise", "warn", "ignore"):
@@ -287,14 +290,14 @@ class ImapHook(BaseHook):
             return mail.get_attachments_by_name(name, check_regex, find_first=latest_only)
         return []
 
-    def _create_files(self, mail_attachments: list, local_output_directory: str) -> None:
+    def _create_files(self, mail_attachments: list, local_output_directory: str, *, overwrite: bool) -> None:
         for name, payload in mail_attachments:
             if self._is_symlink(name):
                 self.log.error("Can not create file because it is a symlink!")
             elif self._is_escaping_current_directory(name):
                 self.log.error("Can not create file because it is escaping the current directory!")
             else:
-                self._create_file(name, payload, local_output_directory)
+                self._create_file(name, payload, local_output_directory, overwrite=overwrite)
 
     def _is_symlink(self, name: str) -> bool:
         # IMPORTANT NOTE: os.path.islink is not working for windows symlinks
@@ -311,8 +314,20 @@ class ImapHook(BaseHook):
             else local_output_directory + os.sep + name
         )
 
-    def _create_file(self, name: str, payload: Any, local_output_directory: str) -> None:
+    def _resolve_file_path(self, name: str, local_output_directory: str, *, overwrite: bool) -> str:
         file_path = self._correct_path(name, local_output_directory)
+        if overwrite or not os.path.exists(file_path):
+            return file_path
+
+        file_name, extension = os.path.splitext(file_path)
+        counter = 1
+        while os.path.exists(file_path):
+            file_path = f"{file_name}_{counter}{extension}"
+            counter += 1
+        return file_path
+
+    def _create_file(self, name: str, payload: Any, local_output_directory: str, *, overwrite: bool) -> None:
+        file_path = self._resolve_file_path(name, local_output_directory, overwrite=overwrite)
 
         with open(file_path, "wb") as file:
             file.write(payload)
