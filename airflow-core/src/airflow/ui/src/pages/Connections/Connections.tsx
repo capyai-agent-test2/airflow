@@ -25,6 +25,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { useConnectionServiceGetConnections } from "openapi/queries";
 import type { ConnectionResponse } from "openapi/requests/types.gen";
+import { CliExportAlert } from "src/components/CliExportAlert";
 import { DataTable } from "src/components/DataTable";
 import { useRowSelection, type GetColumnsParams } from "src/components/DataTable/useRowSelection";
 import { useTableURLState } from "src/components/DataTable/useTableUrlState";
@@ -42,6 +43,7 @@ import AddConnectionButton from "./AddConnectionButton";
 import DeleteConnectionButton from "./DeleteConnectionButton";
 import DeleteConnectionsButton from "./DeleteConnectionsButton";
 import EditConnectionButton from "./EditConnectionButton";
+import ImportConnectionsButton from "./ImportConnectionsButton";
 import { NothingFoundInfo } from "./NothingFoundInfo";
 import TestConnectionButton from "./TestConnectionButton";
 
@@ -198,8 +200,10 @@ export const Connections = () => {
           onChange={handleSearchChange}
           placeholder={translate("connections.searchPlaceholder")}
         />
+        <CliExportAlert />
         <HStack gap={4} mt={2}>
           <Spacer />
+          <ImportConnectionsButton disabled={selectedRows.size > 0} />
           <AddConnectionButton />
         </HStack>
       </VStack>
