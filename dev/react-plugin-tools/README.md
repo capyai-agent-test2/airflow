@@ -52,8 +52,11 @@ These tools help you create React plugin projects that:
 
 ```bash
 # From the dev/react-plugin-tools directory
-python bootstrap.py my-awesome-plugin
+uv run dev/react-plugin-tools/bootstrap.py my-awesome-plugin
 
 # Or specify a custom directory
-python bootstrap.py my-awesome-plugin --dir /path/to/my-projects/my-awesome-plugin
+uv run dev/react-plugin-tools/bootstrap.py my-awesome-plugin --dir /path/to/my-projects/my-awesome-plugin
+
+# Or skip the prompt and opt in to the bundled AI agent rules
+uv run dev/react-plugin-tools/bootstrap.py my-awesome-plugin --include-ai-rules
 ```

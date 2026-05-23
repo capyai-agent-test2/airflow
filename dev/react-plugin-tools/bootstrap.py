@@ -33,6 +33,8 @@ import shutil
 import sys
 from pathlib import Path
 
+AI_AGENT_RULES_DIR = Path("ai-agent-rules")
+
 
 def get_template_dir() -> Path:
     """Get the template directory path."""
@@ -66,11 +68,36 @@ def remove_apache_license_header(content: str, file_extension: str) -> str:
     return content
 
 
-def copy_template_files(template_dir: Path, project_path: Path, project_name: str) -> None:
+def should_include_ai_rules(args) -> bool:
+    """Determine whether AI agent coding rules should be copied into the template."""
+    if args.include_ai_rules is not None:
+        return args.include_ai_rules
+
+    if not sys.stdin.isatty():
+        print(
+            "No interactive terminal detected; skipping AI agent coding rules. "
+            "Pass --include-ai-rules to include them explicitly."
+        )
+        return False
+
+    while True:
+        response = input("Include AI agent coding rules? [y/N]: ").strip().lower()
+        if response in {"", "n", "no"}:
+            return False
+        if response in {"y", "yes"}:
+            return True
+        print("Please answer yes or no.")
+
+
+def copy_template_files(
+    template_dir: Path, project_path: Path, project_name: str, include_ai_rules: bool
+) -> None:
     for item in template_dir.rglob("*"):
         if item.is_file():
             # Calculate relative path from template root
             rel_path = item.relative_to(template_dir)
+            if not include_ai_rules and AI_AGENT_RULES_DIR in rel_path.parents:
+                continue
             target_path = project_path / rel_path
 
             target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,13 +137,19 @@ def bootstrap_react_plugin(args) -> None:
     print(f"Template directory: {template_dir}")
 
     project_path.mkdir(parents=True, exist_ok=True)
+    include_ai_rules = should_include_ai_rules(args)
 
     try:
         # Copy template files
         print("Copying template files...")
-        copy_template_files(template_dir, project_path, project_name)
+        copy_template_files(template_dir, project_path, project_name, include_ai_rules)
 
         print(f"\n✅ Successfully created {project_name}!")
+        if include_ai_rules:
+            print(
+                "Included AI agent coding rules in ai-agent-rules/. "
+                "Update them to match your editor or AI tooling."
+            )
         print("\nNext steps:")
         print(f"  cd {target_dir}")
         print("  pnpm install")
@@ -137,8 +170,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python bootstrap.py my-plugin
-  python bootstrap.py my-plugin --dir /path/to/projects/my-plugin
+  uv run dev/react-plugin-tools/bootstrap.py my-plugin
+  uv run dev/react-plugin-tools/bootstrap.py my-plugin --dir /path/to/projects/my-plugin
 
 This will create a new React project with all the necessary configuration
 files, dependencies, and structure needed for Airflow plugin development.
@@ -161,6 +194,15 @@ files, dependencies, and structure needed for Airflow plugin development.
         "-v",
         action="store_true",
         help="Enable verbose output",
+    )
+    parser.add_argument(
+        "--include-ai-rules",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Include the optional ai-agent-rules directory. "
+            "If not set, the bootstrapper prompts in interactive terminals."
+        ),
     )
 
     args = parser.parse_args()

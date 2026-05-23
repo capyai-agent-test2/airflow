@@ -95,6 +95,12 @@ Be mindful when upgrading dependencies that are marked as external in `vite.conf
 2. **External Dependencies**: Modify the `external` array in `vite.config.ts`
 3. **Build Output**: Adjust library configuration in `vite.config.ts`
 
+### Optional AI agent rules
+
+If you chose to include the optional `ai-agent-rules/` directory when generating this
+template, update those markdown files to match your preferred editor or AI agent. They
+ship as plain markdown on purpose rather than a tool-specific format.
+
 ### Package Configuration
 
 The `package.json` is configured with:
