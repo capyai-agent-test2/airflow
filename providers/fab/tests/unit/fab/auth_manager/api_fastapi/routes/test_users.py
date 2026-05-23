@@ -129,6 +129,33 @@ class TestUsers:
         "airflow.providers.fab.auth_manager.api_fastapi.routes.users.get_application_builder",
         return_value=_noop_cm(),
     )
+    def test_create_user_validation_422_html_username(
+        self, mock_get_application_builder, mock_get_auth_manager, mock_users, test_client, as_user
+    ):
+        mgr = MagicMock()
+        mgr.is_authorized_custom_view.return_value = True
+        mock_get_auth_manager.return_value = mgr
+
+        with as_user():
+            resp = test_client.post(
+                "/fab/v1/users",
+                json={
+                    "username": "<script>alert(1)</script>",
+                    "email": "e@example.com",
+                    "first_name": "E",
+                    "last_name": "Mpty",
+                    "password": "pw",
+                },
+            )
+            assert resp.status_code == 422
+            mock_users.create_user.assert_not_called()
+
+    @patch("airflow.providers.fab.auth_manager.api_fastapi.routes.users.FABAuthManagerUsers")
+    @patch("airflow.providers.fab.auth_manager.api_fastapi.security.get_auth_manager")
+    @patch(
+        "airflow.providers.fab.auth_manager.api_fastapi.routes.users.get_application_builder",
+        return_value=_noop_cm(),
+    )
     def test_create_user_validation_422_missing_username(
         self, mock_get_application_builder, mock_get_auth_manager, mock_users, test_client, as_user
     ):
@@ -437,6 +464,27 @@ class TestUsers:
             mock_users.update_user.assert_called_once_with(
                 username="alice", body=ANY, update_mask="last_name"
             )
+
+    @patch("airflow.providers.fab.auth_manager.api_fastapi.routes.users.FABAuthManagerUsers")
+    @patch("airflow.providers.fab.auth_manager.api_fastapi.security.get_auth_manager")
+    @patch(
+        "airflow.providers.fab.auth_manager.api_fastapi.routes.users.get_application_builder",
+        return_value=_noop_cm(),
+    )
+    def test_update_user_validation_422_html_last_name(
+        self, mock_get_application_builder, mock_get_auth_manager, mock_users, test_client, as_user
+    ):
+        mgr = MagicMock()
+        mgr.is_authorized_custom_view.return_value = True
+        mock_get_auth_manager.return_value = mgr
+
+        with as_user():
+            resp = test_client.patch(
+                "/fab/v1/users/alice",
+                json={"last_name": "<b>Updated</b>"},
+            )
+            assert resp.status_code == 422
+            mock_users.update_user.assert_not_called()
 
     @patch("airflow.providers.fab.auth_manager.api_fastapi.routes.users.FABAuthManagerUsers")
     @patch("airflow.providers.fab.auth_manager.api_fastapi.security.get_auth_manager")

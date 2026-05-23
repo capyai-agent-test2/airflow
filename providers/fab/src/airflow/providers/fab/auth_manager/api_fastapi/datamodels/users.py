@@ -18,10 +18,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 
 from airflow.api_fastapi.core_api.base import BaseModel, StrictBaseModel
 from airflow.providers.fab.auth_manager.api_fastapi.datamodels.roles import Role
+from airflow.providers.fab.auth_manager.validation import validate_html_safe_text
 
 
 class UserBody(StrictBaseModel):
@@ -34,6 +35,11 @@ class UserBody(StrictBaseModel):
     roles: list[Role] | None = None
     password: SecretStr
 
+    @field_validator("username", "email", "first_name", "last_name")
+    @classmethod
+    def validate_html_safe_fields(cls, value: str) -> str:
+        return validate_html_safe_text(value)
+
 
 class UserPatchBody(StrictBaseModel):
     """Incoming payload for updating a user (all fields optional)."""
@@ -44,6 +50,13 @@ class UserPatchBody(StrictBaseModel):
     last_name: str | None = Field(default=None, min_length=1)
     roles: list[Role] | None = None
     password: SecretStr | None = None
+
+    @field_validator("username", "email", "first_name", "last_name")
+    @classmethod
+    def validate_html_safe_fields(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return validate_html_safe_text(value)
 
 
 class UserResponse(BaseModel):
