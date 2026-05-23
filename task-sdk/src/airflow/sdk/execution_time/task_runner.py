@@ -72,6 +72,7 @@ from airflow.sdk.definitions.mappedoperator import MappedOperator
 from airflow.sdk.definitions.param import process_params
 from airflow.sdk.exceptions import (
     AirflowException,
+    AirflowFailException,
     AirflowInactiveAssetInInletOrOutletException,
     AirflowRescheduleException,
     AirflowRuntimeError,
@@ -1488,7 +1489,7 @@ def run(
     finally:
         stats.incr("ti.finish", tags={**stats_tags, "state": state.value})
 
-        if msg:
+        if msg and state != TaskInstanceState.UP_FOR_RETRY:
             # If the supervisor rejects the terminal-state report
             # (e.g. the server already moved the TI to a terminal state and
             # returns 409 - for example due to issue fixed by #65594),
@@ -1524,6 +1525,25 @@ def run(
     # Return the message to make unit tests easier too
     ti.state = state
     return state, msg, error
+
+
+def _send_terminal_state_to_supervisor(
+    ti: RuntimeTaskInstance,
+    state: TaskInstanceState,
+    msg: ToSupervisor | None,
+    log: Logger,
+) -> None:
+    if not msg:
+        return
+    try:
+        SUPERVISOR_COMMS.send(msg=msg)
+    except Exception:
+        log.exception(
+            "Failed to report terminal task state to supervisor",
+            state=state.value,
+        )
+        if state in (TaskInstanceState.FAILED, TaskInstanceState.UP_FOR_RETRY):
+            ti._terminal_state_send_failed = True
 
 
 def _handle_current_task_success(
@@ -1781,6 +1801,10 @@ def _run_task_state_change_callbacks(
     for i, callback in enumerate(getattr(task, kind)):
         try:
             create_executable_runner(callback, context_get_outlet_events(context), logger=log).run(context)
+        except AirflowFailException:
+            if kind == "on_retry_callback":
+                raise
+            log.exception("Failed to run task callback", kind=kind, index=i, callback=callback)
         except Exception:
             log.exception("Failed to run task callback", kind=kind, index=i, callback=callback)
 
@@ -1990,6 +2014,7 @@ def finalize(
     context: Context,
     log: Logger,
     error: BaseException | None = None,
+    msg: ToSupervisor | None = None,
 ):
     # Record task duration metrics for all terminal states
     if ti.start_date and ti.end_date:
@@ -2039,15 +2064,41 @@ def finalize(
         except Exception:
             log.exception("error calling listener")
     elif state == TaskInstanceState.UP_FOR_RETRY:
-        _run_task_state_change_callbacks(task, "on_retry_callback", context, log)
         try:
-            get_listener_manager().hook.on_task_instance_failed(
-                previous_state=TaskInstanceState.RUNNING, task_instance=ti, error=error
+            _run_task_state_change_callbacks(task, "on_retry_callback", context, log)
+        except AirflowFailException as callback_error:
+            ti.end_date = ti.end_date or datetime.now(tz=timezone.utc)
+            ti.state = TaskInstanceState.FAILED
+            context["exception"] = callback_error
+            _send_terminal_state_to_supervisor(
+                ti,
+                TaskInstanceState.FAILED,
+                TaskState(
+                    state=TaskInstanceState.FAILED,
+                    end_date=ti.end_date,
+                    rendered_map_index=ti.rendered_map_index,
+                ),
+                log,
             )
-        except Exception:
-            log.exception("error calling listener")
-        if error and task.email_on_retry and task.email:
-            _send_error_email_notification(task, ti, context, error, log)
+            _run_task_state_change_callbacks(task, "on_failure_callback", context, log)
+            try:
+                get_listener_manager().hook.on_task_instance_failed(
+                    previous_state=TaskInstanceState.RUNNING, task_instance=ti, error=callback_error
+                )
+            except Exception:
+                log.exception("error calling listener")
+            if task.email_on_failure and task.email:
+                _send_error_email_notification(task, ti, context, callback_error, log)
+        else:
+            _send_terminal_state_to_supervisor(ti, state, msg, log)
+            try:
+                get_listener_manager().hook.on_task_instance_failed(
+                    previous_state=TaskInstanceState.RUNNING, task_instance=ti, error=error
+                )
+            except Exception:
+                log.exception("error calling listener")
+            if error and task.email_on_retry and task.email:
+                _send_error_email_notification(task, ti, context, error, log)
     elif state == TaskInstanceState.FAILED:
         _run_task_state_change_callbacks(task, "on_failure_callback", context, log)
         try:
@@ -2127,9 +2178,9 @@ def main():
                 bundle_name=ti.bundle_instance.name,
                 bundle_version=ti.bundle_instance.version,
             ):
-                state, _, error = run(ti, context, log)
+                state, msg, error = run(ti, context, log)
                 context["exception"] = error
-                finalize(ti, state, context, log, error)
+                finalize(ti, state, context, log, error, msg=msg)
                 # If run() couldn't deliver a FAILED / UP_FOR_RETRY terminal
                 # state to the supervisor, fail closed now — finalize() has
                 # already run, so callbacks and listeners observed the state.

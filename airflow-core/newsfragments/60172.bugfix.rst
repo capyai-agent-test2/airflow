@@ -1,0 +1,1 @@
+Fixed ``AirflowFailException`` raised from ``on_retry_callback`` so it now fails the task immediately instead of being swallowed and allowing another retry.
