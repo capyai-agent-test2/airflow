@@ -315,6 +315,11 @@ class KubernetesHook(BaseHook, PodOperatorHookProtocol):
             conf.get("kubernetes_executor", "ssl_ca_cert", fallback=None),
         )
 
+    @staticmethod
+    def _apply_ssl_ca_cert_override(configuration: client.Configuration, ssl_ca_cert: str | None) -> None:
+        if ssl_ca_cert:
+            configuration.ssl_ca_cert = ssl_ca_cert
+
     def get_conn(self) -> client.ApiClient:
         """Return kubernetes api session for use with requests."""
         in_cluster = self._coalesce_param(self.in_cluster, self._get_field("in_cluster"))
@@ -961,7 +966,7 @@ class AsyncKubernetesHook(KubernetesHook):
         if in_cluster:
             self.log.debug(LOADING_KUBE_CONFIG_FILE_RESOURCE.format("within a pod"))
             async_config.load_incluster_config(client_configuration=self.client_configuration)
-            self.client_configuration.ssl_ca_cert = ssl_ca_cert
+            self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
             self._is_in_cluster = True
             self._config_loaded = True
             return
@@ -982,7 +987,7 @@ class AsyncKubernetesHook(KubernetesHook):
             if not self._is_exec_auth:
                 self._config_loaded = True
 
-            self.client_configuration.ssl_ca_cert = ssl_ca_cert
+            self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
             return
         if kubeconfig_path is not None:
             self.log.debug("loading kube_config from: %s", kubeconfig_path)
@@ -1011,7 +1016,7 @@ class AsyncKubernetesHook(KubernetesHook):
             if not self._is_exec_auth:
                 self._config_loaded = True
 
-            self.client_configuration.ssl_ca_cert = ssl_ca_cert
+            self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
             return
         if kubeconfig is not None:
             async with aiofiles.tempfile.NamedTemporaryFile() as temp_config:
@@ -1049,7 +1054,7 @@ class AsyncKubernetesHook(KubernetesHook):
                 if not self._is_exec_auth:
                     self._config_loaded = True
 
-            self.client_configuration.ssl_ca_cert = ssl_ca_cert
+            self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
             return
         self.log.debug(LOADING_KUBE_CONFIG_FILE_RESOURCE.format("default configuration file"))
 
@@ -1057,7 +1062,7 @@ class AsyncKubernetesHook(KubernetesHook):
             client_configuration=self.client_configuration,
             context=cluster_context,
         )
-        self.client_configuration.ssl_ca_cert = ssl_ca_cert
+        self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
         self._config_loaded = True
 
     async def get_conn_extras(self) -> dict:
@@ -1089,7 +1094,7 @@ class AsyncKubernetesHook(KubernetesHook):
 
     async def _find_ssl_ca_cert(self) -> str | None:
         return self._coalesce_param(
-            await self._get_field("ssl_ca_cert"),
+            (await self._get_field("ssl_ca_cert")) or None,
             conf.get("kubernetes_executor", "ssl_ca_cert", fallback=None),
         )
 
