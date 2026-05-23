@@ -2372,6 +2372,40 @@ class TestTaskInstance:
         ti.handle_failure("test queued ti", test_mode=True)
         assert ti.state == State.UP_FOR_RETRY
 
+    @patch("airflow._shared.observability.metrics.stats.incr")
+    def test_handle_failure_logs_retry_as_warning(self, mock_stats_incr, dag_maker):
+        session = settings.Session()
+        with dag_maker():
+            task = EmptyOperator(task_id="mytask", retries=1)
+        dr = dag_maker.create_dagrun()
+        ti = dr.get_task_instance(task.task_id)
+        ti.state = State.QUEUED
+        session.merge(ti)
+        session.flush()
+
+        with patch.object(TaskInstance, "logger") as mock_logger:
+            ti.handle_failure("test queued ti", test_mode=True)
+
+        mock_logger.return_value.warning.assert_called_once_with("%s", "test queued ti")
+        mock_logger.return_value.error.assert_not_called()
+
+    @patch("airflow._shared.observability.metrics.stats.incr")
+    def test_handle_failure_logs_final_attempt_as_error(self, mock_stats_incr, dag_maker):
+        session = settings.Session()
+        with dag_maker():
+            task = EmptyOperator(task_id="mytask", retries=0)
+        dr = dag_maker.create_dagrun()
+        ti = dr.get_task_instance(task.task_id)
+        ti.state = State.QUEUED
+        session.merge(ti)
+        session.flush()
+
+        with patch.object(TaskInstance, "logger") as mock_logger:
+            ti.handle_failure("test final attempt", test_mode=True)
+
+        mock_logger.return_value.error.assert_called_once_with("%s", "test final attempt")
+        mock_logger.return_value.warning.assert_not_called()
+
     @patch("airflow._shared.observability.metrics.stats._get_backend")
     def test_handle_failure_no_task(self, mock_get_backend, dag_maker):
         """

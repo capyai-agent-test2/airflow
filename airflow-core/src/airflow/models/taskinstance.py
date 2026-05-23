@@ -1771,7 +1771,8 @@ class TaskInstance(Base, LoggingMixin, BaseWorkload):
         :param fail_fast: if True, fail all downstream tasks
         """
         if error:
-            cls.logger().error("%s", error)
+            log_failure = cls.logger().warning if ti.is_eligible_to_retry() else cls.logger().error
+            log_failure("%s", error)
         if not test_mode:
             ti.refresh_from_db(session)
 
