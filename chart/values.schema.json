@@ -6670,6 +6670,280 @@
                 }
             }
         },
+        "pools": {
+            "description": "Airflow pools to create or update after migrations.",
+            "type": "array",
+            "x-docsSection": "Common",
+            "default": [],
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                    "name",
+                    "slots"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "Pool name.",
+                        "type": "string"
+                    },
+                    "slots": {
+                        "description": "Number of slots in the pool.",
+                        "type": "integer"
+                    },
+                    "description": {
+                        "description": "Pool description.",
+                        "type": "string",
+                        "default": ""
+                    },
+                    "includeDeferred": {
+                        "description": "Include deferred tasks in calculations for the pool.",
+                        "type": "boolean",
+                        "default": false
+                    }
+                }
+            }
+        },
+        "createPoolJob": {
+            "description": "Airflow job to create or update pools.",
+            "type": "object",
+            "x-docsSection": "Jobs",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "description": "Whether the create pool job should be created when pools are defined.",
+                    "type": "boolean",
+                    "default": true
+                },
+                "ttlSecondsAfterFinished": {
+                    "description": "TTL of the create pool job after finishing.",
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "default": 300
+                },
+                "command": {
+                    "description": "Command to use when running create pool job (templated).",
+                    "type": [
+                        "array",
+                        "null"
+                    ],
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": null
+                },
+                "args": {
+                    "description": "Args to use when running create pool job (templated).",
+                    "type": [
+                        "array",
+                        "null"
+                    ],
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "bash",
+                        "-c",
+                        "exec \\\nairflow pools import /opt/airflow/pools/pools.json"
+                    ]
+                },
+                "annotations": {
+                    "description": "Annotations to add to the create pool job pod (templated).",
+                    "type": "object",
+                    "default": {},
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "jobAnnotations": {
+                    "description": "Annotations to add to the create pool job job.",
+                    "type": "object",
+                    "default": {},
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "restartPolicy": {
+                    "type": "string",
+                    "description": "Restart policy for the create pool job.",
+                    "enum": [
+                        "OnFailure",
+                        "Never"
+                    ],
+                    "default": "OnFailure"
+                },
+                "labels": {
+                    "description": "Labels to add to the create pool job objects and pods.",
+                    "type": "object",
+                    "default": {},
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "serviceAccount": {
+                    "description": "Create ServiceAccount.",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "automountServiceAccountToken": {
+                            "description": "Specifies if ServiceAccount's API credentials should be mounted onto Pods.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "create": {
+                            "description": "Specifies whether a ServiceAccount should be created.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "name": {
+                            "description": "The name of the ServiceAccount to use. If not set and create is true, a name is generated using the release name.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "annotations": {
+                            "description": "Annotations to add to the create pool job Kubernetes ServiceAccount.",
+                            "type": "object",
+                            "default": {},
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "extraContainers": {
+                    "description": "Launch additional containers for the create pool job pod",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
+                "extraInitContainers": {
+                    "description": "Add additional init containers into create pool job pod (templated).",
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    },
+                    "type": "array",
+                    "default": []
+                },
+                "extraVolumes": {
+                    "description": "Mount additional volumes into create pool job",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Volume"
+                    }
+                },
+                "extraVolumeMounts": {
+                    "description": "Mount additional volumes into create pool job",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.VolumeMount"
+                    }
+                },
+                "nodeSelector": {
+                    "description": "Select certain nodes for the create pool job pod.",
+                    "type": "object",
+                    "default": {},
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "affinity": {
+                    "description": "Specify scheduling constraints for the create pool job pod.",
+                    "type": "object",
+                    "default": {},
+                    "$ref": "#/definitions/io.k8s.api.core.v1.Affinity"
+                },
+                "tolerations": {
+                    "description": "Specify Tolerations for the create pool job pod.",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "object",
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Toleration"
+                    }
+                },
+                "topologySpreadConstraints": {
+                    "description": "Specify topology spread constraints for the create pool job pod.",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "object",
+                        "$ref": "#/definitions/io.k8s.api.core.v1.TopologySpreadConstraint"
+                    }
+                },
+                "priorityClassName": {
+                    "description": "Priority Class Name for the create pool job.",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "default": null
+                },
+                "securityContexts": {
+                    "description": "Detailed default security context for the create pool job for container and pod level.",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "pod": {
+                            "description": "Security context for the create pool job pod.",
+                            "type": "object",
+                            "default": {},
+                            "$ref": "#/definitions/io.k8s.api.core.v1.PodSecurityContext"
+                        },
+                        "container": {
+                            "description": "Security context for the create pool job container.",
+                            "type": "object",
+                            "default": {},
+                            "$ref": "#/definitions/io.k8s.api.core.v1.SecurityContext"
+                        }
+                    }
+                },
+                "securityContext": {
+                    "description": "Security context for the create pool job pod (deprecated, use createPoolJob.securityContexts instead).",
+                    "type": "object",
+                    "default": {},
+                    "$ref": "#/definitions/io.k8s.api.core.v1.PodSecurityContext"
+                },
+                "containerLifecycleHooks": {
+                    "description": "Container lifecycle hooks for the create pool job.",
+                    "type": "object",
+                    "default": {}
+                },
+                "useHelmHooks": {
+                    "description": "Use Helm hooks for the create pool job.",
+                    "type": "boolean",
+                    "default": true
+                },
+                "applyCustomEnv": {
+                    "description": "Apply custom env configuration to the create pool job.",
+                    "type": "boolean",
+                    "default": true
+                },
+                "env": {
+                    "description": "Additional environment variables for the create pool job.",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "object",
+                        "$ref": "#/definitions/io.k8s.api.core.v1.EnvVar"
+                    }
+                },
+                "resources": {
+                    "description": "Resources for the create pool job container.",
+                    "type": "object",
+                    "default": {},
+                    "$ref": "#/definitions/io.k8s.api.core.v1.ResourceRequirements"
+                }
+            }
+        },
         "migrateDatabaseJob": {
             "description": "Airflow job to migrate databases settings.",
             "type": "object",

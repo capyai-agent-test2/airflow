@@ -100,6 +100,11 @@ subjects:
     name: {{ include "createUserJob.serviceAccountName" . }}
     namespace: "{{ .Release.Namespace }}"
   {{- end }}
+  {{- if and .Values.createPoolJob.enabled (gt (len .Values.pools) 0) }}
+  - kind: ServiceAccount
+    name: {{ include "createPoolJob.serviceAccountName" . }}
+    namespace: "{{ .Release.Namespace }}"
+  {{- end }}
   {{- if .Values.cleanup.enabled }}
   - kind: ServiceAccount
     name: {{ include "cleanup.serviceAccountName" . }}
