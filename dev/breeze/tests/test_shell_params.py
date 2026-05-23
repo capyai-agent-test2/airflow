@@ -166,6 +166,23 @@ console = Console(width=400, color_system="standard")
             },
             id="PYTHONWARNINGS should be set when specified in environment",
         ),
+        pytest.param(
+            {
+                "AIRFLOW_HTTP_PROXY": "http://proxy.example.com:8080",
+                "AIRFLOW_HTTPS_PROXY": "https://proxy.example.com:8443",
+                "AIRFLOW_NO_PROXY": "localhost,127.0.0.1",
+            },
+            {},
+            {
+                "HTTP_PROXY": "http://proxy.example.com:8080",
+                "HTTPS_PROXY": "https://proxy.example.com:8443",
+                "NO_PROXY": "localhost,127.0.0.1",
+                "http_proxy": "http://proxy.example.com:8080",
+                "https_proxy": "https://proxy.example.com:8443",
+                "no_proxy": "localhost,127.0.0.1",
+            },
+            id="Proxy variables should be forwarded from AIRFLOW proxy env vars",
+        ),
     ],
 )
 def test_shell_params_to_env_var_conversion(

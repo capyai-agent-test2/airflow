@@ -34,6 +34,10 @@ from airflow_breeze.utils.console import console_print
 from airflow_breeze.utils.platforms import get_normalized_platform
 
 
+def get_proxy_value(airflow_name: str, env_name: str) -> str | None:
+    return os.environ.get(airflow_name) or os.environ.get(env_name) or os.environ.get(env_name.lower())
+
+
 @dataclass
 class CommonBuildParams:
     """
@@ -49,6 +53,15 @@ class CommonBuildParams:
     airflow_branch: str = AIRFLOW_BRANCH
     default_constraints_branch: str = DEFAULT_AIRFLOW_CONSTRAINTS_BRANCH
     airflow_constraints_location: str | None = None
+    airflow_http_proxy: str | None = field(
+        default_factory=lambda: get_proxy_value("AIRFLOW_HTTP_PROXY", "HTTP_PROXY")
+    )
+    airflow_https_proxy: str | None = field(
+        default_factory=lambda: get_proxy_value("AIRFLOW_HTTPS_PROXY", "HTTPS_PROXY")
+    )
+    airflow_no_proxy: str | None = field(
+        default_factory=lambda: get_proxy_value("AIRFLOW_NO_PROXY", "NO_PROXY")
+    )
     builder: str = "autodetect"
     build_progress: str = ALLOWED_BUILD_PROGRESS[0]
     constraints_github_repository: str = APACHE_AIRFLOW_GITHUB_REPOSITORY
@@ -199,6 +212,12 @@ class CommonBuildParams:
         self._opt_arg("DEV_APT_COMMAND", self.dev_apt_command)
         self._opt_arg("DEV_APT_DEPS", self.dev_apt_deps)
         self._opt_arg("DOCKER_HOST", self.docker_host)
+        self._opt_arg("HTTP_PROXY", self.airflow_http_proxy)
+        self._opt_arg("HTTPS_PROXY", self.airflow_https_proxy)
+        self._opt_arg("NO_PROXY", self.airflow_no_proxy)
+        self._opt_arg("http_proxy", self.airflow_http_proxy)
+        self._opt_arg("https_proxy", self.airflow_https_proxy)
+        self._opt_arg("no_proxy", self.airflow_no_proxy)
         self._opt_arg("VERSION_SUFFIX", self.version_suffix)
 
     def _set_common_req_args(self):

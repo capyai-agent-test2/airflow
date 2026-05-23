@@ -77,6 +77,7 @@ from airflow_breeze.global_constants import (
     GroupOfTests,
     get_airflow_version,
 )
+from airflow_breeze.params.common_build_params import get_proxy_value
 from airflow_breeze.utils.console import console_print
 from airflow_breeze.utils.docker_command_utils import is_docker_rootless
 from airflow_breeze.utils.host_info_utils import get_host_group_id, get_host_os, get_host_user_id
@@ -666,6 +667,8 @@ services:
         _set_var(_env, "HOST_GROUP_ID", self.host_group_id)
         _set_var(_env, "HOST_OS", self.host_os)
         _set_var(_env, "HOST_USER_ID", self.host_user_id)
+        _set_var(_env, "HTTP_PROXY", get_proxy_value("AIRFLOW_HTTP_PROXY", "HTTP_PROXY"))
+        _set_var(_env, "HTTPS_PROXY", get_proxy_value("AIRFLOW_HTTPS_PROXY", "HTTPS_PROXY"))
         _set_var(_env, "INIT_SCRIPT_FILE", None, "init.sh")
         _set_var(_env, "INSTALL_AIRFLOW_WITH_CONSTRAINTS", self.install_airflow_with_constraints)
         _set_var(_env, "INSTALL_AIRFLOW_PYTHON_CLIENT", self.install_airflow_python_client)
@@ -680,6 +683,7 @@ services:
         _set_var(_env, "MOUNT_SOURCES", self.mount_sources)
         _set_var(_env, "MOUNT_UI_DIST", self.mount_ui_dist)
         _set_var(_env, "NUM_RUNS", self.num_runs)
+        _set_var(_env, "NO_PROXY", get_proxy_value("AIRFLOW_NO_PROXY", "NO_PROXY"))
         _set_var(_env, "ONLY_MIN_VERSION_UPDATE", self.only_min_version_update)
         _set_var(_env, "DISTRIBUTION_FORMAT", self.distribution_format)
         _set_var(_env, "POSTGRES_HOST_PORT", None, POSTGRES_HOST_PORT)
@@ -725,6 +729,9 @@ services:
         _set_var(_env, "WEB_HOST_PORT", None, WEB_HOST_PORT)
         _set_var(_env, "_AIRFLOW_RUN_DB_TESTS_ONLY", self.run_db_tests_only)
         _set_var(_env, "_AIRFLOW_SKIP_DB_TESTS", self.skip_db_tests)
+        _set_var(_env, "http_proxy", get_proxy_value("AIRFLOW_HTTP_PROXY", "HTTP_PROXY"))
+        _set_var(_env, "https_proxy", get_proxy_value("AIRFLOW_HTTPS_PROXY", "HTTPS_PROXY"))
+        _set_var(_env, "no_proxy", get_proxy_value("AIRFLOW_NO_PROXY", "NO_PROXY"))
 
         self._set_debug_variables(_env)
         self._generate_env_for_docker_compose_file_if_needed(_env)
