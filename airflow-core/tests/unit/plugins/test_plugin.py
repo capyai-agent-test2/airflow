@@ -17,6 +17,8 @@
 # under the License.
 from __future__ import annotations
 
+from typing import get_type_hints
+
 from fastapi import FastAPI
 
 try:
@@ -67,7 +69,15 @@ except ImportError as e:
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # This is the class you derive to create a plugin
-from airflow.plugins_manager import AirflowPlugin
+from airflow.plugins_manager import (
+    AirflowPlugin,
+    AppBuilderMenuItemMetadata,
+    AppBuilderViewMetadata,
+    ExternalViewMetadata,
+    FastAPIAppMetadata,
+    FastAPIRootMiddlewareMetadata,
+    ReactAppMetadata,
+)
 from airflow.task.priority_strategy import PriorityWeightStrategy
 from airflow.timetables.interval import CronDataIntervalTimetable
 
@@ -204,3 +214,14 @@ external_view_with_invalid_destination = {
 class AirflowTestPluginInvalid(AirflowPlugin):
     name = "test_plugin_invalid"
     external_views = [external_view_with_invalid_destination]
+
+
+def test_airflow_plugin_typed_dict_annotations():
+    plugin_hints = get_type_hints(AirflowPlugin)
+
+    assert plugin_hints["fastapi_apps"] == list[FastAPIAppMetadata]
+    assert plugin_hints["fastapi_root_middlewares"] == list[FastAPIRootMiddlewareMetadata]
+    assert plugin_hints["external_views"] == list[ExternalViewMetadata]
+    assert plugin_hints["react_apps"] == list[ReactAppMetadata]
+    assert plugin_hints["appbuilder_views"] == list[AppBuilderViewMetadata]
+    assert plugin_hints["appbuilder_menu_items"] == list[AppBuilderMenuItemMetadata]

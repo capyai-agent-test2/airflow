@@ -28,7 +28,7 @@ import os
 import sys
 import types
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
 if TYPE_CHECKING:
     if sys.version_info >= (3, 12):
@@ -38,7 +38,14 @@ if TYPE_CHECKING:
     from collections.abc import Generator
     from types import ModuleType
 
+    from fastapi import FastAPI
+    from flask import Blueprint
+
     from ..listeners.listener import ListenerManager
+else:
+    Blueprint = Any
+    FastAPI = Any
+    ModuleType = types.ModuleType
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +92,69 @@ class AirflowPluginException(Exception):
     """Exception when loading plugin."""
 
 
+BaseDestinationLiteral = Literal["nav", "dag", "dag_run", "task", "task_instance", "base"]
+
+
+class FastAPIAppMetadata(TypedDict):
+    """Typed metadata for ``AirflowPlugin.fastapi_apps`` entries."""
+
+    app: FastAPI
+    url_prefix: str
+    name: str
+
+
+class FastAPIRootMiddlewareMetadata(TypedDict):
+    """Typed metadata for ``AirflowPlugin.fastapi_root_middlewares`` entries."""
+
+    middleware: type[Any]
+    name: str
+    args: NotRequired[list[Any]]
+    kwargs: NotRequired[dict[str, Any]]
+
+
+class ExternalViewMetadata(TypedDict):
+    """Typed metadata for ``AirflowPlugin.external_views`` entries."""
+
+    name: str
+    href: str
+    destination: NotRequired[BaseDestinationLiteral]
+    icon: NotRequired[str]
+    icon_dark_mode: NotRequired[str]
+    url_route: NotRequired[str]
+    category: NotRequired[str]
+    label: NotRequired[str]
+
+
+class ReactAppMetadata(TypedDict):
+    """Typed metadata for ``AirflowPlugin.react_apps`` entries."""
+
+    name: str
+    bundle_url: str
+    destination: NotRequired[Literal[BaseDestinationLiteral, "dashboard"]]
+    icon: NotRequired[str]
+    icon_dark_mode: NotRequired[str]
+    url_route: NotRequired[str]
+    category: NotRequired[str]
+
+
+class AppBuilderViewMetadata(TypedDict):
+    """Typed metadata for ``AirflowPlugin.appbuilder_views`` entries."""
+
+    view: Any
+    name: NotRequired[str]
+    category: NotRequired[str]
+    label: NotRequired[str]
+
+
+class AppBuilderMenuItemMetadata(TypedDict):
+    """Typed metadata for ``AirflowPlugin.appbuilder_menu_items`` entries."""
+
+    name: str
+    href: str
+    category: NotRequired[str]
+    label: NotRequired[str]
+
+
 class AirflowPlugin:
     """Class used to define AirflowPlugin."""
 
@@ -92,14 +162,14 @@ class AirflowPlugin:
     source: AirflowPluginSource | None = None
     macros: list[Any] = []
     admin_views: list[Any] = []
-    flask_blueprints: list[Any] = []
-    fastapi_apps: list[Any] = []
-    fastapi_root_middlewares: list[Any] = []
-    external_views: list[Any] = []
-    react_apps: list[Any] = []
+    flask_blueprints: list[Blueprint] = []
+    fastapi_apps: list[FastAPIAppMetadata] = []
+    fastapi_root_middlewares: list[FastAPIRootMiddlewareMetadata] = []
+    external_views: list[ExternalViewMetadata] = []
+    react_apps: list[ReactAppMetadata] = []
     menu_links: list[Any] = []
-    appbuilder_views: list[Any] = []
-    appbuilder_menu_items: list[Any] = []
+    appbuilder_views: list[AppBuilderViewMetadata] = []
+    appbuilder_menu_items: list[AppBuilderMenuItemMetadata] = []
 
     # A list of global operator extra links that can redirect users to
     # external systems. These extra links will be available on the
