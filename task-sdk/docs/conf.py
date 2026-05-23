@@ -25,6 +25,7 @@ from pathlib import Path
 from docs.utils.conf_constants import (
     AIRFLOW_FAVICON_PATH,
     SPHINX_DESIGN_STATIC_PATH,
+    disable_suggest_change_button_for_autoapi_pages,
     get_html_context,
     get_html_sidebars,
     get_html_theme_options,
@@ -91,6 +92,12 @@ conf_py_path = "/task-sdk/docs/"
 html_context = get_html_context(conf_py_path)
 html_use_index = True
 html_show_copyright = False
+
+
+def setup(app):
+    app.connect("html-page-context", disable_suggest_change_button_for_autoapi_pages)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}
+
 
 global_substitutions = {
     "experimental": "This is an :ref:`experimental feature <experimental>`.",
