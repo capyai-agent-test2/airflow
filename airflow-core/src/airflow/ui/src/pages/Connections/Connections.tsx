@@ -30,7 +30,7 @@ import { useRowSelection, type GetColumnsParams } from "src/components/DataTable
 import { useTableURLState } from "src/components/DataTable/useTableUrlState";
 import { ErrorAlert } from "src/components/ErrorAlert";
 import { SearchBar } from "src/components/SearchBar";
-import { Tooltip } from "src/components/ui";
+import { Alert, Tooltip } from "src/components/ui";
 import { ActionBar } from "src/components/ui/ActionBar";
 import { Checkbox } from "src/components/ui/Checkbox";
 import { SearchParamsKeys, type SearchParamsKeysType } from "src/constants/searchParams";
@@ -144,6 +144,7 @@ export const Connections = () => {
   const { NAME_PATTERN, OFFSET }: SearchParamsKeysType = SearchParamsKeys;
   const [connectionIdPattern, setConnectionIdPattern] = useState(searchParams.get(NAME_PATTERN) ?? undefined);
   const advancedSearch = useAdvancedSearch("connections");
+  const hasInvisibleConnections = Boolean(useConfig("has_invisible_connections"));
   const multiTeamEnabled = Boolean(useConfig("multi_team"));
 
   useConnectionTypeMeta(); // Pre-fetch connection type metadata
@@ -202,6 +203,11 @@ export const Connections = () => {
           <Spacer />
           <AddConnectionButton />
         </HStack>
+        {hasInvisibleConnections ? (
+          <Alert data-testid="connections-visibility-warning" mt={2} status="warning">
+            {translate("connections.visibilityWarning")}
+          </Alert>
+        ) : undefined}
       </VStack>
 
       <DataTable

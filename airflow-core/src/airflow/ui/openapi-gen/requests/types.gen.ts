@@ -1985,6 +1985,8 @@ export type ConfigResponse = {
     external_log_name?: string | null;
     theme: Theme | null;
     multi_team: boolean;
+    has_invisible_connections: boolean;
+    has_invisible_variables: boolean;
     rerun_with_latest_version?: boolean | null;
 };
 

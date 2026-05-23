@@ -25,6 +25,8 @@ export const handlers: Array<HttpHandler> = [
       default_wrap: false,
       enable_swagger_ui: true,
       hide_paused_dags_by_default: false,
+      has_invisible_connections: false,
+      has_invisible_variables: false,
       instance_name: "Airflow",
       multi_team: false,
       page_size: 15,

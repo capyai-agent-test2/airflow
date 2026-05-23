@@ -40,6 +40,8 @@ class ConfigResponse(BaseModel):
     external_log_name: str | None = None
     theme: Theme | None
     multi_team: bool
+    has_invisible_connections: bool
+    has_invisible_variables: bool
     rerun_with_latest_version: bool | None = None
 
     @field_serializer("theme")

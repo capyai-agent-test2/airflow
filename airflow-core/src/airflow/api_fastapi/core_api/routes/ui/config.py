@@ -16,6 +16,7 @@
 # under the License.
 from __future__ import annotations
 
+import os
 from json import loads
 from typing import Any
 
@@ -26,7 +27,8 @@ from airflow.api_fastapi.common.types import UIAlert
 from airflow.api_fastapi.core_api.datamodels.ui.config import ConfigResponse
 from airflow.api_fastapi.core_api.openapi.exceptions import create_openapi_http_exception_doc
 from airflow.api_fastapi.core_api.security import requires_authenticated
-from airflow.configuration import conf
+from airflow.configuration import conf, get_custom_secret_backend
+from airflow.secrets.environment_variables import CONN_ENV_PREFIX, VAR_ENV_PREFIX
 from airflow.settings import DASHBOARD_UIALERTS
 from airflow.utils.log.log_reader import TaskLogReader
 
@@ -43,6 +45,11 @@ API_CONFIG_KEYS = [
 ]
 
 
+def has_env_secrets(prefix: str) -> bool:
+    """Return whether any environment-backed secret exists for the given prefix."""
+    return any(key.startswith(prefix) for key in os.environ)
+
+
 @config_router.get(
     "/config",
     responses=create_openapi_http_exception_doc([status.HTTP_404_NOT_FOUND]),
@@ -53,6 +60,7 @@ def get_configs() -> ConfigResponse:
     config = {key: conf.get("api", key) for key in API_CONFIG_KEYS}
 
     task_log_reader = TaskLogReader()
+    custom_secret_backend_configured = get_custom_secret_backend() is not None
     additional_config: dict[str, Any] = {
         "instance_name": conf.get("api", "instance_name", fallback="Airflow"),
         "test_connection": conf.get("core", "test_connection", fallback="Disabled"),
@@ -62,6 +70,8 @@ def get_configs() -> ConfigResponse:
         "external_log_name": getattr(task_log_reader.log_handler, "log_name", None),
         "theme": loads(conf.get("api", "theme", fallback="{}")) or None,
         "multi_team": conf.getboolean("core", "multi_team"),
+        "has_invisible_connections": custom_secret_backend_configured or has_env_secrets(CONN_ENV_PREFIX),
+        "has_invisible_variables": custom_secret_backend_configured or has_env_secrets(VAR_ENV_PREFIX),
         # Return None when the option isn't explicitly set so the UI hook can apply
         # its own fallback (False for clear/rerun, True for backfills).
         "rerun_with_latest_version": (

@@ -48,6 +48,7 @@
       "title": "No connection found!"
     },
     "searchPlaceholder": "Search Connections",
+    "visibilityWarning": "Some connections may be defined via environment variables or secrets backends and are not visible in the UI.",
     "test": "Test Connection",
     "testDisabled": "Test connection feature is disabled. Please contact an administrator to enable it.",
     "testError": {
@@ -183,6 +184,7 @@
     },
     "noRowsMessage": "No variables found",
     "searchPlaceholder": "Search Keys",
+    "visibilityWarning": "Some variables may be defined via environment variables or secrets backends and are not visible in the UI.",
     "variable_one": "Variable",
     "variable_other": "Variables"
   }

@@ -31,7 +31,7 @@ import { useTableURLState } from "src/components/DataTable/useTableUrlState";
 import { ErrorAlert } from "src/components/ErrorAlert";
 import { ExpandCollapseButtons } from "src/components/ExpandCollapseButtons";
 import { SearchBar } from "src/components/SearchBar";
-import { Tooltip } from "src/components/ui";
+import { Alert, Tooltip } from "src/components/ui";
 import { ActionBar } from "src/components/ui/ActionBar";
 import { Checkbox } from "src/components/ui/Checkbox";
 import { SearchParamsKeys, type SearchParamsKeysType } from "src/constants/searchParams";
@@ -155,6 +155,7 @@ export const Variables = () => {
   const { NAME_PATTERN, OFFSET }: SearchParamsKeysType = SearchParamsKeys;
   const [variableKeyPattern, setVariableKeyPattern] = useState(searchParams.get(NAME_PATTERN) ?? undefined);
   const advancedSearch = useAdvancedSearch("variables");
+  const hasInvisibleVariables = Boolean(useConfig("has_invisible_variables"));
   const { pagination, sorting } = tableURLState;
   const [sort] = sorting;
   const orderBy = sort ? [`${sort.desc ? "-" : ""}${sort.id === "value" ? "_val" : sort.id}`] : ["-key"];
@@ -221,6 +222,11 @@ export const Variables = () => {
           <ImportVariablesButton disabled={selectedRows.size > 0} />
           <AddVariableButton disabled={selectedRows.size > 0} />
         </HStack>
+        {hasInvisibleVariables ? (
+          <Alert data-testid="variables-visibility-warning" mt={2} status="warning">
+            {translate("variables.visibilityWarning")}
+          </Alert>
+        ) : undefined}
       </VStack>
       <DataTable
         columns={columns}
