@@ -350,13 +350,25 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
                             triggeringUser={triggeringUserFilter}
                           />
                           <Gantt
+                            bundleVersion={bundleVersionFilter}
+                            confContains={confContainsFilter}
+                            consumingAssetPattern={consumingAssetFilter}
                             dagRunState={dagRunStateFilter}
+                            dagVersion={dagVersionFilter}
+                            durationGte={durationGte}
+                            durationLte={durationLte}
+                            endDateGte={endDateGte}
+                            endDateLte={endDateLte}
                             limit={limit}
+                            logicalDateGte={logicalDateGte}
+                            logicalDateLte={logicalDateLte}
                             offset={offset}
                             runAfterGte={runAfterGte}
                             runAfterLte={runAfterLte}
                             runType={runTypeFilter}
                             sharedScrollContainerRef={sharedGridGanttScrollRef}
+                            startDateGte={startDateGte}
+                            startDateLte={startDateLte}
                             triggeringUser={triggeringUserFilter}
                           />
                         </Flex>

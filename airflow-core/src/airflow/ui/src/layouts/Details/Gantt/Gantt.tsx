@@ -44,24 +44,48 @@ import { buildGanttRowSegments, computeGanttTimeRangeMs, transformGanttData } fr
 const GANTT_STANDALONE_VIRTUALIZER_PADDING_START_PX = GANTT_TOP_PADDING_PX + GANTT_AXIS_HEIGHT_PX;
 
 type Props = {
+  readonly bundleVersion?: string;
+  readonly confContains?: string;
+  readonly consumingAssetPattern?: string;
   readonly dagRunState?: DagRunState | undefined;
+  readonly dagVersion?: number;
+  readonly durationGte?: number;
+  readonly durationLte?: number;
+  readonly endDateGte?: string;
+  readonly endDateLte?: string;
   readonly limit: number;
+  readonly logicalDateGte?: string;
+  readonly logicalDateLte?: string;
   readonly offset?: number;
   readonly runAfterGte?: string | undefined;
   readonly runAfterLte?: string | undefined;
   readonly runType?: DagRunType | undefined;
   readonly sharedScrollContainerRef?: RefObject<HTMLDivElement | null>;
+  readonly startDateGte?: string;
+  readonly startDateLte?: string;
   readonly triggeringUser?: string | undefined;
 };
 
 export const Gantt = ({
+  bundleVersion,
+  confContains,
+  consumingAssetPattern,
   dagRunState,
+  dagVersion,
+  durationGte,
+  durationLte,
+  endDateGte,
+  endDateLte,
   limit,
+  logicalDateGte,
+  logicalDateLte,
   offset,
   runAfterGte,
   runAfterLte,
   runType,
   sharedScrollContainerRef,
+  startDateGte,
+  startDateLte,
   triggeringUser,
 }: Props) => {
   const standaloneScrollRef = useRef<HTMLDivElement | null>(null);
@@ -82,12 +106,24 @@ export const Gantt = ({
   const depth = depthParam !== null && depthParam !== "" ? parseInt(depthParam, 10) : undefined;
 
   const { data: gridRuns, isLoading: runsLoading } = useGridRuns({
+    bundleVersion,
+    confContains,
+    consumingAssetPattern,
     dagRunState,
+    dagVersion,
+    durationGte,
+    durationLte,
+    endDateGte,
+    endDateLte,
     limit,
+    logicalDateGte,
+    logicalDateLte,
     offset,
     runAfterGte,
     runAfterLte,
     runType,
+    startDateGte,
+    startDateLte,
     triggeringUser,
   });
   const { data: dagStructure, isLoading: structureLoading } = useGridStructure({
