@@ -127,11 +127,17 @@ describe("getGanttSegmentBoundsInRange", () => {
     expect(getGanttSegmentBoundsInRange(item, 20, 40)).toEqual([20, 30]);
   });
 
+  it("keeps zero-duration segments that fall inside the selected time range", () => {
+    const item: GanttDataItem = { taskId: "t1", x: [20, 20], y: "t1" };
+
+    expect(getGanttSegmentBoundsInRange(item, 10, 30)).toEqual([20, 20]);
+  });
+
   it("returns undefined when a segment falls entirely outside the selected time range", () => {
     const item: GanttDataItem = { taskId: "t1", x: [10, 20], y: "t1" };
 
-    expect(getGanttSegmentBoundsInRange(item, 20, 40)).toBeUndefined();
     expect(getGanttSegmentBoundsInRange(item, 25, 40)).toBeUndefined();
+    expect(getGanttSegmentBoundsInRange(item, 0, 5)).toBeUndefined();
   });
 });
 

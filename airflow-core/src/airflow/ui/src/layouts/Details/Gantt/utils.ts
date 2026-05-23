@@ -232,10 +232,14 @@ export const getGanttSegmentBoundsInRange = (
   minMs: number,
   maxMs: number,
 ): [number, number] | undefined => {
+  if (segment.x[1] < minMs || segment.x[0] > maxMs) {
+    return undefined;
+  }
+
   const startMs = Math.max(segment.x[0], minMs);
   const endMs = Math.min(segment.x[1], maxMs);
 
-  return endMs > startMs ? [startMs, endMs] : undefined;
+  return [startMs, endMs];
 };
 
 export const computeGanttTimeRangeMs = ({
