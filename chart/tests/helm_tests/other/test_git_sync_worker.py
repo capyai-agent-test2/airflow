@@ -371,3 +371,75 @@ class TestGitSyncWorker:
             "periodSeconds": 13,
             "failureThreshold": 14,
         }
+
+    def test_native_sidecar_uses_init_container_on_supported_kubernetes(self):
+        docs = render_chart(
+            values={
+                "dags": {
+                    "gitSync": {
+                        "enabled": True,
+                        "containerName": "git-sync",
+                        "httpPort": 10,
+                        "recommendedProbeSetting": True,
+                        "useNativeSidecar": True,
+                        "startupProbe": {
+                            "enabled": True,
+                            "timeoutSeconds": 11,
+                            "initialDelaySeconds": 12,
+                            "periodSeconds": 13,
+                            "failureThreshold": 14,
+                        },
+                    }
+                }
+            },
+            show_only=["templates/workers/worker-deployment.yaml"],
+            kubernetes_version="1.30.13",
+        )
+
+        assert jmespath.search("spec.template.spec.containers[?name=='git-sync']", docs[0]) == []
+        assert (
+            jmespath.search(
+                "spec.template.spec.initContainers[?name=='git-sync'] | [0].restartPolicy", docs[0]
+            )
+            == "Always"
+        )
+        assert {"name": "GIT_SYNC_ONE_TIME", "value": "true"} not in jmespath.search(
+            "spec.template.spec.initContainers[?name=='git-sync'] | [0].env", docs[0]
+        )
+        assert {"name": "GIT_SYNC_HTTP_BIND", "value": ":10"} in jmespath.search(
+            "spec.template.spec.initContainers[?name=='git-sync'] | [0].env", docs[0]
+        )
+        assert jmespath.search(
+            "spec.template.spec.initContainers[?name=='git-sync'] | [0].startupProbe", docs[0]
+        ) == {
+            "httpGet": {"path": "/", "port": 10},
+            "timeoutSeconds": 11,
+            "initialDelaySeconds": 12,
+            "periodSeconds": 13,
+            "failureThreshold": 14,
+        }
+
+    def test_native_sidecar_flag_defaults_to_existing_behavior(self):
+        docs = render_chart(
+            values={
+                "dags": {
+                    "gitSync": {
+                        "enabled": True,
+                        "containerName": "git-sync",
+                    }
+                }
+            },
+            show_only=["templates/workers/worker-deployment.yaml"],
+            kubernetes_version="1.30.13",
+        )
+
+        assert (
+            jmespath.search(
+                "spec.template.spec.initContainers[?name=='git-sync-init'] | [0].restartPolicy", docs[0]
+            )
+            is None
+        )
+        assert (
+            jmespath.search("spec.template.spec.containers[?name=='git-sync'] | [0].name", docs[0])
+            == "git-sync"
+        )

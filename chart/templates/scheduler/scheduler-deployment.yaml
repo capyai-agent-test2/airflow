@@ -171,7 +171,7 @@ spec:
             {{- end }}
         {{- end }}
         {{- if and $localOrDagProcessorDisabled .Values.dags.gitSync.enabled }}
-          {{- include "git_sync_container" (dict "Values" .Values "is_init" "true" "Template" .Template) | nindent 8 }}
+          {{- include "git_sync_container" (dict "Values" .Values "Capabilities" .Capabilities "is_init" "true" "Template" .Template) | nindent 8 }}
         {{- end }}
         {{- if .Values.scheduler.extraInitContainers }}
           {{- tpl (toYaml .Values.scheduler.extraInitContainers) . | nindent 8 }}
@@ -251,7 +251,7 @@ spec:
               mountPath: {{ .Values.scheduler.serviceAccount.serviceAccountTokenVolume.mountPath }}
               readOnly: true
             {{- end }}
-        {{- if and $localOrDagProcessorDisabled .Values.dags.gitSync.enabled }}
+        {{- if and $localOrDagProcessorDisabled .Values.dags.gitSync.enabled (ne (include "git_sync_uses_native_sidecar" .) "true") }}
           {{- include "git_sync_container" . | indent 8 }}
         {{- end }}
         {{- if .Values.scheduler.logGroomerSidecar.enabled }}

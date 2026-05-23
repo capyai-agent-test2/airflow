@@ -208,10 +208,20 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 
 {{/* Git sync container */}}
+{{- define "git_sync_uses_native_sidecar" -}}
+{{- if and .Values.dags.gitSync.useNativeSidecar (semverCompare ">=1.28-0" .Capabilities.KubeVersion.Version) -}}
+true
+{{- end -}}
+{{- end }}
+
 {{- define "git_sync_container" }}
-- name: {{ .Values.dags.gitSync.containerName }}{{ if .is_init }}-init{{ end }}
+{{- $nativeSidecar := eq (include "git_sync_uses_native_sidecar" .) "true" }}
+- name: {{ .Values.dags.gitSync.containerName }}{{ if and .is_init (not $nativeSidecar) }}-init{{ end }}
   image: {{ template "git_sync_image" . }}
   imagePullPolicy: {{ .Values.images.gitSync.pullPolicy }}
+  {{- if and .is_init $nativeSidecar }}
+  restartPolicy: Always
+  {{- end }}
   securityContext: {{- include "localContainerSecurityContext" .Values.dags.gitSync | nindent 4 }}
   envFrom: {{- include "custom_git_sync_environment_from" . | default "\n  []" | indent 2 }}
   env:
@@ -297,7 +307,7 @@ If release name contains chart name it will be used as a full name.
     - name: GIT_SYNC_WAIT
       value: {{ .Values.dags.gitSync.wait | quote }}
     {{- end }}
-    {{- if .is_init }}
+    {{- if and .is_init (not $nativeSidecar) }}
     - name: GIT_SYNC_ONE_TIME
       value: "true"
     - name: GITSYNC_ONE_TIME
@@ -312,7 +322,7 @@ If release name contains chart name it will be used as a full name.
     {{- toYaml . | nindent 4 }}
     {{- end }}
   resources: {{ toYaml .Values.dags.gitSync.resources | nindent 4 }}
-  {{- if not .is_init }}
+  {{- if or (not .is_init) $nativeSidecar }}
   {{- if .Values.dags.gitSync.startupProbe.enabled }}
   startupProbe:
     httpGet:
@@ -357,7 +367,7 @@ If release name contains chart name it will be used as a full name.
   {{- if .Values.dags.gitSync.extraVolumeMounts }}
     {{- tpl (toYaml .Values.dags.gitSync.extraVolumeMounts) . | nindent 2 }}
   {{- end }}
-  {{- if and .Values.dags.gitSync.containerLifecycleHooks (not .is_init) }}
+  {{- if and .Values.dags.gitSync.containerLifecycleHooks (or (not .is_init) $nativeSidecar) }}
   lifecycle: {{- tpl (toYaml .Values.dags.gitSync.containerLifecycleHooks) . | nindent 4 }}
   {{- end }}
 {{- end }}
