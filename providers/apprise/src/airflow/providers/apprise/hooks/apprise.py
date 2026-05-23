@@ -62,11 +62,14 @@ class AppriseHook(BaseHook):
 
     def build_apprise_obj(self) -> apprise.Apprise:
         """Build an Apprise client with persistent storage enabled."""
+        persistent_store_mode = getattr(apprise, "PersistentStoreMode", None)
+        apprise_asset_cls = getattr(apprise, "AppriseAsset", None)
+        if persistent_store_mode is None or apprise_asset_cls is None:
+            return apprise.Apprise()
+
         storage_path = Path(self.get_storage_path())
         storage_path.mkdir(parents=True, exist_ok=True)
-        asset = apprise.AppriseAsset(
-            storage_path=str(storage_path), storage_mode=apprise.PersistentStoreMode.AUTO
-        )
+        asset = apprise_asset_cls(storage_path=str(storage_path), storage_mode=persistent_store_mode.AUTO)
         return apprise.Apprise(asset=asset)
 
     def get_config_from_conn(self, conn: Connection):

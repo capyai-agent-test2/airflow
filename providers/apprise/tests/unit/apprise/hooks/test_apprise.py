@@ -109,6 +109,19 @@ class TestAppriseHook:
         )
         mock_apprise.assert_called_once_with(asset=asset)
 
+    def test_build_apprise_obj_falls_back_when_persistent_storage_is_unavailable(self):
+        apprise_obj = apprise.Apprise()
+        with (
+            patch.object(apprise, "PersistentStoreMode", None, create=True),
+            patch.object(apprise, "AppriseAsset", None, create=True),
+            patch.object(apprise, "Apprise", return_value=apprise_obj) as mock_apprise,
+        ):
+            hook = AppriseHook()
+            result = hook.build_apprise_obj()
+
+        assert result is apprise_obj
+        mock_apprise.assert_called_once_with()
+
     @mock.patch(
         "airflow.providers.apprise.hooks.apprise.AppriseHook.get_connection",
     )
