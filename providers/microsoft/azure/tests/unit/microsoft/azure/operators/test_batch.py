@@ -23,9 +23,10 @@ from unittest import mock
 import pytest
 
 from airflow.models import Connection
-from airflow.providers.common.compat.sdk import AirflowException
+from airflow.providers.common.compat.sdk import AirflowException, TaskDeferred
 from airflow.providers.microsoft.azure.hooks.batch import AzureBatchHook
 from airflow.providers.microsoft.azure.operators.batch import AzureBatchOperator
+from airflow.providers.microsoft.azure.triggers.batch import AzureBatchJobTrigger
 
 TASK_ID = "MyDag"
 BATCH_POOL_ID = "MyPool"
@@ -166,6 +167,23 @@ class TestAzureBatchOperator:
             target_dedicated_nodes=1,
             timeout=2,
         )
+        self.operator_deferrable = AzureBatchOperator(
+            task_id=TASK_ID,
+            batch_pool_id=BATCH_POOL_ID,
+            batch_pool_vm_size=BATCH_VM_SIZE,
+            batch_job_id=BATCH_JOB_ID,
+            batch_task_id=BATCH_TASK_ID,
+            vm_publisher=self.test_vm_publisher,
+            vm_offer=self.test_vm_offer,
+            vm_sku=self.test_vm_sku,
+            vm_node_agent_sku_id=self.test_node_agent_sku,
+            sku_starts_with=self.test_vm_sku,
+            batch_task_command_line="echo hello",
+            azure_batch_conn_id=self.test_vm_conn_id,
+            target_dedicated_nodes=1,
+            timeout=2,
+            deferrable=True,
+        )
 
     @mock.patch.object(AzureBatchHook, "wait_for_all_node_state")
     def test_execute_without_failures(self, wait_mock):
@@ -182,6 +200,19 @@ class TestAzureBatchOperator:
         self.operator2_pass.execute(None)
         # test pool creation
         self.batch_client.pool.add.assert_called()
+        self.batch_client.job.add.assert_called()
+        self.batch_client.task.add.assert_called()
+
+    @mock.patch.object(AzureBatchHook, "wait_for_all_node_state")
+    def test_execute_deferrable(self, wait_mock):
+        wait_mock.return_value = True
+
+        with pytest.raises(TaskDeferred) as exc_info:
+            self.operator_deferrable.execute(None)
+
+        assert isinstance(exc_info.value.trigger, AzureBatchJobTrigger)
+        assert exc_info.value.trigger.job_id == BATCH_JOB_ID
+        wait_mock.assert_not_called()
         self.batch_client.job.add.assert_called()
         self.batch_client.task.add.assert_called()
 
@@ -247,3 +278,30 @@ class TestAzureBatchOperator:
         self.operator.clean_up("mypool", "myjob")
         self.batch_client.job.delete.assert_called_with("myjob")
         self.batch_client.pool.delete.assert_called_with("mypool")
+
+    @mock.patch.object(AzureBatchOperator, "clean_up")
+    def test_execute_complete_success_cleans_up(self, mock_clean):
+        self.operator_deferrable.should_delete_job = True
+        self.operator_deferrable.should_delete_pool = True
+
+        self.operator_deferrable.execute_complete(
+            context=None,
+            event={"status": "success", "job_id": BATCH_JOB_ID, "failed_tasks": []},
+        )
+
+        assert mock_clean.call_args_list == [
+            mock.call(job_id=BATCH_JOB_ID),
+            mock.call(BATCH_POOL_ID),
+        ]
+
+    @mock.patch.object(AzureBatchOperator, "clean_up")
+    def test_execute_complete_failure_raises(self, mock_clean):
+        self.operator_deferrable.should_delete_job = True
+
+        with pytest.raises(AirflowException, match="Job fail. The failed task are: \\['failed-task'\\]"):
+            self.operator_deferrable.execute_complete(
+                context=None,
+                event={"status": "success", "job_id": BATCH_JOB_ID, "failed_tasks": ["failed-task"]},
+            )
+
+        mock_clean.assert_called_once_with(job_id=BATCH_JOB_ID)
