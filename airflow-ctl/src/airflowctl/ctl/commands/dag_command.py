@@ -23,7 +23,7 @@ from typing import Literal
 import rich
 
 from airflowctl.api.client import NEW_API_CLIENT, ClientKind, ServerResponseError, provide_api_client
-from airflowctl.api.datamodels.generated import DAGPatchBody
+from airflowctl.api.datamodels.generated import DAGPatchBody, DAGResponse
 from airflowctl.ctl.console_formatting import AirflowConsole
 
 
@@ -50,6 +50,29 @@ def update_dag_state(
         output=output,
     )
     return response_dict
+
+
+def get_next_execution(dag: DAGResponse) -> dict[str, object]:
+    """Build the next execution payload for a Dag."""
+    return {
+        "next_dagrun_logical_date": dag.next_dagrun_logical_date,
+        "next_dagrun_data_interval_start": dag.next_dagrun_data_interval_start,
+        "next_dagrun_data_interval_end": dag.next_dagrun_data_interval_end,
+        "next_dagrun_run_after": dag.next_dagrun_run_after,
+    }
+
+
+@provide_api_client(kind=ClientKind.CLI)
+def next_execution(args, api_client=NEW_API_CLIENT) -> dict[str, object] | None:
+    """Print the next scheduled execution for a Dag."""
+    dag = api_client.dags.get(args.dag_id)
+    next_execution_data = get_next_execution(dag)
+    if next_execution_data["next_dagrun_run_after"] is None:
+        rich.print(f"[yellow]No upcoming run is scheduled for Dag {args.dag_id}[/yellow]")
+        return None
+
+    AirflowConsole(show_header=False).print_as(data=[next_execution_data], output=args.output)
+    return next_execution_data
 
 
 @provide_api_client(kind=ClientKind.CLI)
