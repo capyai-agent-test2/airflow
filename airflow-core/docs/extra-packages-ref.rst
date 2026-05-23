@@ -297,8 +297,6 @@ These are extras that add dependencies needed for integration with external serv
 +---------------------+-----------------------------------------------------+-----------------------------------------------------+
 | tabular             | ``pip install 'apache-airflow[tabular]'``           | Tabular hooks                                       |
 +---------------------+-----------------------------------------------------+-----------------------------------------------------+
-| telegram            | ``pip install 'apache-airflow[telegram]'``          | Telegram hooks and operators                        |
-+---------------------+-----------------------------------------------------+-----------------------------------------------------+
 | vertica             | ``pip install 'apache-airflow[vertica]'``           | Vertica hook support as an Airflow backend          |
 +---------------------+-----------------------------------------------------+-----------------------------------------------------+
 | vespa               | ``pip install 'apache-airflow[vespa]'``             | Vespa hooks and operators                           |

@@ -371,9 +371,6 @@ apache-airflow = "airflow.__main__:main"
 "tableau" = [
     "apache-airflow-providers-tableau>=5.0.0"
 ]
-"telegram" = [
-    "apache-airflow-providers-telegram>=4.7.0"
-]
 "teradata" = [
     "apache-airflow-providers-teradata>=2.6.1"
 ]
@@ -492,7 +489,6 @@ apache-airflow = "airflow.__main__:main"
     "apache-airflow-providers-ssh>=3.14.0",
     "apache-airflow-providers-standard>=0.0.1",
     "apache-airflow-providers-tableau>=5.0.0",
-    "apache-airflow-providers-telegram>=4.7.0",
     "apache-airflow-providers-teradata>=2.6.1",
     "apache-airflow-providers-trino>=5.8.1",
     "apache-airflow-providers-vertica>=3.9.1",
@@ -1256,8 +1252,6 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/providers/standard/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/tableau/src",
     "$MYPY_CONFIG_FILE_DIR/providers/tableau/tests",
-    "$MYPY_CONFIG_FILE_DIR/providers/telegram/src",
-    "$MYPY_CONFIG_FILE_DIR/providers/telegram/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/teradata/src",
     "$MYPY_CONFIG_FILE_DIR/providers/teradata/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/trino/src",
@@ -1501,7 +1495,6 @@ apache-airflow-providers-sqlite = false
 apache-airflow-providers-ssh = false
 apache-airflow-providers-standard = false
 apache-airflow-providers-tableau = false
-apache-airflow-providers-telegram = false
 apache-airflow-providers-teradata = false
 apache-airflow-providers-trino = false
 apache-airflow-providers-vertica = false
@@ -1652,7 +1645,6 @@ apache-airflow-providers-sqlite = false
 apache-airflow-providers-ssh = false
 apache-airflow-providers-standard = false
 apache-airflow-providers-tableau = false
-apache-airflow-providers-telegram = false
 apache-airflow-providers-teradata = false
 apache-airflow-providers-trino = false
 apache-airflow-providers-vertica = false
@@ -1813,7 +1805,6 @@ apache-airflow-providers-sqlite = { workspace = true }
 apache-airflow-providers-ssh = { workspace = true }
 apache-airflow-providers-standard = { workspace = true }
 apache-airflow-providers-tableau = { workspace = true }
-apache-airflow-providers-telegram = { workspace = true }
 apache-airflow-providers-teradata = { workspace = true }
 apache-airflow-providers-trino = { workspace = true }
 apache-airflow-providers-vertica = { workspace = true }
@@ -1950,7 +1941,6 @@ members = [
     "providers/ssh",
     "providers/standard",
     "providers/tableau",
-    "providers/telegram",
     "providers/teradata",
     "providers/trino",
     "providers/vertica",
