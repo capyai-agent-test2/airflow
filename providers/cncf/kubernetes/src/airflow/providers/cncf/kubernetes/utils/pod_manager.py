@@ -807,10 +807,10 @@ class PodManager(LoggingMixin):
             remote_pod = self.read_pod(pod)
             if remote_pod.status.phase in PodPhase.terminal_states:
                 break
-            if (istio_enabled or do_xcom_push) and container_is_completed(remote_pod, container_name):
+            if container_is_completed(remote_pod, container_name):
                 self.log.info(
                     "Container '%s' completed but pod %s still has phase %s "
-                    "(likely due to a sidecar container). Skipping waiting for pod completion.",
+                    "(likely due to another running container). Skipping waiting for pod completion.",
                     container_name,
                     pod.metadata.name,
                     remote_pod.status.phase,
