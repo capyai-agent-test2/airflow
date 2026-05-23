@@ -4817,14 +4817,36 @@ export class GridService {
      * Get info about a run for the grid.
      * @param data The data for the request.
      * @param data.dagId
-     * @param data.offset
+     * @param data.bundleVersion
+     * @param data.confContains Search Dag run conf (JSON) by text.
+     *
+     * This performs a string containment match on the JSON representation, so it may match both keys and values.
+     * @param data.consumingAssetPattern Filter by consuming asset name or URI using pattern matching
+     * @param data.dagVersion
+     * @param data.durationGt
+     * @param data.durationGte
+     * @param data.durationLt
+     * @param data.durationLte
+     * @param data.endDateGt
+     * @param data.endDateGte
+     * @param data.endDateLt
+     * @param data.endDateLte
      * @param data.limit
+     * @param data.logicalDateGt
+     * @param data.logicalDateGte
+     * @param data.logicalDateLt
+     * @param data.logicalDateLte
+     * @param data.offset
      * @param data.orderBy Attributes to order by, multi criteria sort is supported. Prefix with `-` for descending order. Supported attributes: `run_after, logical_date, start_date, end_date`
      * @param data.runAfterGte
      * @param data.runAfterGt
      * @param data.runAfterLte
      * @param data.runAfterLt
      * @param data.runType
+     * @param data.startDateGt
+     * @param data.startDateGte
+     * @param data.startDateLt
+     * @param data.startDateLte
      * @param data.state
      * @param data.triggeringUser SQL LIKE expression — use `%` / `_` wildcards (e.g. `%customer_%`). or the pipe `|` operator for OR logic (e.g. `dag1 | dag2`). Regular expressions are **not** supported.
      *
@@ -4841,14 +4863,34 @@ export class GridService {
                 dag_id: data.dagId
             },
             query: {
+                bundle_version: data.bundleVersion,
+                conf_contains: data.confContains,
+                consuming_asset_pattern: data.consumingAssetPattern,
+                dag_version: data.dagVersion,
+                duration_gt: data.durationGt,
+                duration_gte: data.durationGte,
+                duration_lt: data.durationLt,
+                duration_lte: data.durationLte,
+                end_date_gt: data.endDateGt,
+                end_date_gte: data.endDateGte,
+                end_date_lt: data.endDateLt,
+                end_date_lte: data.endDateLte,
                 offset: data.offset,
                 limit: data.limit,
+                logical_date_gt: data.logicalDateGt,
+                logical_date_gte: data.logicalDateGte,
+                logical_date_lt: data.logicalDateLt,
+                logical_date_lte: data.logicalDateLte,
                 order_by: data.orderBy,
                 run_after_gte: data.runAfterGte,
                 run_after_gt: data.runAfterGt,
                 run_after_lte: data.runAfterLte,
                 run_after_lt: data.runAfterLt,
                 run_type: data.runType,
+                start_date_gt: data.startDateGt,
+                start_date_gte: data.startDateGte,
+                start_date_lt: data.startDateLt,
+                start_date_lte: data.startDateLte,
                 state: data.state,
                 triggering_user: data.triggeringUser,
                 triggering_user_prefix: data.triggeringUserPrefix

@@ -126,11 +126,26 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
 
   // --- Read state from URL ---
   const limit = Number(searchParams.get(SearchParamsKeys.LIMIT) ?? "10");
+  const bundleVersionFilter = searchParams.get(SearchParamsKeys.BUNDLE_VERSION) ?? undefined;
+  const confContainsFilter = searchParams.get(SearchParamsKeys.CONF_CONTAINS) ?? undefined;
+  const consumingAssetFilter = searchParams.get(SearchParamsKeys.CONSUMING_ASSET_PATTERN) ?? undefined;
+  const dagVersionFilterParam = searchParams.get(SearchParamsKeys.DAG_VERSION);
   const runAfterGte = searchParams.get(SearchParamsKeys.RUN_AFTER_GTE) ?? undefined;
   const runAfterLte = searchParams.get(SearchParamsKeys.RUN_AFTER_LTE) ?? undefined;
+  const logicalDateGte = searchParams.get(SearchParamsKeys.LOGICAL_DATE_GTE) ?? undefined;
+  const logicalDateLte = searchParams.get(SearchParamsKeys.LOGICAL_DATE_LTE) ?? undefined;
+  const startDateGte = searchParams.get(SearchParamsKeys.START_DATE_GTE) ?? undefined;
+  const startDateLte = searchParams.get(SearchParamsKeys.START_DATE_LTE) ?? undefined;
+  const endDateGte = searchParams.get(SearchParamsKeys.END_DATE_GTE) ?? undefined;
+  const endDateLte = searchParams.get(SearchParamsKeys.END_DATE_LTE) ?? undefined;
+  const durationGteParam = searchParams.get(SearchParamsKeys.DURATION_GTE);
+  const durationLteParam = searchParams.get(SearchParamsKeys.DURATION_LTE);
   const runTypeFilter = (searchParams.get(SearchParamsKeys.RUN_TYPE) as DagRunType | null) ?? undefined;
   const triggeringUserFilter = searchParams.get(SearchParamsKeys.TRIGGERING_USER_NAME_PATTERN) ?? undefined;
   const dagRunStateFilter = (searchParams.get(SearchParamsKeys.STATE) as DagRunState | null) ?? undefined;
+  const dagVersionFilter = dagVersionFilterParam === null || dagVersionFilterParam === "" ? undefined : Number(dagVersionFilterParam);
+  const durationGte = durationGteParam === null || durationGteParam === "" ? undefined : Number(durationGteParam);
+  const durationLte = durationLteParam === null || durationLteParam === "" ? undefined : Number(durationLteParam);
 
   // --- Setters that write back to URL ---
   const setLimit = (value: number) => setParam(SearchParamsKeys.LIMIT, String(value));
@@ -158,9 +173,21 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
   // Initial grid page (no date ceiling) — loaded first so we can check whether
   // the selected run is already visible before fetching it individually.
   const { data: initialGridRuns } = useGridRuns({
+    bundleVersion: bundleVersionFilter,
+    confContains: confContainsFilter,
+    consumingAssetPattern: consumingAssetFilter,
     dagRunState: dagRunStateFilter,
+    dagVersion: dagVersionFilter,
+    durationGte,
+    durationLte,
+    endDateGte,
+    endDateLte,
     limit,
+    logicalDateGte,
+    logicalDateLte,
     runType: runTypeFilter,
+    startDateGte,
+    startDateLte,
     triggeringUser: triggeringUserFilter,
   });
 
@@ -193,7 +220,26 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
   // Reset offset whenever URL filters change so we start from the top of the new window.
   useEffect(() => {
     setOffset(0);
-  }, [runAfterGte, runAfterLte, runTypeFilter, dagRunStateFilter, triggeringUserFilter, limit]);
+  }, [
+    bundleVersionFilter,
+    confContainsFilter,
+    consumingAssetFilter,
+    dagRunStateFilter,
+    dagVersionFilter,
+    durationGte,
+    durationLte,
+    endDateGte,
+    endDateLte,
+    limit,
+    logicalDateGte,
+    logicalDateLte,
+    runAfterGte,
+    runAfterLte,
+    runTypeFilter,
+    startDateGte,
+    startDateLte,
+    triggeringUserFilter,
+  ]);
 
   // Jump to the very latest runs: clear the URL ceiling and reset offset.
   const handleJumpToLatest = () => {
@@ -278,8 +324,18 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
                       <SharedScrollBox scrollRef={sharedGridGanttScrollRef}>
                         <Flex alignItems="flex-start" gap={0} maxW="100%" minW={0} overflow="clip" w="100%">
                           <Grid
+                            bundleVersion={bundleVersionFilter}
+                            confContains={confContainsFilter}
+                            consumingAssetPattern={consumingAssetFilter}
                             dagRunState={dagRunStateFilter}
+                            dagVersion={dagVersionFilter}
+                            durationGte={durationGte}
+                            durationLte={durationLte}
+                            endDateGte={endDateGte}
+                            endDateLte={endDateLte}
                             limit={limit}
+                            logicalDateGte={logicalDateGte}
+                            logicalDateLte={logicalDateLte}
                             offset={offset}
                             onJumpToLatest={handleJumpToLatest}
                             runAfterGte={runAfterGte}
@@ -287,18 +343,32 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
                             runType={runTypeFilter}
                             setOffset={setOffset}
                             sharedScrollContainerRef={sharedGridGanttScrollRef}
+                            startDateGte={startDateGte}
+                            startDateLte={startDateLte}
                             showGantt
                             showVersionIndicatorMode={showVersionIndicatorMode}
                             triggeringUser={triggeringUserFilter}
                           />
                           <Gantt
+                            bundleVersion={bundleVersionFilter}
+                            confContains={confContainsFilter}
+                            consumingAssetPattern={consumingAssetFilter}
                             dagRunState={dagRunStateFilter}
+                            dagVersion={dagVersionFilter}
+                            durationGte={durationGte}
+                            durationLte={durationLte}
+                            endDateGte={endDateGte}
+                            endDateLte={endDateLte}
                             limit={limit}
+                            logicalDateGte={logicalDateGte}
+                            logicalDateLte={logicalDateLte}
                             offset={offset}
                             runAfterGte={runAfterGte}
                             runAfterLte={runAfterLte}
                             runType={runTypeFilter}
                             sharedScrollContainerRef={sharedGridGanttScrollRef}
+                            startDateGte={startDateGte}
+                            startDateLte={startDateLte}
                             triggeringUser={triggeringUserFilter}
                           />
                         </Flex>
@@ -314,14 +384,26 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
                         w="100%"
                       >
                         <Grid
+                          bundleVersion={bundleVersionFilter}
+                          confContains={confContainsFilter}
+                          consumingAssetPattern={consumingAssetFilter}
                           dagRunState={dagRunStateFilter}
+                          dagVersion={dagVersionFilter}
+                          durationGte={durationGte}
+                          durationLte={durationLte}
+                          endDateGte={endDateGte}
+                          endDateLte={endDateLte}
                           limit={limit}
+                          logicalDateGte={logicalDateGte}
+                          logicalDateLte={logicalDateLte}
                           offset={offset}
                           onJumpToLatest={handleJumpToLatest}
                           runAfterGte={runAfterGte}
                           runAfterLte={runAfterLte}
                           runType={runTypeFilter}
                           setOffset={setOffset}
+                          startDateGte={startDateGte}
+                          startDateLte={startDateLte}
                           showVersionIndicatorMode={showVersionIndicatorMode}
                           triggeringUser={triggeringUserFilter}
                         />

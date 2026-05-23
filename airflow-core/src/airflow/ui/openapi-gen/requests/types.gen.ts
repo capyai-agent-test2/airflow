@@ -4309,7 +4309,31 @@ export type GetDagStructureResponse = Array<GridNodeResponse>;
 
 export type GetGridRunsData = {
     dagId: string;
+    bundleVersion?: string | null;
+    /**
+     * Search Dag run conf (JSON) by text.
+     *
+     * This performs a string containment match on the JSON representation, so it may match both keys and values.
+     */
+    confContains?: string | null;
+    /**
+     * Filter by consuming asset name or URI using pattern matching
+     */
+    consumingAssetPattern?: string | null;
+    dagVersion?: Array<(number)> | null;
+    durationGt?: number | null;
+    durationGte?: number | null;
+    durationLt?: number | null;
+    durationLte?: number | null;
+    endDateGt?: string | null;
+    endDateGte?: string | null;
+    endDateLt?: string | null;
+    endDateLte?: string | null;
     limit?: number;
+    logicalDateGt?: string | null;
+    logicalDateGte?: string | null;
+    logicalDateLt?: string | null;
+    logicalDateLte?: string | null;
     offset?: number;
     /**
      * Attributes to order by, multi criteria sort is supported. Prefix with `-` for descending order. Supported attributes: `run_after, logical_date, start_date, end_date`
@@ -4320,6 +4344,10 @@ export type GetGridRunsData = {
     runAfterLt?: string | null;
     runAfterLte?: string | null;
     runType?: Array<(string)>;
+    startDateGt?: string | null;
+    startDateGte?: string | null;
+    startDateLt?: string | null;
+    startDateLte?: string | null;
     state?: Array<(string)>;
     /**
      * SQL LIKE expression — use `%` / `_` wildcards (e.g. `%customer_%`). or the pipe `|` operator for OR logic (e.g. `dag1 | dag2`). Regular expressions are **not** supported.

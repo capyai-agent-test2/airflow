@@ -21,10 +21,19 @@ import { SearchParamsKeys } from "src/constants/searchParams";
 import { useFiltersHandler, type FilterableSearchParamsKeys } from "src/utils";
 
 const searchParamKeys: Array<FilterableSearchParamsKeys> = [
-  SearchParamsKeys.STATE,
-  SearchParamsKeys.RUN_TYPE,
-  SearchParamsKeys.TRIGGERING_USER_NAME_PATTERN,
-  SearchParamsKeys.RUN_AFTER_RANGE,
+    SearchParamsKeys.STATE,
+    SearchParamsKeys.RUN_TYPE,
+    SearchParamsKeys.TRIGGERING_USER_NAME_PATTERN,
+    SearchParamsKeys.RUN_AFTER_RANGE,
+    SearchParamsKeys.LOGICAL_DATE_RANGE,
+    SearchParamsKeys.START_DATE_RANGE,
+    SearchParamsKeys.END_DATE_RANGE,
+    SearchParamsKeys.DURATION_GTE,
+    SearchParamsKeys.DURATION_LTE,
+    SearchParamsKeys.CONF_CONTAINS,
+    SearchParamsKeys.DAG_VERSION,
+    SearchParamsKeys.BUNDLE_VERSION,
+    SearchParamsKeys.CONSUMING_ASSET_PATTERN,
 ];
 
 export const GridFilters = () => {

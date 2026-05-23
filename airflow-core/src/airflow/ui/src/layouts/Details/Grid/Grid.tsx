@@ -47,8 +47,18 @@ import { estimateTaskNameColumnWidthPx, flattenNodes } from "./utils";
 dayjs.extend(dayjsDuration);
 
 type Props = {
+  readonly bundleVersion?: string;
+  readonly confContains?: string;
+  readonly consumingAssetPattern?: string;
   readonly dagRunState?: DagRunState | undefined;
+  readonly dagVersion?: number;
+  readonly durationGte?: number;
+  readonly durationLte?: number;
+  readonly endDateGte?: string;
+  readonly endDateLte?: string;
   readonly limit: number;
+  readonly logicalDateGte?: string;
+  readonly logicalDateLte?: string;
   readonly offset: number;
   readonly onJumpToLatest: () => void;
   readonly runAfterGte?: string;
@@ -57,6 +67,8 @@ type Props = {
   readonly setOffset: (value: number) => void;
   readonly sharedScrollContainerRef?: RefObject<HTMLDivElement | null>;
   readonly showGantt?: boolean;
+  readonly startDateGte?: string;
+  readonly startDateLte?: string;
   readonly showVersionIndicatorMode?: VersionIndicatorOptions;
   readonly triggeringUser?: string | undefined;
 };
@@ -64,8 +76,18 @@ type Props = {
 const GRID_INNER_SCROLL_PADDING_START_PX = GRID_HEADER_PADDING_PX + GRID_HEADER_HEIGHT_PX;
 
 export const Grid = ({
+  bundleVersion,
+  confContains,
+  consumingAssetPattern,
   dagRunState,
+  dagVersion,
+  durationGte,
+  durationLte,
+  endDateGte,
+  endDateLte,
   limit,
+  logicalDateGte,
+  logicalDateLte,
   offset,
   onJumpToLatest,
   runAfterGte,
@@ -74,6 +96,8 @@ export const Grid = ({
   setOffset,
   sharedScrollContainerRef,
   showGantt,
+  startDateGte,
+  startDateLte,
   showVersionIndicatorMode,
   triggeringUser,
 }: Props) => {
@@ -94,12 +118,24 @@ export const Grid = ({
 
   // Over fetch gridRuns and then truncate to limit, in order to check pagination
   const { data: dataGridRuns, isLoading } = useGridRuns({
+    bundleVersion,
+    confContains,
+    consumingAssetPattern,
     dagRunState,
+    dagVersion,
+    durationGte,
+    durationLte,
+    endDateGte,
+    endDateLte,
     limit: limit + 1,
+    logicalDateGte,
+    logicalDateLte,
     offset,
     runAfterGte,
     runAfterLte,
     runType,
+    startDateGte,
+    startDateLte,
     triggeringUser,
   });
   const gridRuns = dataGridRuns?.slice(0, limit);
