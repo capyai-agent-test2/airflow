@@ -20,6 +20,8 @@ import json
 
 import pytest
 
+from airflow.secrets.environment_variables import CONN_ENV_PREFIX, VAR_ENV_PREFIX
+
 from tests_common.test_utils.asserts import assert_queries_count
 from tests_common.test_utils.config import conf_vars
 
@@ -69,6 +71,8 @@ expected_config_response = {
     "external_log_name": None,
     "theme": THEME,
     "multi_team": False,
+    "has_invisible_connections": False,
+    "has_invisible_variables": False,
     "rerun_with_latest_version": None,
 }
 
@@ -151,6 +155,13 @@ def mock_config_data_css_only():
 
 
 class TestGetConfig:
+    @pytest.fixture(autouse=True)
+    def no_invisible_secrets(self, monkeypatch):
+        monkeypatch.setattr("airflow.api_fastapi.core_api.routes.ui.config.has_env_secrets", lambda _: False)
+        monkeypatch.setattr(
+            "airflow.api_fastapi.core_api.routes.ui.config.get_custom_secret_backend", lambda: None
+        )
+
     def test_should_response_200(self, mock_config_data, test_client):
         """
         Test the /config endpoint to verify response matches the expected data.
@@ -195,3 +206,40 @@ class TestGetConfig:
         assert theme["globalCss"] == {"button": {"text-transform": "uppercase"}}
         assert "icon" not in theme
         assert "icon_dark_mode" not in theme
+
+    def test_should_report_invisible_connections_from_env(self, mock_config_data, monkeypatch, test_client):
+        monkeypatch.setattr(
+            "airflow.api_fastapi.core_api.routes.ui.config.has_env_secrets",
+            lambda prefix: prefix == CONN_ENV_PREFIX,
+        )
+
+        response = test_client.get("/config")
+
+        assert response.status_code == 200
+        assert response.json()["has_invisible_connections"] is True
+        assert response.json()["has_invisible_variables"] is False
+
+    def test_should_report_invisible_variables_from_env(self, mock_config_data, monkeypatch, test_client):
+        monkeypatch.setattr(
+            "airflow.api_fastapi.core_api.routes.ui.config.has_env_secrets",
+            lambda prefix: prefix == VAR_ENV_PREFIX,
+        )
+
+        response = test_client.get("/config")
+
+        assert response.status_code == 200
+        assert response.json()["has_invisible_connections"] is False
+        assert response.json()["has_invisible_variables"] is True
+
+    def test_should_report_invisible_entries_from_custom_secret_backend(
+        self, mock_config_data, monkeypatch, test_client
+    ):
+        monkeypatch.setattr(
+            "airflow.api_fastapi.core_api.routes.ui.config.get_custom_secret_backend", lambda: object()
+        )
+
+        response = test_client.get("/config")
+
+        assert response.status_code == 200
+        assert response.json()["has_invisible_connections"] is True
+        assert response.json()["has_invisible_variables"] is True
