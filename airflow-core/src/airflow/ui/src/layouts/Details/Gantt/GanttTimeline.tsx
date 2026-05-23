@@ -182,10 +182,11 @@ export const GanttTimeline = ({
     const widthPx = (widthPct / 100) * bodyWidthPx;
     const minBoost = widthPx < MIN_BAR_WIDTH_PX && bodyWidthPx > 0 ? MIN_BAR_WIDTH_PX - widthPx : 0;
     const widthPctAdjusted = bodyWidthPx > 0 ? ((widthPx + minBoost) / bodyWidthPx) * 100 : widthPct;
+    const overflowPct = Math.max(0, leftPct + widthPctAdjusted - 100);
 
     return {
-      leftPct,
-      widthPct: Math.min(widthPctAdjusted, 100 - leftPct),
+      leftPct: Math.max(0, leftPct - overflowPct),
+      widthPct: Math.min(widthPctAdjusted, 100),
       widthPx,
     };
   };
