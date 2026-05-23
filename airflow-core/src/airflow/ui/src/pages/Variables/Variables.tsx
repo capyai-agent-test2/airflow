@@ -25,6 +25,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { useVariableServiceGetVariables } from "openapi/queries";
 import type { VariableResponse } from "openapi/requests/types.gen";
+import { CliExportAlert } from "src/components/CliExportAlert";
 import { DataTable } from "src/components/DataTable";
 import { useRowSelection, type GetColumnsParams } from "src/components/DataTable/useRowSelection";
 import { useTableURLState } from "src/components/DataTable/useTableUrlState";
@@ -209,6 +210,7 @@ export const Variables = () => {
           onChange={handleSearchChange}
           placeholder={translate("variables.searchPlaceholder")}
         />
+        <CliExportAlert />
         <HStack gap={4} mt={2}>
           <ExpandCollapseButtons
             collapseLabel={translate("common:expand.collapse")}

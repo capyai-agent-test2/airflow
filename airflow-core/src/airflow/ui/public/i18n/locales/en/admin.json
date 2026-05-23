@@ -41,6 +41,28 @@
       "selectConnectionType": "Select Connection Type",
       "standardFields": "Standard Fields"
     },
+    "import": {
+      "button": "Import",
+      "conflictResolution": "Select Connection Conflict Resolution",
+      "errorParsingJsonFile": "Error parsing JSON file: upload a JSON file containing connections (for example, {\"smtp_default\": {\"conn_type\": \"smtp\"}}).",
+      "options": {
+        "fail": {
+          "description": "Fails the import if any existing connections are detected.",
+          "title": "Fail"
+        },
+        "overwrite": {
+          "description": "Overwrites the connection in case of a conflict.",
+          "title": "Overwrite"
+        },
+        "skip": {
+          "description": "Skips importing connections that already exist.",
+          "title": "Skip"
+        }
+      },
+      "title": "Import Connections",
+      "upload": "Upload a JSON File",
+      "uploadPlaceholder": "Upload a JSON file containing connections (for example, {\"smtp_default\": {\"conn_type\": \"smtp\"}})"
+    },
     "nothingFound": {
       "description": "Connections defined via environment variables or secrets managers are not listed here.",
       "documentationLink": "Learn more in the Airflow documentation.",
@@ -77,6 +99,10 @@
     },
     "selected": "Selected",
     "tooltip": "Delete selected connections"
+  },
+  "exportCliOnly": {
+    "description": "Export is available only through the local CLI. Import remains available here in the UI.",
+    "title": "Export is not available in the UI"
   },
   "formActions": {
     "save": "Save"
