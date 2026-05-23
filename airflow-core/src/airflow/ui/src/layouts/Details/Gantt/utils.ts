@@ -285,6 +285,47 @@ export const computeGanttTimeRangeMs = ({
   };
 };
 
+export const computeSelectedGanttTimeRangeMs = ({
+  defaultTimeRange,
+  ganttEndDate,
+  ganttStartDate,
+}: {
+  defaultTimeRange: { maxMs: number; minMs: number };
+  ganttEndDate?: string;
+  ganttStartDate?: string;
+}): { maxMs: number; minMs: number } => {
+  const parsedStartMs = ganttStartDate === undefined ? undefined : dayjs(ganttStartDate).valueOf();
+  const parsedEndMs = ganttEndDate === undefined ? undefined : dayjs(ganttEndDate).valueOf();
+  const hasValidStart = parsedStartMs !== undefined && Number.isFinite(parsedStartMs);
+  const hasValidEnd = parsedEndMs !== undefined && Number.isFinite(parsedEndMs);
+
+  if (!hasValidStart && !hasValidEnd) {
+    return defaultTimeRange;
+  }
+
+  const minMs = hasValidStart ? parsedStartMs : defaultTimeRange.minMs;
+  const maxMs = hasValidEnd ? parsedEndMs : defaultTimeRange.maxMs;
+
+  if (minMs < maxMs) {
+    return { maxMs, minMs };
+  }
+
+  if (hasValidStart && hasValidEnd) {
+    return {
+      maxMs: Math.max(parsedStartMs, parsedEndMs) + 1,
+      minMs: Math.min(parsedStartMs, parsedEndMs),
+    };
+  }
+
+  if (hasValidStart) {
+    return { maxMs: parsedStartMs + 1, minMs: parsedStartMs };
+  }
+
+  const endMs = parsedEndMs ?? defaultTimeRange.maxMs;
+
+  return { maxMs: endMs, minMs: endMs - 1 };
+};
+
 /**
  * Precompute the maximum try number for each task in O(n).
  * Pass the result to `getGanttSegmentTo` to avoid an O(n) scan per segment.

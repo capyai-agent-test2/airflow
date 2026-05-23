@@ -17,7 +17,6 @@
  * under the License.
  */
 import { Box, Button, Flex, HStack, Text } from "@chakra-ui/react";
-import dayjs from "dayjs";
 import { useRef } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -43,7 +42,12 @@ import { useGridTiSummariesStream } from "src/queries/useGridTISummaries";
 import { isStatePending, useAutoRefresh } from "src/utils";
 
 import { GanttTimeline } from "./GanttTimeline";
-import { buildGanttRowSegments, computeGanttTimeRangeMs, transformGanttData } from "./utils";
+import {
+  buildGanttRowSegments,
+  computeGanttTimeRangeMs,
+  computeSelectedGanttTimeRangeMs,
+  transformGanttData,
+} from "./utils";
 
 const GANTT_STANDALONE_VIRTUALIZER_PADDING_START_PX = GANTT_TOP_PADDING_PX + GANTT_AXIS_HEIGHT_PX;
 
@@ -151,18 +155,12 @@ export const Gantt = ({
   });
   const ganttStartDate = searchParams.get(SearchParamsKeys.GANTT_START_DATE) ?? undefined;
   const ganttEndDate = searchParams.get(SearchParamsKeys.GANTT_END_DATE) ?? undefined;
-  const parsedStartMs = ganttStartDate === undefined ? undefined : dayjs(ganttStartDate).valueOf();
-  const parsedEndMs = ganttEndDate === undefined ? undefined : dayjs(ganttEndDate).valueOf();
-  const hasValidStart = parsedStartMs !== undefined && Number.isFinite(parsedStartMs);
-  const hasValidEnd = parsedEndMs !== undefined && Number.isFinite(parsedEndMs);
-  const zoomMinMs = hasValidStart ? parsedStartMs : defaultTimeRange.minMs;
-  const zoomMaxMs = hasValidEnd ? parsedEndMs : defaultTimeRange.maxMs;
   const hasCustomTimeRange = ganttStartDate !== undefined || ganttEndDate !== undefined;
-  const hasValidCustomTimeRange = zoomMinMs < zoomMaxMs;
-  const { maxMs, minMs } =
-    hasCustomTimeRange && hasValidCustomTimeRange
-      ? { maxMs: zoomMaxMs, minMs: zoomMinMs }
-      : defaultTimeRange;
+  const { maxMs, minMs } = computeSelectedGanttTimeRangeMs({
+    defaultTimeRange,
+    ganttEndDate,
+    ganttStartDate,
+  });
   const updateTimeRangeParam = (
     key: SearchParamsKeys.GANTT_END_DATE | SearchParamsKeys.GANTT_START_DATE,
     value: string,

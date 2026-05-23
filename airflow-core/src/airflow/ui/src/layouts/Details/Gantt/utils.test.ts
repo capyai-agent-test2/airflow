@@ -27,6 +27,7 @@ import {
   buildGanttRowSegments,
   buildGanttTimeAxisTicks,
   buildMaxTryByTaskId,
+  computeSelectedGanttTimeRangeMs,
   GANTT_TIME_AXIS_TICK_COUNT,
   getGanttSegmentBoundsInRange,
   gridSummariesToTaskIdMap,
@@ -131,6 +132,38 @@ describe("getGanttSegmentBoundsInRange", () => {
 
     expect(getGanttSegmentBoundsInRange(item, 20, 40)).toBeUndefined();
     expect(getGanttSegmentBoundsInRange(item, 25, 40)).toBeUndefined();
+  });
+});
+
+describe("computeSelectedGanttTimeRangeMs", () => {
+  const defaultTimeRange = { maxMs: 20, minMs: 10 };
+
+  it("uses explicit bounds when they define a valid range", () => {
+    expect(
+      computeSelectedGanttTimeRangeMs({
+        defaultTimeRange,
+        ganttEndDate: dayjs(18).toISOString(),
+        ganttStartDate: dayjs(12).toISOString(),
+      }),
+    ).toEqual({ maxMs: 18, minMs: 12 });
+  });
+
+  it("keeps a single out-of-range start bound instead of falling back to the default range", () => {
+    expect(
+      computeSelectedGanttTimeRangeMs({
+        defaultTimeRange,
+        ganttStartDate: dayjs(30).toISOString(),
+      }),
+    ).toEqual({ maxMs: 31, minMs: 30 });
+  });
+
+  it("keeps a single out-of-range end bound instead of falling back to the default range", () => {
+    expect(
+      computeSelectedGanttTimeRangeMs({
+        defaultTimeRange,
+        ganttEndDate: dayjs(5).toISOString(),
+      }),
+    ).toEqual({ maxMs: 5, minMs: 4 });
   });
 });
 
