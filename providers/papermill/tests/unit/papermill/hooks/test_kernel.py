@@ -40,3 +40,21 @@ class TestKernelHook:
         assert hook.get_conn().ip == "test_host"
         assert hook.get_conn().shell_port == 60000
         assert hook.get_conn().session_key == "key"
+
+    def test_gateway_kernel_connection(self):
+        """Test that gateway connection settings are loaded from connection extras."""
+        from airflow.providers.papermill.hooks.kernel import KernelHook
+
+        conn = Connection(
+            conn_type="jupyter_kernel",
+            host="https://gateway.example.com",
+            extra='{"auth_token": "secret", "auth_scheme": "Bearer", "validate_cert": false}',
+        )
+        with patch.object(KernelHook, "get_connection", return_value=conn):
+            hook = KernelHook()
+
+        kernel_connection = hook.get_conn()
+        assert kernel_connection.gateway_url == "https://gateway.example.com"
+        assert kernel_connection.auth_token == "secret"
+        assert kernel_connection.auth_scheme == "Bearer"
+        assert kernel_connection.validate_cert is False

@@ -27,7 +27,11 @@ import papermill as pm
 from airflow.providers.common.compat.lineage.entities import File
 from airflow.providers.common.compat.sdk import BaseOperator
 from airflow.providers.common.compat.version_compat import AIRFLOW_V_3_0_PLUS
-from airflow.providers.papermill.hooks.kernel import REMOTE_KERNEL_ENGINE, KernelHook
+from airflow.providers.papermill.hooks.kernel import (
+    GATEWAY_KERNEL_ENGINE,
+    REMOTE_KERNEL_ENGINE,
+    KernelHook,
+)
 
 if TYPE_CHECKING:
     from airflow.providers.common.compat.sdk import Context
@@ -115,17 +119,27 @@ class PapermillOperator(BaseOperator):
         remote_kernel_kwargs = {}
         kernel_hook = self.hook
         if kernel_hook:
-            engine_name = REMOTE_KERNEL_ENGINE
             kernel_connection = kernel_hook.get_conn()
-            remote_kernel_kwargs = {
-                "kernel_ip": kernel_connection.ip,
-                "kernel_shell_port": kernel_connection.shell_port,
-                "kernel_iopub_port": kernel_connection.iopub_port,
-                "kernel_stdin_port": kernel_connection.stdin_port,
-                "kernel_control_port": kernel_connection.control_port,
-                "kernel_hb_port": kernel_connection.hb_port,
-                "kernel_session_key": kernel_connection.session_key,
-            }
+            if kernel_connection.gateway_url:
+                engine_name = GATEWAY_KERNEL_ENGINE
+                remote_kernel_kwargs = {
+                    "gateway_url": kernel_connection.gateway_url,
+                    "gateway_ws_url": kernel_connection.gateway_ws_url,
+                    "gateway_auth_token": kernel_connection.auth_token,
+                    "gateway_auth_scheme": kernel_connection.auth_scheme,
+                    "gateway_validate_cert": kernel_connection.validate_cert,
+                }
+            else:
+                engine_name = REMOTE_KERNEL_ENGINE
+                remote_kernel_kwargs = {
+                    "kernel_ip": kernel_connection.ip,
+                    "kernel_shell_port": kernel_connection.shell_port,
+                    "kernel_iopub_port": kernel_connection.iopub_port,
+                    "kernel_stdin_port": kernel_connection.stdin_port,
+                    "kernel_control_port": kernel_connection.control_port,
+                    "kernel_hb_port": kernel_connection.hb_port,
+                    "kernel_session_key": kernel_connection.session_key,
+                }
         else:
             engine_name = None
 
