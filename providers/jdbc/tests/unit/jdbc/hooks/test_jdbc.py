@@ -534,3 +534,11 @@ class TestJdbcHook:
 
     def test_get_openlineage_default_schema(self):
         assert get_hook().get_openlineage_default_schema() is None
+
+    def test_get_openlineage_database_info_unsupported_jdbc_uri_has_no_authority(self):
+        jdbc_hook = get_hook(host="jdbc:sqlite:/tmp/sqlite.db", schema=None)
+
+        database_info = jdbc_hook.get_openlineage_database_info(jdbc_hook.connection)
+
+        assert database_info.scheme == "sqlite"
+        assert database_info.authority is None

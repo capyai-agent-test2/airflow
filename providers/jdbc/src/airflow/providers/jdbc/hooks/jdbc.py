@@ -337,7 +337,7 @@ class JdbcHook(DbApiHook):
         )
         dialect = self._normalize_openlineage_dialect(dialect_source or self.dialect_name)
         authority = parsed_jdbc["authority"] if parsed_jdbc else None
-        if authority is None and connection.host:
+        if authority is None and connection.host and not str(connection.host).startswith("jdbc:"):
             default_port = self._OPENLINEAGE_DEFAULT_PORTS.get(dialect)
             authority = self._build_openlineage_authority(
                 host=connection.host,
