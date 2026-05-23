@@ -460,3 +460,77 @@ class TestJdbcHook:
 
         jdbc_hook = get_hook(**hook_params)
         assert jdbc_hook.get_uri() == expected_uri
+
+    @pytest.mark.parametrize(
+        ("params", "expected_dialect", "expected_authority", "expected_database"),
+        [
+            pytest.param(
+                {"host": "jdbc:mysql://localhost/test", "schema": None},
+                "mysql",
+                "localhost:3306",
+                "test",
+                id="mysql-jdbc-url",
+            ),
+            pytest.param(
+                {"host": "jdbc:postgresql://localhost:5433/testdb", "schema": None},
+                "postgres",
+                "localhost:5433",
+                "testdb",
+                id="postgres-jdbc-url",
+            ),
+            pytest.param(
+                {"host": "jdbc:sqlserver://localhost;databaseName=testdb", "schema": None},
+                "mssql",
+                "localhost:1433",
+                "testdb",
+                id="sqlserver-jdbc-url",
+            ),
+            pytest.param(
+                {"host": "jdbc:oracle:thin:@localhost:1522:xe", "schema": None},
+                "oracle",
+                "localhost:1522",
+                "xe",
+                id="oracle-jdbc-url",
+            ),
+            pytest.param(
+                {
+                    "host": "jdbc:mysql://localhost/test",
+                    "schema": "override_schema",
+                    "conn_params": {"extra": json.dumps({"sqlalchemy_scheme": "postgresql"})},
+                },
+                "postgres",
+                "localhost:3306",
+                "override_schema",
+                id="sqlalchemy-scheme-precedence",
+            ),
+        ],
+    )
+    def test_get_openlineage_database_info(
+        self, params, expected_dialect, expected_authority, expected_database
+    ):
+        valid_keys = {"host", "login", "password", "schema", "conn_params"}
+        hook_params = {key: params[key] for key in valid_keys & params.keys()}
+
+        jdbc_hook = get_hook(**hook_params)
+        database_info = jdbc_hook.get_openlineage_database_info(jdbc_hook.connection)
+
+        assert jdbc_hook.get_openlineage_database_dialect(jdbc_hook.connection) == expected_dialect
+        assert database_info.scheme == expected_dialect
+        assert database_info.authority == expected_authority
+        assert database_info.database == expected_database
+
+    def test_get_openlineage_database_info_mysql_metadata(self):
+        jdbc_hook = get_hook(host="jdbc:mysql://localhost/test")
+
+        database_info = jdbc_hook.get_openlineage_database_info(jdbc_hook.connection)
+
+        assert database_info.information_schema_columns == [
+            "table_schema",
+            "table_name",
+            "column_name",
+            "ordinal_position",
+            "column_type",
+        ]
+
+    def test_get_openlineage_default_schema(self):
+        assert get_hook().get_openlineage_default_schema() is None
