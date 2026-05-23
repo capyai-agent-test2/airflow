@@ -1128,7 +1128,6 @@ Oozie
 OpenAI
 openai
 openapi
-openfaas
 OpenID
 openlineage
 OpenSearch

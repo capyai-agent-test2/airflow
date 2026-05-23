@@ -105,7 +105,6 @@ services:
       - ../../../providers/neo4j/tests:/opt/airflow/providers/neo4j/tests
       - ../../../providers/odbc/tests:/opt/airflow/providers/odbc/tests
       - ../../../providers/openai/tests:/opt/airflow/providers/openai/tests
-      - ../../../providers/openfaas/tests:/opt/airflow/providers/openfaas/tests
       - ../../../providers/openlineage/tests:/opt/airflow/providers/openlineage/tests
       - ../../../providers/opensearch/tests:/opt/airflow/providers/opensearch/tests
       - ../../../providers/opsgenie/tests:/opt/airflow/providers/opsgenie/tests

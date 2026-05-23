@@ -370,7 +370,6 @@ providers/microsoft/psrp/src/airflow/providers/microsoft/psrp/operators/psrp.py:
 providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/hooks/winrm.py::5
 providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/operators/winrm.py::7
 providers/neo4j/src/airflow/providers/neo4j/sensors/neo4j.py::5
-providers/openfaas/src/airflow/providers/openfaas/hooks/openfaas.py::4
 providers/opensearch/src/airflow/providers/opensearch/hooks/opensearch.py::1
 providers/opensearch/src/airflow/providers/opensearch/log/os_task_handler.py::1
 providers/opensearch/src/airflow/providers/opensearch/operators/opensearch.py::9

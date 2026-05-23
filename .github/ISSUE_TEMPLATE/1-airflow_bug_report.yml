@@ -177,7 +177,6 @@ body:
         - neo4j
         - odbc
         - openai
-        - openfaas
         - openlineage
         - opensearch
         - opsgenie
