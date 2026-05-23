@@ -242,6 +242,22 @@ class TestCloudRemoteLogIO:
                 '{"foo": "bar", "event": "Hi", "level": "info", "timestamp": "2025-03-27T21:58:01.002000+00:00"}\n'
             ]
 
+    def test_get_active_handler_recreates_handler_after_shutdown(self):
+        first_handler = mock.MagicMock(shutting_down=False)
+        second_handler = mock.MagicMock(shutting_down=False)
+        self.subject.__dict__["handler"] = first_handler
+
+        with mock.patch.object(
+            type(self.subject), "handler", new_callable=mock.PropertyMock, return_value=second_handler
+        ) as handler_prop:
+            assert self.subject.get_active_handler() is first_handler
+            assert self.subject.__dict__["handler"] is first_handler
+
+            first_handler.shutting_down = True
+
+            assert self.subject.get_active_handler() is second_handler
+            assert handler_prop.call_count == 1
+
 
 @pytest.mark.db_test
 class TestCloudwatchTaskHandler:
