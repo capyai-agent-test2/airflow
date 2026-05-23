@@ -34,6 +34,7 @@ import { useParamStore } from "src/queries/useParamStore";
 
 import StandardFields from "./ConnectionStandardFields";
 import type { ConnectionBody } from "./Connections";
+import { mergeConnectionExtraWithWidgetValues } from "./connectionFormExtra";
 
 type AddConnectionFormProps = {
   readonly error: unknown;
@@ -57,7 +58,7 @@ const ConnectionForm = ({
     isPending: isMetaPending,
     keysList: connectionTypes,
   } = useConnectionTypeMeta();
-  const { conf: extra, setConf } = useParamStore();
+  const { conf: extra, paramsDict, setConf } = useParamStore();
   const {
     control,
     formState: { isDirty, isValid },
@@ -96,7 +97,7 @@ const ConnectionForm = ({
   }, [extra, setValue]);
 
   const onSubmit = (data: ConnectionBody) => {
-    mutateConnection(data);
+    mutateConnection({ ...data, extra: mergeConnectionExtraWithWidgetValues(data.extra, paramsDict) });
   };
 
   // Check if extra fields have changed by comparing with initial connection
