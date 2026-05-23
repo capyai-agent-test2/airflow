@@ -71,6 +71,16 @@ The configuration can be provided in an environment variable.
     AIRFLOW_CONN_APPRISE_DEFAULT='{"extra": {"config": {"path": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX", "tags": "alert"}}}'
 
 
+Persistent Storage
+''''''''''''''''''
+
+Apprise notifications use persistent storage by default so providers such as Matrix can cache
+authentication data between sends. By default, the cache is stored in ``/tmp/apprise_cache``.
+
+Set ``APPRISE_STORAGE_PATH`` to point at a different writable directory when you want the cache on
+a persistent volume or another filesystem location.
+
+
 .. seealso::
   - `Apprise URL Basics <https://github.com/caronc/apprise/wiki/URLBasics#apprise-url-basics>`_
   - `Tagging <https://github.com/caronc/apprise/wiki/Development_API#tagging>`_

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest import mock
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -83,6 +84,31 @@ class TestAppriseHook:
             ]
         )
 
+    def test_get_storage_path_uses_default_temp_dir(self, monkeypatch):
+        monkeypatch.delenv("APPRISE_STORAGE_PATH", raising=False)
+
+        hook = AppriseHook()
+
+        assert hook.get_storage_path().endswith("/apprise_cache")
+
+    def test_build_apprise_obj_enables_persistent_storage(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("APPRISE_STORAGE_PATH", str(tmp_path))
+        asset = object()
+        apprise_obj = apprise.Apprise()
+        with (
+            patch.object(apprise, "AppriseAsset", return_value=asset) as mock_asset,
+            patch.object(apprise, "Apprise", return_value=apprise_obj) as mock_apprise,
+        ):
+            hook = AppriseHook()
+            result = hook.build_apprise_obj()
+
+        assert result is apprise_obj
+        assert Path(tmp_path).is_dir()
+        mock_asset.assert_called_once_with(
+            storage_path=str(tmp_path), storage_mode=apprise.PersistentStoreMode.AUTO
+        )
+        mock_apprise.assert_called_once_with(asset=asset)
+
     @mock.patch(
         "airflow.providers.apprise.hooks.apprise.AppriseHook.get_connection",
     )
@@ -99,7 +125,7 @@ class TestAppriseHook:
         apprise_obj = apprise.Apprise()
         apprise_obj.notify = MagicMock()
         apprise_obj.add = MagicMock()
-        with patch.object(apprise, "Apprise", return_value=apprise_obj):
+        with patch.object(AppriseHook, "build_apprise_obj", return_value=apprise_obj):
             hook = AppriseHook()
             hook.notify(body="test")
 
@@ -130,7 +156,7 @@ class TestAppriseHook:
         apprise_obj = apprise.Apprise()
         apprise_obj.async_notify = AsyncMock()
         apprise_obj.add = MagicMock()
-        with patch.object(apprise, "Apprise", return_value=apprise_obj):
+        with patch.object(AppriseHook, "build_apprise_obj", return_value=apprise_obj):
             hook = AppriseHook()
             await hook.async_notify(body="test")
 

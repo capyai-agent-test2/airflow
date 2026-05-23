@@ -18,7 +18,10 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterable
+from pathlib import Path
+from tempfile import gettempdir
 from typing import TYPE_CHECKING, Any
 
 import apprise
@@ -52,6 +55,19 @@ class AppriseHook(BaseHook):
     def __init__(self, apprise_conn_id: str = default_conn_name) -> None:
         super().__init__()
         self.apprise_conn_id = apprise_conn_id
+
+    def get_storage_path(self) -> str:
+        """Get the persistent storage path for Apprise."""
+        return os.getenv("APPRISE_STORAGE_PATH", str(Path(gettempdir()) / "apprise_cache"))
+
+    def build_apprise_obj(self) -> apprise.Apprise:
+        """Build an Apprise client with persistent storage enabled."""
+        storage_path = Path(self.get_storage_path())
+        storage_path.mkdir(parents=True, exist_ok=True)
+        asset = apprise.AppriseAsset(
+            storage_path=str(storage_path), storage_mode=apprise.PersistentStoreMode.AUTO
+        )
+        return apprise.Apprise(asset=asset)
 
     def get_config_from_conn(self, conn: Connection):
         config = conn.extra_dejson["config"]
@@ -99,7 +115,7 @@ class AppriseHook(BaseHook):
         """
         title = title or ""
 
-        apprise_obj = apprise.Apprise()
+        apprise_obj = self.build_apprise_obj()
         if config:
             apprise_obj.add(config)
         else:
@@ -143,7 +159,7 @@ class AppriseHook(BaseHook):
         """
         title = title or ""
 
-        apprise_obj = apprise.Apprise()
+        apprise_obj = self.build_apprise_obj()
         if config:
             apprise_obj.add(config)
         else:
