@@ -5,6 +5,12 @@
     "noDagRuns": "There is no DagRun for this dag yet.",
     "noFavoriteDags": "No favorites yet. Click the star icon next to a Dag in the list to add it to your favorites."
   },
+  "deadlines": {
+    "noMissed": "No deadlines were missed in the last 24 hours.",
+    "noUpcoming": "No upcoming deadlines.",
+    "recentlyMissed": "Recently Missed Deadlines",
+    "upcoming": "Upcoming Deadlines"
+  },
   "group": "Group",
   "health": {
     "dagProcessor": "Dag Processor",
