@@ -267,6 +267,13 @@ ARG_DAG_ID = Arg(
     type=str,
     help="The Dag ID of the Dag to pause or unpause",
 )
+ARG_DAG_ID_OPTION = Arg(
+    flags=("--dag-id",),
+    type=str,
+    required=True,
+    dest="dag_id",
+    help="The Dag ID of the Dag.",
+)
 
 ARG_ACTION_ON_EXISTING_KEY = Arg(
     flags=("-a", "--action-on-existing-key"),
@@ -959,6 +966,15 @@ CONNECTION_COMMANDS = (
 )
 
 DAG_COMMANDS = (
+    ActionCommand(
+        name="next-execution",
+        help="Show the next scheduled execution for a Dag",
+        func=lazy_load_command("airflowctl.ctl.commands.dag_command.next_execution"),
+        args=(
+            ARG_DAG_ID_OPTION,
+            ARG_OUTPUT,
+        ),
+    ),
     ActionCommand(
         name="pause",
         help="Pause a Dag",

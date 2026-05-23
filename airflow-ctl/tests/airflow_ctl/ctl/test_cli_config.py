@@ -471,6 +471,14 @@ class TestCliConfigMethods:
 
         assert ctx.value.code == 1
 
+    def test_parser_accepts_dag_next_execution_command(self):
+        from airflowctl.ctl.cli_parser import get_parser
+
+        parsed_args = get_parser().parse_args(["dags", "next-execution", "--dag-id", "example"])
+
+        assert parsed_args.dag_id == "example"
+        assert parsed_args.output == "json"
+
     def test_add_to_parser_drops_type_for_boolean_optional_action(self):
         """Test add_to_parser removes type for BooleanOptionalAction."""
         parser = argparse.ArgumentParser()

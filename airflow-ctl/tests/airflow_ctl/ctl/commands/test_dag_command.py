@@ -90,6 +90,36 @@ class TestDagCommands:
         is_stale=False,
     )
 
+    dag_response_without_next_run = DAGResponse(
+        dag_id=dag_id,
+        dag_display_name=dag_display_name,
+        is_paused=False,
+        last_parsed_time=datetime.datetime(2024, 12, 31, 23, 59, 59),
+        last_expired=datetime.datetime(2025, 1, 1, 0, 0, 0),
+        fileloc="fileloc",
+        relative_fileloc="relative_fileloc",
+        description="description",
+        timetable_summary="timetable_summary",
+        timetable_description="timetable_description",
+        timetable_partitioned=False,
+        timetable_periodic=True,
+        tags=[],
+        max_active_tasks=1,
+        max_active_runs=1,
+        max_consecutive_failed_dag_runs=1,
+        has_task_concurrency_limits=True,
+        has_import_errors=True,
+        next_dagrun_logical_date=None,
+        next_dagrun_data_interval_start=None,
+        next_dagrun_data_interval_end=None,
+        next_dagrun_run_after=None,
+        owners=["apache-airflow"],
+        is_backfillable=True,
+        file_token="file_token",
+        bundle_name="bundle_name",
+        is_stale=False,
+    )
+
     def test_pause_dag(self, api_client_maker, monkeypatch):
         api_client = api_client_maker(
             path=f"/api/v2/dags/{self.dag_id}",
@@ -143,3 +173,40 @@ class TestDagCommands:
                 self.parser.parse_args(["dags", "unpause", self.dag_id]),
                 api_client=api_client,
             )
+
+    def test_next_execution(self, api_client_maker):
+        api_client = api_client_maker(
+            path=f"/api/v2/dags/{self.dag_id}",
+            response_json=self.dag_response_paused.model_dump(mode="json"),
+            expected_http_status_code=200,
+            kind=ClientKind.CLI,
+        )
+
+        next_execution = dag_command.next_execution(
+            self.parser.parse_args(["dags", "next-execution", "--dag-id", self.dag_id]),
+            api_client=api_client,
+        )
+
+        assert next_execution == {
+            "next_dagrun_logical_date": datetime.datetime(2025, 1, 1, 0, 0, 0),
+            "next_dagrun_data_interval_start": datetime.datetime(2025, 1, 1, 0, 0, 0),
+            "next_dagrun_data_interval_end": datetime.datetime(2025, 1, 1, 0, 0, 0),
+            "next_dagrun_run_after": datetime.datetime(2025, 1, 1, 0, 0, 0),
+        }
+
+    def test_next_execution_without_upcoming_run(self, api_client_maker, capsys):
+        api_client = api_client_maker(
+            path=f"/api/v2/dags/{self.dag_id}",
+            response_json=self.dag_response_without_next_run.model_dump(mode="json"),
+            expected_http_status_code=200,
+            kind=ClientKind.CLI,
+        )
+
+        next_execution = dag_command.next_execution(
+            self.parser.parse_args(["dags", "next-execution", "--dag-id", self.dag_id]),
+            api_client=api_client,
+        )
+
+        captured = capsys.readouterr()
+        assert next_execution is None
+        assert "No upcoming run is scheduled for Dag test_dag" in captured.out
