@@ -576,8 +576,8 @@ def test_execute_merges_existing_query_tags_into_session_configuration():
             DEFAULT_CONN_ID,
             http_path=None,
             session_configuration={
-                "query_tags": "airflow_dag_id:example_dag,airflow_task_id:custom_task,"
-                r"airflow_run_id:manual__2026-05-23,team:eng\,data"
+                "query_tags": r"team:eng\,data,airflow_dag_id:example_dag,"
+                "airflow_task_id:databricks-sql-operator,airflow_run_id:manual__2026-05-23"
             },
             sql_endpoint_name=None,
             http_headers=None,
@@ -585,3 +585,45 @@ def test_execute_merges_existing_query_tags_into_session_configuration():
             schema=None,
             caller="DatabricksCopyIntoOperator",
         )
+
+
+def test_execute_rebuilds_cached_hook_with_latest_query_tags():
+    created_hooks = []
+
+    class HookStub:
+        def __init__(self, conn_id, **kwargs):
+            self.conn_id = conn_id
+            self.session_config = kwargs["session_configuration"]
+            created_hooks.append(self)
+
+        def run(self, *args, **kwargs):
+            return []
+
+    with mock.patch("airflow.providers.databricks.operators.databricks_sql.DatabricksSqlHook", HookStub):
+        op = DatabricksCopyIntoOperator(
+            file_location=COPY_FILE_LOCATION,
+            file_format="JSON",
+            table_name="test",
+            task_id=TASK_ID,
+        )
+        first_task_instance = SimpleNamespace(dag_id="example_dag", task_id=TASK_ID, run_id="manual__first")
+        second_task_instance = SimpleNamespace(dag_id="example_dag", task_id=TASK_ID, run_id="manual__second")
+
+        first_hook = op._hook
+
+        op.execute({"ti": first_task_instance})
+        second_hook = op._hook
+        op.execute({"ti": second_task_instance})
+        third_hook = op._hook
+
+        assert len(created_hooks) == 3
+        assert first_hook is not second_hook
+        assert second_hook is not third_hook
+        assert second_hook.session_config == {
+            "query_tags": "airflow_dag_id:example_dag,airflow_task_id:databricks-sql-operator,"
+            "airflow_run_id:manual__first"
+        }
+        assert third_hook.session_config == {
+            "query_tags": "airflow_dag_id:example_dag,airflow_task_id:databricks-sql-operator,"
+            "airflow_run_id:manual__second"
+        }

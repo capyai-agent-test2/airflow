@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _DISALLOWED_SQL_TOKENS = (";", "--", "/*", "*/")
 _QUERY_TAGS_SESSION_CONFIG_KEY = "query_tags"
+_AIRFLOW_QUERY_TAG_KEYS = frozenset({"airflow_dag_id", "airflow_task_id", "airflow_run_id"})
 
 
 def _escape_query_tag_component(value: str) -> str:
@@ -135,13 +136,25 @@ def _get_session_configuration_with_airflow_query_tags(
 
     merged_session_configuration = dict(session_configuration or {})
     configured_query_tags = merged_session_configuration.get(_QUERY_TAGS_SESSION_CONFIG_KEY)
-    merged_query_tags = airflow_query_tags.copy()
+    merged_query_tags: dict[str, str | None] = {}
 
     if isinstance(configured_query_tags, str) and configured_query_tags:
-        merged_query_tags.update(_deserialize_query_tags(configured_query_tags))
+        merged_query_tags.update(
+            {
+                key: value
+                for key, value in _deserialize_query_tags(configured_query_tags).items()
+                if key not in _AIRFLOW_QUERY_TAG_KEYS
+            }
+        )
+
+    merged_query_tags.update(airflow_query_tags)
 
     merged_session_configuration[_QUERY_TAGS_SESSION_CONFIG_KEY] = _serialize_query_tags(merged_query_tags)
     return merged_session_configuration
+
+
+def _clear_cached_hook(operator: BaseOperator) -> None:
+    operator.__dict__.pop("_hook", None)
 
 
 class DatabricksSqlOperator(SQLExecuteQueryOperator):
@@ -255,6 +268,7 @@ class DatabricksSqlOperator(SQLExecuteQueryOperator):
         self.session_configuration = _get_session_configuration_with_airflow_query_tags(
             self.session_configuration, self, context
         )
+        _clear_cached_hook(self)
         return super().execute(context)
 
     def _should_run_output_processing(self) -> bool:
@@ -622,6 +636,7 @@ FILEFORMAT = {self._file_format}
         self.session_config = _get_session_configuration_with_airflow_query_tags(
             self.session_config, self, context
         )
+        _clear_cached_hook(self)
         self._sql = self._create_sql_query()
         self.log.info("Executing: %s", self._sql)
         hook = self._get_hook()
