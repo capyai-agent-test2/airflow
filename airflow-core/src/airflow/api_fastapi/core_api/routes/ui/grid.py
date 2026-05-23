@@ -32,10 +32,14 @@ from airflow.api_fastapi.common.dagbag import DagBagDep
 from airflow.api_fastapi.common.db.common import SessionDep, paginated_select
 from airflow.api_fastapi.common.db.dag_runs import attach_dag_versions_to_runs
 from airflow.api_fastapi.common.parameters import (
+    FilterOptionEnum,
+    FilterParam,
+    QueryConsumingAssetPatternSearch,
     QueryDagRunRunTypesFilter,
     QueryDagRunStateFilter,
     QueryDagRunTriggeringUserPrefixSearch,
     QueryDagRunTriggeringUserSearch,
+    QueryDagRunVersionFilter,
     QueryIncludeDownstream,
     QueryIncludeUpstream,
     QueryLimit,
@@ -43,6 +47,8 @@ from airflow.api_fastapi.common.parameters import (
     RangeFilter,
     SortParam,
     datetime_range_filter_factory,
+    filter_param_factory,
+    float_range_filter_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.ui.common import (
@@ -278,10 +284,24 @@ def get_grid_runs(
         ),
     ],
     run_after: Annotated[RangeFilter, Depends(datetime_range_filter_factory("run_after", DagRun))],
+    logical_date: Annotated[RangeFilter, Depends(datetime_range_filter_factory("logical_date", DagRun))],
+    start_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("start_date", DagRun))],
+    end_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("end_date", DagRun))],
+    duration_range: Annotated[RangeFilter, Depends(float_range_filter_factory("duration", DagRun))],
+    conf_contains: Annotated[
+        FilterParam[str],
+        Depends(filter_param_factory(DagRun.conf, str, FilterOptionEnum.CONTAINS, "conf_contains")),
+    ],
     run_type: QueryDagRunRunTypesFilter,
     state: QueryDagRunStateFilter,
+    dag_version: QueryDagRunVersionFilter,
+    bundle_version: Annotated[
+        FilterParam[str | None],
+        Depends(filter_param_factory(DagRun.bundle_version, str | None, filter_name="bundle_version")),
+    ],
     triggering_user: QueryDagRunTriggeringUserSearch,
     triggering_user_prefix: QueryDagRunTriggeringUserPrefixSearch,
+    consuming_asset_pattern: QueryConsumingAssetPatternSearch,
 ) -> list[GridRunsResponse]:
     """Get info about a run for the grid."""
     # Retrieve, sort the previous Dag Runs
@@ -311,6 +331,9 @@ def get_grid_runs(
         )
     )
 
+    if dag_version.value:
+        base_query = base_query.join(DagVersion, DagRun.created_dag_version_id == DagVersion.id)
+
     # This comparison is to fall back to Dag timetable when no order_by is provided
     if order_by.value == [order_by.get_primary_key_string()]:
         latest_serdag = _get_latest_serdag(dag_id, session)
@@ -324,7 +347,21 @@ def get_grid_runs(
         statement=base_query,
         order_by=order_by,
         offset=offset,
-        filters=[run_after, run_type, state, triggering_user, triggering_user_prefix],
+        filters=[
+            run_after,
+            logical_date,
+            start_date_range,
+            end_date_range,
+            duration_range,
+            conf_contains,
+            run_type,
+            state,
+            dag_version,
+            bundle_version,
+            triggering_user,
+            triggering_user_prefix,
+            consuming_asset_pattern,
+        ],
         limit=limit,
         return_total_entries=False,
     )

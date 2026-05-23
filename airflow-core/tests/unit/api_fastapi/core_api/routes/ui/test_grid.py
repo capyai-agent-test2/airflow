@@ -700,6 +700,24 @@ class TestGetGridDataEndpoint:
         assert response.status_code == 200
         assert _strip_dag_version_ids(response.json()) == [GRID_RUN_2]
 
+    def test_get_grid_runs_filter_by_logical_date_range(self, session, test_client):
+        session.commit()
+        response = test_client.get(
+            f"/grid/runs/{DAG_ID}?logical_date_gte=2024-12-01T00:00:00Z&logical_date_lte=2024-12-01T23:59:59Z"
+        )
+        assert response.status_code == 200
+        assert _strip_dag_version_ids(response.json()) == [GRID_RUN_2]
+
+    def test_get_grid_runs_filter_by_dag_version(self, session, test_client):
+        session.commit()
+        response = test_client.get(f"/grid/runs/{DAG_ID}?dag_version=1")
+        assert response.status_code == 200
+        assert _strip_dag_version_ids(response.json()) == [GRID_RUN_1, GRID_RUN_2]
+
+        response = test_client.get(f"/grid/runs/{DAG_ID}?dag_version=999")
+        assert response.status_code == 200
+        assert response.json() == []
+
     @pytest.mark.parametrize(
         ("endpoint", "state", "expected"),
         [

@@ -1978,9 +1978,25 @@ export const useGridServiceGetDagStructureSuspense = <TData = Common.GridService
 * @returns GridRunsResponse Successful Response
 * @throws ApiError
 */
-export const useGridServiceGetGridRunsSuspense = <TData = Common.GridServiceGetGridRunsDefaultResponse, TError = unknown, TQueryKey extends Array<unknown> = unknown[]>({ dagId, limit, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, state, triggeringUser, triggeringUserPrefix }: {
+export const useGridServiceGetGridRunsSuspense = <TData = Common.GridServiceGetGridRunsDefaultResponse, TError = unknown, TQueryKey extends Array<unknown> = unknown[]>({ bundleVersion, confContains, consumingAssetPattern, dagId, dagVersion, durationGt, durationGte, durationLt, durationLte, endDateGt, endDateGte, endDateLt, endDateLte, limit, logicalDateGt, logicalDateGte, logicalDateLt, logicalDateLte, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, startDateGt, startDateGte, startDateLt, startDateLte, state, triggeringUser, triggeringUserPrefix }: {
+  bundleVersion?: string;
+  confContains?: string;
+  consumingAssetPattern?: string;
   dagId: string;
+  dagVersion?: number[];
+  durationGt?: number;
+  durationGte?: number;
+  durationLt?: number;
+  durationLte?: number;
+  endDateGt?: string;
+  endDateGte?: string;
+  endDateLt?: string;
+  endDateLte?: string;
   limit?: number;
+  logicalDateGt?: string;
+  logicalDateGte?: string;
+  logicalDateLt?: string;
+  logicalDateLte?: string;
   offset?: number;
   orderBy?: string[];
   runAfterGt?: string;
@@ -1988,10 +2004,14 @@ export const useGridServiceGetGridRunsSuspense = <TData = Common.GridServiceGetG
   runAfterLt?: string;
   runAfterLte?: string;
   runType?: string[];
+  startDateGt?: string;
+  startDateGte?: string;
+  startDateLt?: string;
+  startDateLte?: string;
   state?: string[];
   triggeringUser?: string;
   triggeringUserPrefix?: string;
-}, queryKey?: TQueryKey, options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">) => useSuspenseQuery<TData, TError>({ queryKey: Common.UseGridServiceGetGridRunsKeyFn({ dagId, limit, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, state, triggeringUser, triggeringUserPrefix }, queryKey), queryFn: () => GridService.getGridRuns({ dagId, limit, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, state, triggeringUser, triggeringUserPrefix }) as TData, ...options });
+}, queryKey?: TQueryKey, options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">) => useSuspenseQuery<TData, TError>({ queryKey: Common.UseGridServiceGetGridRunsKeyFn({ bundleVersion, confContains, consumingAssetPattern, dagId, dagVersion, durationGt, durationGte, durationLt, durationLte, endDateGt, endDateGte, endDateLt, endDateLte, limit, logicalDateGt, logicalDateGte, logicalDateLt, logicalDateLte, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, startDateGt, startDateGte, startDateLt, startDateLte, state, triggeringUser, triggeringUserPrefix }, queryKey), queryFn: () => GridService.getGridRuns({ bundleVersion, confContains, consumingAssetPattern, dagId, dagVersion, durationGt, durationGte, durationLt, durationLte, endDateGt, endDateGte, endDateLt, endDateLte, limit, logicalDateGt, logicalDateGte, logicalDateLt, logicalDateLte, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, startDateGt, startDateGte, startDateLt, startDateLte, state, triggeringUser, triggeringUserPrefix }) as TData, ...options });
 /**
 * Get Grid Ti Summaries Stream
 * Stream TI summaries for multiple Dag runs as NDJSON (one JSON line per run).

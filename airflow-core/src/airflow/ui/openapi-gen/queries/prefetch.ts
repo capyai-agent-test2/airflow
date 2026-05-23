@@ -1978,9 +1978,25 @@ export const prefetchUseGridServiceGetDagStructure = (queryClient: QueryClient, 
 * @returns GridRunsResponse Successful Response
 * @throws ApiError
 */
-export const prefetchUseGridServiceGetGridRuns = (queryClient: QueryClient, { dagId, limit, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, state, triggeringUser, triggeringUserPrefix }: {
+export const prefetchUseGridServiceGetGridRuns = (queryClient: QueryClient, { bundleVersion, confContains, consumingAssetPattern, dagId, dagVersion, durationGt, durationGte, durationLt, durationLte, endDateGt, endDateGte, endDateLt, endDateLte, limit, logicalDateGt, logicalDateGte, logicalDateLt, logicalDateLte, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, startDateGt, startDateGte, startDateLt, startDateLte, state, triggeringUser, triggeringUserPrefix }: {
+  bundleVersion?: string;
+  confContains?: string;
+  consumingAssetPattern?: string;
   dagId: string;
+  dagVersion?: number[];
+  durationGt?: number;
+  durationGte?: number;
+  durationLt?: number;
+  durationLte?: number;
+  endDateGt?: string;
+  endDateGte?: string;
+  endDateLt?: string;
+  endDateLte?: string;
   limit?: number;
+  logicalDateGt?: string;
+  logicalDateGte?: string;
+  logicalDateLt?: string;
+  logicalDateLte?: string;
   offset?: number;
   orderBy?: string[];
   runAfterGt?: string;
@@ -1988,10 +2004,14 @@ export const prefetchUseGridServiceGetGridRuns = (queryClient: QueryClient, { da
   runAfterLt?: string;
   runAfterLte?: string;
   runType?: string[];
+  startDateGt?: string;
+  startDateGte?: string;
+  startDateLt?: string;
+  startDateLte?: string;
   state?: string[];
   triggeringUser?: string;
   triggeringUserPrefix?: string;
-}) => queryClient.prefetchQuery({ queryKey: Common.UseGridServiceGetGridRunsKeyFn({ dagId, limit, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, state, triggeringUser, triggeringUserPrefix }), queryFn: () => GridService.getGridRuns({ dagId, limit, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, state, triggeringUser, triggeringUserPrefix }) });
+}) => queryClient.prefetchQuery({ queryKey: Common.UseGridServiceGetGridRunsKeyFn({ bundleVersion, confContains, consumingAssetPattern, dagId, dagVersion, durationGt, durationGte, durationLt, durationLte, endDateGt, endDateGte, endDateLt, endDateLte, limit, logicalDateGt, logicalDateGte, logicalDateLt, logicalDateLte, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, startDateGt, startDateGte, startDateLt, startDateLte, state, triggeringUser, triggeringUserPrefix }), queryFn: () => GridService.getGridRuns({ bundleVersion, confContains, consumingAssetPattern, dagId, dagVersion, durationGt, durationGte, durationLt, durationLte, endDateGt, endDateGte, endDateLt, endDateLte, limit, logicalDateGt, logicalDateGte, logicalDateLt, logicalDateLte, offset, orderBy, runAfterGt, runAfterGte, runAfterLt, runAfterLte, runType, startDateGt, startDateGte, startDateLt, startDateLte, state, triggeringUser, triggeringUserPrefix }) });
 /**
 * Get Grid Ti Summaries Stream
 * Stream TI summaries for multiple Dag runs as NDJSON (one JSON line per run).
