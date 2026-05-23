@@ -252,8 +252,8 @@ class GatewayKernelEngine(NBClientEngine):
         with configured_gateway_client(
             url=gateway_url,
             ws_url=gateway_ws_url,
-            auth_token=kwargs.get("gateway_auth_token", ""),
-            auth_scheme=kwargs.get("gateway_auth_scheme", "token"),
+            auth_token=kwargs.get("gateway_auth_token") or "",
+            auth_scheme=kwargs.get("gateway_auth_scheme") or "token",
             validate_cert=kwargs.get("gateway_validate_cert", True),
         ):
             return PapermillNotebookClient(nb_man, **final_kwargs).execute(kernel_name=kernel_name)
