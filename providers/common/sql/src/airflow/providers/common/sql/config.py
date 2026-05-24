@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass(frozen=True)
@@ -74,6 +74,7 @@ class DataSourceConfig:
         for any file-based datasource, or ``catalog_table_name`` for Iceberg.
     """
 
+    template_fields: ClassVar[tuple[str, ...]] = ("conn_id",)
     conn_id: str
     table_name: str
     uri: str = ""
