@@ -58,6 +58,7 @@ JOB.name = JOB_NAME
 
 SERVICE = Service()
 SERVICE.name = SERVICE_NAME
+LOG_URI = "https://console.cloud.google.com/run/jobs/logs?project=test-project"
 
 
 def _assert_common_template_fields(template_fields):
@@ -154,6 +155,22 @@ class TestCloudRunExecuteJobOperator:
             overrides=None,
             use_regional_endpoint=False,
         )
+
+    @mock.patch(
+        "airflow.providers.google.cloud.operators.cloud_run.CloudRunExecuteJobOperator._log_job_logs_uri"
+    )
+    @mock.patch(CLOUD_RUN_HOOK_PATH)
+    def test_execute_logs_cloud_run_job_logs_uri(self, hook_mock, log_job_logs_uri_mock):
+        hook_mock.return_value.get_job.return_value = JOB
+        hook_mock.return_value.execute_job.return_value = self._mock_operation(3, 3, 0, log_uri=LOG_URI)
+
+        operator = CloudRunExecuteJobOperator(
+            task_id=TASK_ID, project_id=PROJECT_ID, region=REGION, job_name=JOB_NAME
+        )
+
+        operator.execute(context=mock.MagicMock())
+
+        log_job_logs_uri_mock.assert_called_once_with(log_uri=LOG_URI)
 
     @mock.patch(CLOUD_RUN_HOOK_PATH)
     def test_execute_fail_one_failed_task(self, hook_mock):
@@ -375,9 +392,10 @@ class TestCloudRunExecuteJobOperator:
         with pytest.raises(AirflowException):
             operator.execute(context=mock.MagicMock())
 
-    def _mock_operation(self, task_count, succeeded_count, failed_count):
+    def _mock_operation(self, task_count, succeeded_count, failed_count, log_uri=None):
         operation = mock.MagicMock()
         operation.result.return_value = self._mock_execution(task_count, succeeded_count, failed_count)
+        operation.metadata.log_uri = log_uri
         return operation
 
     def _mock_execution(self, task_count, succeeded_count, failed_count):
