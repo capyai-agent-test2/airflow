@@ -170,6 +170,13 @@ const runColumns = ({
     header: translate("dagRun.triggeringUser"),
   },
   {
+    accessorKey: "note",
+    cell: ({ row: { original } }) =>
+      original.note === null ? undefined : <TruncatedText text={original.note} />,
+    enableSorting: false,
+    header: translate("note.label"),
+  },
+  {
     accessorKey: "start_date",
     cell: ({ row: { original } }) => <Time datetime={original.start_date} />,
     header: translate("startDate"),
