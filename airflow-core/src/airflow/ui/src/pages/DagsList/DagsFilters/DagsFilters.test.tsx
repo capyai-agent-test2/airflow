@@ -43,6 +43,7 @@ describe("Paused filter with hide_paused_dags_by_default enabled", () => {
     render(<AppWrapper initialEntries={["/dags"]} />);
 
     await waitFor(() => expect(screen.getByTestId("owner-filter")).toBeInTheDocument());
+    expect(screen.getByTestId("import-errors-filter")).toBeInTheDocument();
   });
 
   it("defaults to showing only active dags", async () => {

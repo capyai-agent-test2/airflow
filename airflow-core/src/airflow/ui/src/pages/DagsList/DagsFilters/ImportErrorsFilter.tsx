@@ -31,14 +31,16 @@ export const ImportErrorsFilter = ({ onChange, value }: Props) => {
   const { t: translate } = useTranslation("dags");
 
   return (
-    <ButtonGroupToggle<ImportErrorsValue>
-      onChange={onChange}
-      options={[
-        { label: translate("filters.importErrors.all"), value: "all" },
-        { label: translate("filters.importErrors.with"), value: "true" },
-        { label: translate("filters.importErrors.without"), value: "false" },
-      ]}
-      value={value}
-    />
+    <div data-testid="import-errors-filter">
+      <ButtonGroupToggle<ImportErrorsValue>
+        onChange={onChange}
+        options={[
+          { label: translate("filters.importErrors.all"), value: "all" },
+          { label: translate("filters.importErrors.with"), value: "true" },
+          { label: translate("filters.importErrors.without"), value: "false" },
+        ]}
+        value={value}
+      />
+    </div>
   );
 };

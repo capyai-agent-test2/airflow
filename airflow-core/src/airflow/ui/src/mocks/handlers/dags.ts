@@ -128,6 +128,17 @@ const importErrorDag = {
 
 const allDags = [successDag, failedDag, pausedDag, importErrorDag];
 
+const filterByLastDagRunState = (dags: typeof allDags, lastDagRunState: string | null) => {
+  if (lastDagRunState === "success") {
+    return dags.filter((dag) => dag.latest_dag_runs.some((dagRun) => dagRun.state === "success"));
+  }
+  if (lastDagRunState === "failed") {
+    return dags.filter((dag) => dag.latest_dag_runs.some((dagRun) => dagRun.state === "failed"));
+  }
+
+  return dags;
+};
+
 const filterDags = ({
   hasImportErrors,
   owners,
@@ -165,19 +176,7 @@ export const handlers: Array<HttpHandler> = [
     const owners = url.searchParams.getAll("owners");
     const paused = url.searchParams.get("paused");
 
-    if (lastDagRunState === "success") {
-      return HttpResponse.json({
-        dags: [successDag],
-        total_entries: 1,
-      });
-    } else if (lastDagRunState === "failed") {
-      return HttpResponse.json({
-        dags: [failedDag],
-        total_entries: 1,
-      });
-    }
-
-    const dags = filterDags({ hasImportErrors, owners, paused });
+    const dags = filterByLastDagRunState(filterDags({ hasImportErrors, owners, paused }), lastDagRunState);
 
     return HttpResponse.json({
       dags,
@@ -190,19 +189,10 @@ export const handlers: Array<HttpHandler> = [
     const hasImportErrors = url.searchParams.get("has_import_errors");
     const owners = url.searchParams.getAll("owners");
 
-    if (lastDagRunState === "failed") {
-      return HttpResponse.json({
-        dags: [failedDag],
-        total_entries: 1,
-      });
-    } else if (lastDagRunState === "success") {
-      return HttpResponse.json({
-        dags: [successDag],
-        total_entries: 1,
-      });
-    }
-
-    const dags = filterDags({ hasImportErrors, owners, paused: null }).filter((dag) => !dag.is_paused);
+    const dags = filterByLastDagRunState(
+      filterDags({ hasImportErrors, owners, paused: null }).filter((dag) => !dag.is_paused),
+      lastDagRunState,
+    );
 
     return HttpResponse.json({
       dags,

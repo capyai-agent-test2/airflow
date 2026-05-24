@@ -42,6 +42,14 @@ describe("Dag Filters", () => {
     expect(screen.queryByText("tutorial_taskflow_api_success")).not.toBeInTheDocument();
   });
 
+  it("keeps owner filtering distinct from import error filtering", async () => {
+    render(<AppWrapper initialEntries={["/dags?owners=airflow"]} />);
+
+    await waitFor(() => expect(screen.getByText("tutorial_taskflow_api_success")).toBeInTheDocument());
+    expect(screen.getByText("tutorial_taskflow_api_failed")).toBeInTheDocument();
+    expect(screen.queryByText("import_error_dag")).not.toBeInTheDocument();
+  });
+
   it("filters dags with import errors from query params", async () => {
     render(<AppWrapper initialEntries={["/dags?has_import_errors=true"]} />);
 
