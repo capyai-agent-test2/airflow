@@ -19,10 +19,12 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
 
+from airflow.models.dag import DAG
 from airflow.providers.common.sql.config import DataSourceConfig, StorageType
 from airflow.providers.common.sql.operators.analytics import AnalyticsOperator
 
@@ -158,3 +160,29 @@ class TestAnalyticsOperator:
             assert "Results: SELECT * FROM test_csv ORDER BY name" in result
         finally:
             os.unlink(csv_path)
+
+    def test_templated_conn_id_in_datasource_config(self):
+        dag = DAG(
+            "test_analytics_template_fields",
+            schedule=None,
+            start_date=datetime(2024, 10, 10),
+            render_template_as_native_obj=True,
+        )
+        operator = AnalyticsOperator(
+            task_id="test_analytics",
+            dag=dag,
+            datasource_configs=[
+                DataSourceConfig(
+                    conn_id="{{ params.conn_id }}",
+                    table_name="users_data",
+                    uri="s3://bucket/path",
+                    format="parquet",
+                )
+            ],
+            queries=["SELECT * FROM users_data"],
+            engine=MagicMock(),
+        )
+
+        operator.render_template_fields({"params": {"conn_id": "templated_conn_id"}})
+
+        assert operator.datasource_configs[0].conn_id == "templated_conn_id"
