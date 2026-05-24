@@ -61,6 +61,13 @@ schedule = "@daily"
 unrelated_value = 42
 `.trim();
 
+const singleLineWithDagHeaderCode = `
+with DAG(dag_id="example", schedule_interval="@daily") as dag:
+    @task
+    def my_task():
+        return "ok"
+`.trim();
+
 describe("filterCodeBySection", () => {
   it("returns the original source code for the all section", () => {
     expect(filterCodeBySection(sourceCode, "all")).toEqual({ content: sourceCode, matchCount: 0 });
@@ -102,6 +109,13 @@ describe("filterCodeBySection", () => {
   it("stops schedule extraction at the next top-level statement", () => {
     expect(filterCodeBySection(topLevelScheduleCode, "schedule")).toEqual({
       content: 'schedule = "@daily"',
+      matchCount: 1,
+    });
+  });
+
+  it("does not include task bodies for single-line with DAG headers", () => {
+    expect(filterCodeBySection(singleLineWithDagHeaderCode, "schedule")).toEqual({
+      content: 'with DAG(dag_id="example", schedule_interval="@daily") as dag:',
       matchCount: 1,
     });
   });

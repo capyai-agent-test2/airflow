@@ -170,8 +170,9 @@ const extractScheduleBlocks = (code: string) => {
       const nextIndentation = getIndentation(nextLine);
       const isClosingContinuationLine =
         bracketBalance > 0 && (trimmedNextLine.startsWith(")") || trimmedNextLine.startsWith("]") || trimmedNextLine.startsWith("}"));
+      const startsNestedBody = nextIndentation > indentation && bracketBalance <= 0;
 
-      if (nextIndentation < indentation || (nextIndentation === indentation && bracketBalance <= 0)) {
+      if (nextIndentation < indentation || startsNestedBody || (nextIndentation === indentation && bracketBalance <= 0)) {
         if (isClosingContinuationLine) {
           endIndex += 1;
         }
