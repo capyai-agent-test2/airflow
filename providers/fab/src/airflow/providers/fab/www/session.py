@@ -18,12 +18,24 @@ from __future__ import annotations
 
 import msgspec
 from flask import request
-from flask.sessions import SecureCookieSessionInterface
+from flask.sessions import SecureCookieSessionInterface, session_json_serializer
 from flask_babel import LazyString
 from flask_session.sqlalchemy import SqlAlchemySessionInterface
 
 
-class _LazySafeSerializer:
+def _coerce_lazy_strings(value):
+    if isinstance(value, LazyString):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _coerce_lazy_strings(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_coerce_lazy_strings(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_coerce_lazy_strings(item) for item in value)
+    return value
+
+
+class _LazySafeMsgpackSerializer:
     """
     Serializer that handles LazyString and uses msgpack for efficient storage.
 
@@ -31,10 +43,8 @@ class _LazySafeSerializer:
     """
 
     def dumps(self, session_dict):
-        encoder = msgspec.msgpack.Encoder(
-            enc_hook=lambda obj: str(obj) if isinstance(obj, LazyString) else obj
-        )
-        return encoder.encode(dict(session_dict))
+        encoder = msgspec.msgpack.Encoder()
+        return encoder.encode(_coerce_lazy_strings(dict(session_dict)))
 
     def loads(self, data):
         decoder = msgspec.msgpack.Decoder()
@@ -43,6 +53,16 @@ class _LazySafeSerializer:
     # optional old API
     encode = dumps
     decode = loads
+
+
+class _LazySafeSecureCookieSerializer:
+    """Serializer that converts LazyString values before signing session cookies."""
+
+    def dumps(self, session_dict):
+        return session_json_serializer.dumps(_coerce_lazy_strings(session_dict))
+
+    def loads(self, data):
+        return session_json_serializer.loads(data)
 
 
 class SessionExemptMixin:
@@ -60,8 +80,10 @@ class AirflowDatabaseSessionInterface(SessionExemptMixin, SqlAlchemySessionInter
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.serializer = _LazySafeSerializer()
+        self.serializer = _LazySafeMsgpackSerializer()
 
 
 class AirflowSecureCookieSessionInterface(SessionExemptMixin, SecureCookieSessionInterface):
     """Session interface that exempts some routes and stores session data in a signed cookie."""
+
+    serializer = _LazySafeSecureCookieSerializer()
