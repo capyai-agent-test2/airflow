@@ -1872,7 +1872,8 @@ class TestBigQueryInsertJobOperator:
                             "datasetId": "source_dataset",
                             "tableId": "input_table1",
                         }
-                    ]
+                    ],
+                    "queryPlan": [{"recordsWritten": "11", "shuffleOutputBytes": "111"}],
                 }
             },
         }
@@ -1896,7 +1897,8 @@ class TestBigQueryInsertJobOperator:
                             "datasetId": "source_dataset",
                             "tableId": "input_table2",
                         }
-                    ]
+                    ],
+                    "queryPlan": [{"recordsWritten": "22", "shuffleOutputBytes": "222"}],
                 }
             },
         }
@@ -1941,6 +1943,7 @@ class TestBigQueryInsertJobOperator:
         assert [dataset.name for dataset in first_call.kwargs["outputs"]] == [
             f"{TEST_GCP_PROJECT_ID}.target_dataset.output_table1"
         ]
+        assert first_call.kwargs["outputs"][0].facets["outputStatistics"].rowCount == 11
 
         assert second_call.kwargs["query_id"] == "child-job-2"
         assert second_call.kwargs["job_name"] == f"{TEST_DAG_ID}.insert_script_job.query.2"
@@ -1950,6 +1953,7 @@ class TestBigQueryInsertJobOperator:
         assert [dataset.name for dataset in second_call.kwargs["outputs"]] == [
             f"{TEST_GCP_PROJECT_ID}.target_dataset.output_table2"
         ]
+        assert second_call.kwargs["outputs"][0].facets["outputStatistics"].rowCount == 22
 
     @pytest.mark.db_test
     @mock.patch("airflow.providers.google.cloud.operators.bigquery.BigQueryHook")

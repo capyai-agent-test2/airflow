@@ -167,7 +167,14 @@ class _BigQueryInsertJobOperatorOpenLineageMixin:
     def _to_openlineage_dataset(dataset) -> OpenLineageDataset:
         from openlineage.client.event_v2 import Dataset as OpenLineageDataset
 
-        return OpenLineageDataset(namespace=dataset.namespace, name=dataset.name)
+        dataset_facets = {}
+        if getattr(dataset, "facets", None):
+            dataset_facets.update(dataset.facets)
+        if getattr(dataset, "outputFacets", None):
+            dataset_facets.update(dataset.outputFacets)
+        return OpenLineageDataset(
+            namespace=dataset.namespace, name=dataset.name, facets=dataset_facets or None
+        )
 
     def _get_inputs_and_outputs(self, properties: dict) -> tuple[list[InputDataset], list[OutputDataset]]:
         job_type = get_from_nullable_chain(properties, ["configuration", "jobType"])
