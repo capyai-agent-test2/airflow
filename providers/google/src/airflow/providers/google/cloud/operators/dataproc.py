@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import re
 import time
 import warnings
@@ -30,6 +31,7 @@ from enum import Enum
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
+import yaml
 from google.api_core.exceptions import AlreadyExists, NotFound
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
 from google.api_core.retry import Retry, exponential_sleep_generator
@@ -701,6 +703,7 @@ class DataprocCreateClusterOperator(GoogleCloudBaseOperator):
         if deferrable and polling_interval_seconds <= 0:
             raise ValueError("Invalid value for polling_interval_seconds. Expected value greater than 0")
         self.cluster_config = cluster_config
+        self.cluster_config_raw = cluster_config
         self.cluster_name = cluster_name
         self.labels = labels
         self.project_id = project_id
@@ -717,6 +720,16 @@ class DataprocCreateClusterOperator(GoogleCloudBaseOperator):
         self.deferrable = deferrable
         self.polling_interval_seconds = polling_interval_seconds
         self.num_retries_if_resource_is_not_ready = num_retries_if_resource_is_not_ready
+
+    def prepare_template(self) -> None:
+        if not isinstance(self.cluster_config_raw, str):
+            return
+
+        with open(self.cluster_config_raw) as file:
+            if self.cluster_config_raw.endswith((".yaml", ".yml")):
+                self.cluster_config = yaml.safe_load(file.read())
+            if self.cluster_config_raw.endswith(".json"):
+                self.cluster_config = json.loads(file.read())
 
     def _create_cluster(self, hook: DataprocHook):
         return hook.create_cluster(
