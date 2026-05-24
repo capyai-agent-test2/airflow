@@ -59,6 +59,7 @@ from airflow.providers.google.common.consts import GOOGLE_DEFAULT_DEFERRABLE_MET
 PROJECT_ID = os.environ.get("PROJECT_ID", "project-id")
 INSTANCE_NAME = os.environ.get("INSTANCE_NAME", "test-name")
 DB_NAME = os.environ.get("DB_NAME", "db1")
+IMPERSONATION_CHAIN = ["ACCOUNT_1", "ACCOUNT_2", "ACCOUNT_3"]
 
 CREATE_BODY = {
     "name": INSTANCE_NAME,
@@ -848,6 +849,35 @@ class TestCloudSqlQueryValidation:
             operator.execute(None)
         err = ctx.value
         assert "The UNIX socket path length cannot exceed" in str(err)
+
+    @mock.patch(f"{BASEHOOK_PATCH_PATH}.get_connection")
+    @mock.patch("airflow.providers.google.cloud.operators.cloud_sql.CloudSQLDatabaseHook")
+    def test_operator_passes_impersonation_chain_to_database_hook(self, mock_db_hook, get_connection):
+        uri = (
+            "gcpcloudsql://user:password@127.0.0.1:3200/testdb?database_type=postgres&"
+            "project_id=example-project&location=europe-west1&instance=testdb&"
+            "use_proxy=False&use_ssl=False"
+        )
+        self._setup_connections(get_connection, uri)
+        operator = CloudSQLExecuteQueryOperator(
+            sql="SELECT 1",
+            task_id="task_id",
+            impersonation_chain=IMPERSONATION_CHAIN,
+        )
+
+        _ = operator.hook
+
+        mock_db_hook.assert_called_once_with(
+            gcp_cloudsql_conn_id="google_cloud_sql_default",
+            gcp_conn_id="google_cloud_default",
+            impersonation_chain=IMPERSONATION_CHAIN,
+            default_gcp_project_id="empty_project",
+            sql_proxy_binary_path=None,
+            ssl_root_cert=None,
+            ssl_cert=None,
+            ssl_key=None,
+            ssl_secret_id=None,
+        )
 
     @pytest.mark.parametrize(
         ("connection_port", "default_port", "expected_port"),
