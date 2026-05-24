@@ -297,6 +297,7 @@ class TestAirflowKubernetesScheduler:
         # default behaviour
         kube_executor = KubernetesExecutor()
         assert kube_executor.RUNNING_POD_LOG_LINES == 100
+        assert kube_executor.running_pod_log_lines == 100
 
         # monkey-patching for second executor
         kube_executor_2 = KubernetesExecutor()
@@ -305,6 +306,18 @@ class TestAirflowKubernetesScheduler:
         # monkey-patching should not affect the class constant
         assert kube_executor.RUNNING_POD_LOG_LINES == 100
         assert kube_executor_2.RUNNING_POD_LOG_LINES == 200
+
+    def test_running_pod_log_lines_from_conf(self):
+        with conf_vars({("kubernetes_executor", "running_pod_log_lines"): "250"}):
+            kube_executor = KubernetesExecutor()
+
+        assert kube_executor.running_pod_log_lines == 250
+
+    def test_running_pod_log_lines_can_be_disabled(self):
+        with conf_vars({("kubernetes_executor", "running_pod_log_lines"): "0"}):
+            kube_executor = KubernetesExecutor()
+
+        assert kube_executor.running_pod_log_lines is None
 
 
 class TestKubernetesExecutor:
@@ -1694,6 +1707,29 @@ class TestKubernetesExecutor:
             "Attempting to fetch logs from pod  through kube API",
             "Reading from k8s pod logs failed: error_fetching_pod_log",
         ]
+
+    @pytest.mark.db_test
+    @mock.patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
+    def test_get_task_log_without_tail_lines(self, mock_get_kube_client, create_task_instance_of_operator):
+        mock_kube_client = mock_get_kube_client.return_value
+        mock_kube_client.read_namespaced_pod_log.return_value = [b"a_"]
+        mock_pod = mock.Mock()
+        mock_pod.metadata.name = "x"
+        mock_kube_client.list_namespaced_pod.return_value.items = [mock_pod]
+        ti = create_task_instance_of_operator(EmptyOperator, dag_id="test_k8s_log_dag", task_id="test_task")
+
+        with conf_vars({("kubernetes_executor", "running_pod_log_lines"): "0"}):
+            executor = KubernetesExecutor()
+            executor.get_task_log(ti=ti, try_number=1)
+
+        mock_kube_client.read_namespaced_pod_log.assert_called_once_with(
+            name="x",
+            namespace="default",
+            container="base",
+            follow=False,
+            tail_lines=None,
+            _preload_content=False,
+        )
 
     @pytest.mark.skipif(not AIRFLOW_V_3_2_PLUS, reason="Airflow 3.2+ prefers new configuration")
     def test_sentry_integration(self):
