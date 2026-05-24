@@ -666,6 +666,118 @@ class TestGetAssets(TestAssets):
         response_data = response.json()
         assert len(response_data["assets"]) == expected_num
 
+    @provide_session
+    def test_filter_assets_by_group_works(self, test_client, session):
+        revenue_asset = AssetModel(name="revenue", uri="s3://bucket/revenue", group="revenue_reporting")
+        metrics_asset = AssetModel(name="metrics", uri="s3://bucket/metrics", group="customer_metrics")
+
+        self.create_provided_asset(asset=revenue_asset)
+        self.create_provided_asset(asset=metrics_asset)
+
+        response = test_client.get("/assets?group=revenue_reporting")
+
+        assert response.status_code == 200
+        assert [asset["uri"] for asset in response.json()["assets"]] == ["s3://bucket/revenue"]
+
+    @provide_session
+    def test_filter_assets_by_task_ids_works(self, test_client, testing_dag_bundle, session):
+        bundle_name = "testing"
+        producer_match = AssetModel("s3://bucket/match")
+        producer_other = AssetModel("s3://bucket/other")
+        session.add_all(
+            [
+                producer_match,
+                producer_other,
+                AssetActive.for_asset(producer_match),
+                AssetActive.for_asset(producer_other),
+                DagModel(dag_id="dag_match", bundle_name=bundle_name),
+                DagModel(dag_id="dag_other", bundle_name=bundle_name),
+                TaskOutletAssetReference(dag_id="dag_match", task_id="task_match", asset=producer_match),
+                TaskOutletAssetReference(dag_id="dag_other", task_id="task_other", asset=producer_other),
+            ]
+        )
+        session.commit()
+
+        response = test_client.get("/assets?task_ids=task_match")
+
+        assert response.status_code == 200
+        assert [asset["uri"] for asset in response.json()["assets"]] == ["s3://bucket/match"]
+
+    @provide_session
+    def test_filter_assets_by_has_events_works(self, test_client, session):
+        with_events = AssetModel("s3://bucket/with-events")
+        without_events = AssetModel("s3://bucket/without-events")
+        self.create_provided_asset(asset=with_events)
+        self.create_provided_asset(asset=without_events)
+        self.create_provided_asset_event(asset_event=AssetEvent(asset_id=with_events.id))
+
+        with_events_response = test_client.get("/assets?has_events=true")
+        without_events_response = test_client.get("/assets?has_events=false")
+
+        assert with_events_response.status_code == 200
+        assert [asset["uri"] for asset in with_events_response.json()["assets"]] == [
+            "s3://bucket/with-events"
+        ]
+        assert without_events_response.status_code == 200
+        assert [asset["uri"] for asset in without_events_response.json()["assets"]] == [
+            "s3://bucket/without-events"
+        ]
+
+    @provide_session
+    def test_filter_assets_by_last_asset_event_timestamp_range_works(
+        self, test_client, time_freezer, session
+    ):
+        newer_asset = AssetModel("s3://bucket/newer")
+        older_asset = AssetModel("s3://bucket/older")
+        self.create_provided_asset(asset=newer_asset)
+        self.create_provided_asset(asset=older_asset)
+
+        self.create_provided_asset_event(
+            asset_event=AssetEvent(asset_id=older_asset.id, timestamp=DEFAULT_DATE - timedelta(days=2))
+        )
+        self.create_provided_asset_event(
+            asset_event=AssetEvent(asset_id=newer_asset.id, timestamp=DEFAULT_DATE - timedelta(hours=1))
+        )
+
+        response = test_client.get(
+            f"/assets?last_asset_event_timestamp_gte="
+            f"{from_datetime_to_zulu_without_ms(DEFAULT_DATE - timedelta(days=1))}"
+        )
+
+        assert response.status_code == 200
+        assert [asset["uri"] for asset in response.json()["assets"]] == ["s3://bucket/newer"]
+
+    @provide_session
+    def test_order_by_last_asset_event_timestamp_works(self, test_client, time_freezer, session):
+        no_events = AssetModel("s3://bucket/no-events")
+        newer_asset = AssetModel("s3://bucket/newer")
+        older_asset = AssetModel("s3://bucket/older")
+        self.create_provided_asset(asset=no_events)
+        self.create_provided_asset(asset=newer_asset)
+        self.create_provided_asset(asset=older_asset)
+
+        self.create_provided_asset_event(
+            asset_event=AssetEvent(asset_id=older_asset.id, timestamp=DEFAULT_DATE - timedelta(days=2))
+        )
+        self.create_provided_asset_event(
+            asset_event=AssetEvent(asset_id=newer_asset.id, timestamp=DEFAULT_DATE - timedelta(hours=1))
+        )
+
+        response = test_client.get("/assets?order_by=-last_asset_event_timestamp")
+
+        assert response.status_code == 200
+        response_uris = [asset["uri"] for asset in response.json()["assets"]]
+
+        assert set(response_uris) == {
+            "s3://bucket/no-events",
+            "s3://bucket/newer",
+            "s3://bucket/older",
+        }
+        assert [uri for uri in response_uris if uri != "s3://bucket/no-events"] == [
+            "s3://bucket/newer",
+            "s3://bucket/older",
+        ]
+
 
 class TestGetAssetsEndpointPagination(TestAssets):
     @pytest.mark.parametrize(
