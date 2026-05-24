@@ -465,8 +465,6 @@ DevOps
 devtools
 df
 dicts
-Dingding
-dingding
 dir
 DirectRunner
 dirs

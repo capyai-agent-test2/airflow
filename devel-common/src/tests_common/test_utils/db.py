@@ -592,12 +592,6 @@ def create_default_connections_for_tests():
                 host="localhost",
             ),
             Connection(
-                conn_id="dingding_default",
-                conn_type="http",
-                host="",
-                password="",
-            ),
-            Connection(
                 conn_id="drill_default",
                 conn_type="drill",
                 host="localhost",

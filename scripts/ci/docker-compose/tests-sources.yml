@@ -75,7 +75,6 @@ services:
       - ../../../providers/databricks/tests:/opt/airflow/providers/databricks/tests
       - ../../../providers/datadog/tests:/opt/airflow/providers/datadog/tests
       - ../../../providers/dbt/cloud/tests:/opt/airflow/providers/dbt/cloud/tests
-      - ../../../providers/dingding/tests:/opt/airflow/providers/dingding/tests
       - ../../../providers/discord/tests:/opt/airflow/providers/discord/tests
       - ../../../providers/docker/tests:/opt/airflow/providers/docker/tests
       - ../../../providers/edge3/tests:/opt/airflow/providers/edge3/tests

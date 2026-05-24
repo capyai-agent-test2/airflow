@@ -147,7 +147,6 @@ body:
         - databricks
         - datadog
         - dbt-cloud
-        - dingding
         - discord
         - docker
         - edge3
