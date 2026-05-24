@@ -399,6 +399,9 @@ class TIRunContext(BaseModel):
     always reflects when the task *first* started, not when it was rescheduled/resumed.
     """
 
+    execution_timeout_seconds: float | None = None
+    """Execution timeout for the task, when known from the serialized Dag."""
+
 
 class PrevSuccessfulDagRunResponse(BaseModel):
     """Schema for response with previous successful DagRun information for Task Template Context."""
