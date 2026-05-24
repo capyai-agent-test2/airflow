@@ -20,8 +20,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, cast
 
-from fastapi import Depends, HTTPException, status
-from sqlalchemy import and_, delete, func, select
+from fastapi import Depends, HTTPException, Query, status
+from sqlalchemy import and_, case, delete, func, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import joinedload, subqueryload
 
@@ -92,6 +92,35 @@ if TYPE_CHECKING:
 assets_router = AirflowRouter(tags=["Asset"])
 
 
+def _normalize_query_list(values: list[str] | None) -> list[str] | None:
+    if values and len(values) == 1 and "," in values[0]:
+        return values[0].split(",")
+
+    return values
+
+
+class _AssetOrderBy(SortParam):
+    """Sort assets with stable null ordering for derived last-event timestamps."""
+
+    def to_orm(self, select: Select, *, reversed: bool = False) -> Select:
+        resolved = self.get_resolved_columns()
+        columns = []
+
+        for attr_name, column, is_desc in resolved:
+            ordered_column = (
+                column.asc()
+                if reversed and is_desc
+                else column.desc()
+                if reversed
+                else (column.desc() if is_desc else column.asc())
+            )
+            if attr_name == "last_asset_event_timestamp":
+                columns.append(case((column.is_(None), 1), else_=0).asc())
+            columns.append(ordered_column)
+
+        return select.order_by(None).order_by(*columns)
+
+
 def _generate_queued_event_where_clause(
     *,
     asset_id: int | None = None,
@@ -142,11 +171,19 @@ def get_assets(
     uri_prefix_pattern: QueryUriPrefixPatternSearch,
     dag_ids: QueryAssetDagIdPatternSearch,
     only_active: Annotated[OnlyActiveFilter, Depends(OnlyActiveFilter.depends)],
-    order_by: Annotated[
-        SortParam,
-        Depends(SortParam(["id", "name", "uri", "created_at", "updated_at"], AssetModel).dynamic_depends()),
-    ],
     session: SessionDep,
+    group: str | None = Query(default=None),
+    task_ids: list[str] | None = Query(default=None),
+    has_events: bool | None = Query(default=None),
+    last_asset_event_timestamp_gte: datetime | None = Query(default=None),
+    last_asset_event_timestamp_gt: datetime | None = Query(default=None),
+    last_asset_event_timestamp_lte: datetime | None = Query(default=None),
+    last_asset_event_timestamp_lt: datetime | None = Query(default=None),
+    order_by: list[str] = Query(
+        default=["id"],
+        description="Attributes to order by, multi criteria sort is supported. Prefix with `-` for descending order. "
+        "Supported attributes: `id, name, uri, created_at, updated_at, last_asset_event_timestamp`",
+    ),
 ) -> AssetCollectionResponse:
     """Get assets."""
     # Build a query that will be used to retrieve the ID and timestamp of the latest AssetEvent
@@ -181,10 +218,52 @@ def get_assets(
         asset_event_query.c.last_asset_event_timestamp,
     ).outerjoin(asset_event_query, AssetModel.id == asset_event_query.c.asset_id)
 
+    if group is not None:
+        assets_select_statement = assets_select_statement.where(AssetModel.group == group)
+
+    normalized_task_ids = _normalize_query_list(task_ids)
+    if normalized_task_ids:
+        assets_select_statement = assets_select_statement.where(
+            AssetModel.producing_tasks.any(TaskOutletAssetReference.task_id.in_(normalized_task_ids))
+        )
+
+    if has_events is not None:
+        if has_events:
+            assets_select_statement = assets_select_statement.where(
+                asset_event_query.c.last_asset_event_id.is_not(None)
+            )
+        else:
+            assets_select_statement = assets_select_statement.where(
+                asset_event_query.c.last_asset_event_id.is_(None)
+            )
+
+    if last_asset_event_timestamp_gte is not None:
+        assets_select_statement = assets_select_statement.where(
+            asset_event_query.c.last_asset_event_timestamp >= last_asset_event_timestamp_gte
+        )
+    if last_asset_event_timestamp_gt is not None:
+        assets_select_statement = assets_select_statement.where(
+            asset_event_query.c.last_asset_event_timestamp > last_asset_event_timestamp_gt
+        )
+    if last_asset_event_timestamp_lte is not None:
+        assets_select_statement = assets_select_statement.where(
+            asset_event_query.c.last_asset_event_timestamp <= last_asset_event_timestamp_lte
+        )
+    if last_asset_event_timestamp_lt is not None:
+        assets_select_statement = assets_select_statement.where(
+            asset_event_query.c.last_asset_event_timestamp < last_asset_event_timestamp_lt
+        )
+
+    order_by_filter = _AssetOrderBy(
+        ["id", "name", "uri", "created_at", "updated_at"],
+        AssetModel,
+        to_replace={"last_asset_event_timestamp": asset_event_query.c.last_asset_event_timestamp},
+    ).set_value(order_by)
+
     assets_select, total_entries = paginated_select(
         statement=assets_select_statement,
         filters=[only_active, name_pattern, name_prefix_pattern, uri_pattern, uri_prefix_pattern, dag_ids],
-        order_by=order_by,
+        order_by=order_by_filter,
         offset=offset,
         limit=limit,
         session=session,
