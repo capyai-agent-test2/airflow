@@ -34,7 +34,7 @@ from airflow.providers.common.compat.openlineage.facet import (
     ExternalQueryRunFacet,
     SQLJobFacet,
 )
-from airflow.providers.common.compat.sdk import AirflowException, TaskDeferred
+from airflow.providers.common.compat.sdk import AirflowException, TaskDeferred, XComArg
 from airflow.providers.databricks.hooks.databricks import RunState, SQLStatementState
 from airflow.providers.databricks.operators.databricks import (
     DatabricksCreateJobsOperator,
@@ -449,6 +449,30 @@ class TestDatabricksCreateJobsOperator:
         expected = utils.normalise_json_content({"name": f"test-{DATE}"})
         assert expected == op.json
 
+    @mock.patch("airflow.providers.databricks.operators.databricks.DatabricksHook")
+    def test_execute_with_native_json_template_and_named_parameters(self, db_mock_class):
+        dag = DAG("test", schedule=None, start_date=datetime.now(), render_template_as_native_obj=True)
+        op = DatabricksCreateJobsOperator(
+            dag=dag,
+            task_id=TASK_ID,
+            json="{{ ti.xcom_pull(task_ids='push_json') }}",
+            name="test-{{ ds }}",
+        )
+
+        ti = MagicMock()
+        ti.xcom_pull.return_value = {"tags": TAGS}
+        op.render_template_fields(context={"ds": DATE, "ti": ti})
+
+        db_mock = db_mock_class.return_value
+        db_mock.find_job_id_by_name.return_value = None
+        db_mock.create_job.return_value = JOB_ID
+
+        result = op.execute({})
+
+        expected = utils.normalise_json_content({"tags": TAGS, "name": f"test-{DATE}"})
+        db_mock.create_job.assert_called_once_with(expected)
+        assert result == JOB_ID
+
     def test_init_with_bad_type(self):
         json = {"test": datetime.now()}
         # Looks a bit weird since we have to escape regex reserved symbols.
@@ -793,6 +817,47 @@ class TestDatabricksSubmitRunOperator:
             }
         )
         assert expected == utils.normalise_json_content(op.json)
+
+    @mock.patch("airflow.providers.databricks.operators.databricks.DatabricksHook")
+    def test_execute_with_xcom_json_and_templated_named_parameters(self, db_mock_class):
+        dag = DAG("test", schedule=None, start_date=datetime.now(), render_template_as_native_obj=True)
+        op = DatabricksSubmitRunOperator(
+            dag=dag,
+            task_id=TASK_ID,
+            json="{{ ti.xcom_pull(task_ids='push_json') }}",
+            notebook_task=TEMPLATED_NOTEBOOK_TASK,
+        )
+
+        ti = MagicMock()
+        ti.xcom_pull.return_value = {"new_cluster": NEW_CLUSTER}
+        op.render_template_fields(context={"ds": DATE, "ti": ti})
+
+        db_mock = db_mock_class.return_value
+        db_mock.submit_run.return_value = RUN_ID
+        db_mock.get_run = make_run_with_state_mock("TERMINATED", "SUCCESS")
+
+        op.execute(None)
+
+        expected = utils.normalise_json_content(
+            {
+                "new_cluster": NEW_CLUSTER,
+                "notebook_task": RENDERED_TEMPLATED_NOTEBOOK_TASK,
+                "run_name": TASK_ID,
+            }
+        )
+        db_mock.submit_run.assert_called_once_with(expected)
+
+    def test_init_with_xcom_arg_json_and_named_parameters(self):
+        dag = DAG("test", schedule=None, start_date=datetime.now())
+        upstream = DatabricksCreateJobsOperator(dag=dag, task_id="upstream", name=JOB_NAME)
+        op = DatabricksSubmitRunOperator(
+            dag=dag,
+            task_id=TASK_ID,
+            json=XComArg(upstream),
+            notebook_task=NOTEBOOK_TASK,
+        )
+
+        assert isinstance(op.json, XComArg)
 
     def test_init_with_git_source(self):
         json = {"new_cluster": NEW_CLUSTER, "notebook_task": NOTEBOOK_TASK, "run_name": RUN_NAME}
@@ -1271,6 +1336,29 @@ class TestDatabricksRunNowOperator:
             }
         )
         assert expected == op.json
+
+    @mock.patch("airflow.providers.databricks.operators.databricks.DatabricksHook")
+    def test_execute_with_native_json_template_and_templated_named_parameters(self, db_mock_class):
+        dag = DAG("test", schedule=None, start_date=datetime.now(), render_template_as_native_obj=True)
+        op = DatabricksRunNowOperator(
+            dag=dag,
+            task_id=TASK_ID,
+            json="{{ ti.xcom_pull(task_ids='push_json') }}",
+            notebook_params={"date": "{{ ds }}"},
+        )
+
+        ti = MagicMock()
+        ti.xcom_pull.return_value = {"job_id": JOB_ID}
+        op.render_template_fields(context={"ds": DATE, "ti": ti})
+
+        db_mock = db_mock_class.return_value
+        db_mock.run_now.return_value = RUN_ID
+        db_mock.get_run = make_run_with_state_mock("TERMINATED", "SUCCESS")
+
+        op.execute(None)
+
+        expected = utils.normalise_json_content({"job_id": JOB_ID, "notebook_params": {"date": DATE}})
+        db_mock.run_now.assert_called_once_with(expected)
 
     def test_init_with_bad_type(self):
         json = {"test": datetime.now()}
