@@ -60,8 +60,6 @@ The default config also includes separate Dag processor settings outside those t
   also forwarded to stdout (``stdout``) or kept only in their per-file logs (``file``).
 * :ref:`config:logging__dag_processor_child_process_log_directory` controls where those per-file
   logs are written.
-* :ref:`config:logging__dag_processor_log_format` controls the format used for those processor log
-  entries.
 
 The most commonly used ways to influence the default behavior are:
 
