@@ -791,6 +791,15 @@ class DagFileProcessorManager(LoggingMixin):
                 previously_seen=previously_seen,
             ):
                 self.log.info("Not time to refresh bundle %s", bundle.name)
+                if self.has_bundle_import_errors(bundle.name):
+                    found_files = {
+                        DagFileInfo(rel_path=p, bundle_name=bundle.name, bundle_path=bundle.path)
+                        for p in self._find_files_in_bundle(bundle)
+                    }
+                    self.clear_orphaned_import_errors(
+                        bundle_name=bundle.name,
+                        observed_filelocs=self._get_observed_filelocs(found_files),
+                    )
                 continue
 
             self.log.info("Refreshing bundle %s", bundle.name)
@@ -940,6 +949,16 @@ class DagFileProcessorManager(LoggingMixin):
                     session.delete(error)
         except Exception:
             self.log.exception("Error removing old import errors")
+
+    @provide_session
+    def has_bundle_import_errors(self, bundle_name: str, session: Session = NEW_SESSION) -> bool:
+        """Check whether a bundle currently has persisted import errors."""
+        return (
+            session.scalar(
+                select(ParseImportError.id).where(ParseImportError.bundle_name == bundle_name).limit(1)
+            )
+            is not None
+        )
 
     def _log_file_processing_stats(self, known_files: dict[str, set[DagFileInfo]]):
         """

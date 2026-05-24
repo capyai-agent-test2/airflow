@@ -321,6 +321,59 @@ class TestDagFileProcessorManager:
         assert len(import_errors) == 1
         assert import_errors[0].filename == "test_zip.zip/broken_dag.py"
 
+    @pytest.mark.usefixtures("clear_parse_import_errors")
+    def test_refresh_dag_bundles_clears_orphaned_import_errors_when_refresh_is_skipped(
+        self, session, tmp_path, configure_dag_bundles
+    ):
+        bundle_path = tmp_path / "bundleone"
+        bundle_path.mkdir()
+        (bundle_path / "still_here.py").write_text(
+            textwrap.dedent(
+                """
+                from airflow.sdk import DAG
+
+                with DAG(dag_id="still_here", schedule=None):
+                    pass
+                """
+            )
+        )
+
+        session.add(
+            ParseImportError(
+                filename="deleted_dag.py",
+                bundle_name="bundleone",
+                timestamp=timezone.utcnow(),
+                stacktrace="orphaned import error",
+            )
+        )
+        session.flush()
+
+        with configure_dag_bundles({"bundleone": bundle_path}):
+            DagBundlesManager().sync_bundles_to_db()
+            bundle_model = session.get(DagBundleModel, "bundleone")
+            assert bundle_model is not None
+            bundle_model.last_refreshed = timezone.utcnow()
+            session.flush()
+
+            manager = DagFileProcessorManager(max_runs=1)
+            manager._dag_bundles = list(DagBundlesManager().get_all_dag_bundles())
+            manager._bundle_versions["bundleone"] = None
+            bundle = manager._dag_bundles[0]
+            bundle.refresh_interval = 300
+
+            with (
+                mock.patch.object(bundle, "refresh") as mock_refresh,
+                mock.patch.object(
+                    manager, "clear_orphaned_import_errors", wraps=manager.clear_orphaned_import_errors
+                ) as mock_clear,
+            ):
+                manager._refresh_dag_bundles({})
+                mock_refresh.assert_not_called()
+                mock_clear.assert_called_once()
+
+        import_errors = session.scalars(select(ParseImportError)).all()
+        assert import_errors == []
+
     def test_refresh_dag_bundles_calls_legacy_deactivate_deleted_dags_override(
         self, tmp_path, configure_dag_bundles
     ):
