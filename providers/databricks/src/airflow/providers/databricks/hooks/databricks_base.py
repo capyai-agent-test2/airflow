@@ -109,6 +109,7 @@ class BaseDatabricksHook(BaseHook):
     extra_parameters = [
         "token",
         "host",
+        "proxies",
         "use_azure_managed_identity",
         DEFAULT_AZURE_CREDENTIAL_SETTING_KEY,
         "azure_managed_identity_client_id",
@@ -194,6 +195,11 @@ class BaseDatabricksHook(BaseHook):
             host = self._parse_host(self.databricks_conn.host)
         return host
 
+    @cached_property
+    def proxies(self) -> dict[str, str] | None:
+        proxies = self.databricks_conn.extra_dejson.get("proxies")
+        return proxies if isinstance(proxies, dict) else None
+
     async def __aenter__(self):
         self._session = aiohttp.ClientSession()
         return self
@@ -267,6 +273,7 @@ class BaseDatabricksHook(BaseHook):
                             **self.user_agent_header,
                             "Content-Type": "application/x-www-form-urlencoded",
                         },
+                        proxies=self.proxies,
                         timeout=self.token_timeout_seconds,
                     )
 
@@ -305,6 +312,7 @@ class BaseDatabricksHook(BaseHook):
                             **self.user_agent_header,
                             "Content-Type": "application/x-www-form-urlencoded",
                         },
+                        proxy=self._get_aiohttp_proxy(resource),
                         timeout=self.token_timeout_seconds,
                     ) as resp:
                         resp.raise_for_status()
@@ -352,6 +360,7 @@ class BaseDatabricksHook(BaseHook):
                             client_id=self._get_connection_attr("login"),
                             client_secret=self.databricks_conn.password,
                             tenant_id=self.databricks_conn.extra_dejson["azure_tenant_id"],
+                            proxies=self.proxies,
                         )
                         token = credential.get_token(f"{resource}/.default")
                     jsn = {
@@ -403,6 +412,7 @@ class BaseDatabricksHook(BaseHook):
                             client_id=self._get_connection_attr("login"),
                             client_secret=self.databricks_conn.password,
                             tenant_id=self.databricks_conn.extra_dejson["azure_tenant_id"],
+                            proxies=self.proxies,
                         ) as credential:
                             token = await credential.get_token(f"{resource}/.default")
                     jsn = {
@@ -864,6 +874,7 @@ class BaseDatabricksHook(BaseHook):
                             **self.user_agent_header,
                             "Content-Type": "application/x-www-form-urlencoded",
                         },
+                        proxies=self.proxies,
                         timeout=self.token_timeout_seconds,
                     )
                     resp.raise_for_status()
@@ -911,6 +922,7 @@ class BaseDatabricksHook(BaseHook):
                             **self.user_agent_header,
                             "Content-Type": "application/x-www-form-urlencoded",
                         },
+                        proxy=self._get_aiohttp_proxy(token_exchange_url),
                         timeout=self.token_timeout_seconds,
                     ) as resp:
                         resp.raise_for_status()
@@ -1074,6 +1086,11 @@ class BaseDatabricksHook(BaseHook):
         """
         return OIDC_TOKEN_SERVICE_URL.format(f"https://{self.host}")
 
+    def _get_aiohttp_proxy(self, url: str) -> str | None:
+        if not self.proxies:
+            return None
+        return self.proxies.get(urlsplit(url).scheme)
+
     def _endpoint_url(self, endpoint):
         port = f":{self.databricks_conn.port}" if self.databricks_conn.port else ""
         schema = self.databricks_conn.schema or "https"
@@ -1139,6 +1156,7 @@ class BaseDatabricksHook(BaseHook):
                         params=json if method == "GET" else None,
                         auth=auth,
                         headers=headers,
+                        proxies=self.proxies,
                         timeout=self.timeout_seconds,
                     )
                     self.log.debug("Response Status Code: %s", response.status_code)
@@ -1202,6 +1220,7 @@ class BaseDatabricksHook(BaseHook):
                         json=json,
                         auth=auth,
                         headers={**headers, **self.user_agent_header},
+                        proxy=self._get_aiohttp_proxy(url),
                         timeout=self.timeout_seconds,
                     ) as response:
                         self.log.debug("Response Status Code: %s", response.status)
