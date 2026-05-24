@@ -42,6 +42,25 @@ with DAG(
     pass
 `.trim();
 
+const duplicateScheduleCode = `
+with DAG(
+    dag_id="first",
+    schedule_interval="@daily",
+):
+    pass
+
+with DAG(
+    dag_id="first",
+    schedule_interval="@daily",
+):
+    pass
+`.trim();
+
+const topLevelScheduleCode = `
+schedule = "@daily"
+unrelated_value = 42
+`.trim();
+
 describe("filterCodeBySection", () => {
   it("returns the original source code for the all section", () => {
     expect(filterCodeBySection(sourceCode, "all")).toEqual({ content: sourceCode, matchCount: 0 });
@@ -73,6 +92,17 @@ describe("filterCodeBySection", () => {
         "):",
       ].join("\n"),
       matchCount: 2,
+    });
+  });
+
+  it("keeps distinct schedule blocks even when their text matches", () => {
+    expect(filterCodeBySection(duplicateScheduleCode, "schedule").matchCount).toBe(2);
+  });
+
+  it("stops schedule extraction at the next top-level statement", () => {
+    expect(filterCodeBySection(topLevelScheduleCode, "schedule")).toEqual({
+      content: 'schedule = "@daily"',
+      matchCount: 1,
     });
   });
 });

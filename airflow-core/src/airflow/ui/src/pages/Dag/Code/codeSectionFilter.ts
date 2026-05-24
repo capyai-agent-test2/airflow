@@ -32,6 +32,18 @@ const DEFINITION_PATTERN = /^(?:async\s+def|def|class)\b/u;
 const getIndentation = (line: string) => /^\s*/u.exec(line)?.[0].length ?? 0;
 
 const joinBlocks = (blocks: Array<string>) => blocks.join("\n\n");
+const getBracketDelta = (line: string) =>
+  [...line].reduce((balance, character) => {
+    if (character === "(" || character === "[" || character === "{") {
+      return balance + 1;
+    }
+
+    if (character === ")" || character === "]" || character === "}") {
+      return balance - 1;
+    }
+
+    return balance;
+  }, 0);
 
 const getNextDecoratedBlockIndex = (
   lines: Array<string>,
@@ -96,7 +108,7 @@ const extractDecoratedBlocks = (code: string, decoratorPattern: RegExp) => {
 const extractScheduleBlocks = (code: string) => {
   const lines = code.split("\n");
   const blocks: Array<string> = [];
-  const seen = new Set<string>();
+  const seenRanges = new Set<string>();
 
   lines.forEach((line, lineIndex) => {
     if (!SCHEDULE_PATTERN.test(line)) {
@@ -106,8 +118,10 @@ const extractScheduleBlocks = (code: string) => {
     const trimmedLine = line.trim();
 
     if (trimmedLine.startsWith("@dag(")) {
-      if (!seen.has(trimmedLine)) {
-        seen.add(trimmedLine);
+      const decoratorRangeKey = `${lineIndex}:${lineIndex}`;
+
+      if (!seenRanges.has(decoratorRangeKey)) {
+        seenRanges.add(decoratorRangeKey);
         blocks.push(trimmedLine);
       }
 
@@ -141,6 +155,10 @@ const extractScheduleBlocks = (code: string) => {
       startIndex -= 1;
     }
 
+    let bracketBalance = lines
+      .slice(startIndex, endIndex)
+      .reduce((balance, currentLine) => balance + getBracketDelta(currentLine), 0);
+
     while (endIndex < lines.length) {
       const nextLine = lines[endIndex] ?? "";
       const trimmedNextLine = nextLine.trim();
@@ -149,22 +167,27 @@ const extractScheduleBlocks = (code: string) => {
         break;
       }
 
-      if (getIndentation(nextLine) < indentation) {
-        if (trimmedNextLine.startsWith(")") || trimmedNextLine.startsWith("]:")) {
+      const nextIndentation = getIndentation(nextLine);
+      const isClosingContinuationLine =
+        bracketBalance > 0 && (trimmedNextLine.startsWith(")") || trimmedNextLine.startsWith("]") || trimmedNextLine.startsWith("}"));
+
+      if (nextIndentation < indentation || (nextIndentation === indentation && bracketBalance <= 0)) {
+        if (isClosingContinuationLine) {
           endIndex += 1;
         }
 
         break;
       }
 
+      bracketBalance += getBracketDelta(nextLine);
       endIndex += 1;
     }
 
-    const block = lines.slice(startIndex, endIndex).join("\n").trimEnd();
+    const rangeKey = `${startIndex}:${endIndex}`;
 
-    if (!seen.has(block)) {
-      seen.add(block);
-      blocks.push(block);
+    if (!seenRanges.has(rangeKey)) {
+      seenRanges.add(rangeKey);
+      blocks.push(lines.slice(startIndex, endIndex).join("\n").trimEnd());
     }
   });
 

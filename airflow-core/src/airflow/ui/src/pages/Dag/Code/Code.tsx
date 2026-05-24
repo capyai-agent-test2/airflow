@@ -167,9 +167,9 @@ export const Code = () => {
   };
 
   const hasMultipleVersions = (dagVersions?.dag_versions.length ?? 0) >= 2;
-  const sourceCode =
-    codeError?.status === 404 && !Boolean(code?.content) ? translate("code.noCode") : (code?.content ?? "");
-  const filteredCode = filterCodeBySection(sourceCode, section);
+  const isNoCodeState = codeError?.status === 404 && !Boolean(code?.content);
+  const sourceCode = isNoCodeState ? translate("code.noCode") : (code?.content ?? "");
+  const filteredCode = isNoCodeState ? { content: sourceCode, matchCount: 0 } : filterCodeBySection(sourceCode, section);
   const displayedCode = filteredCode.content;
   const activeSectionLabel =
     section === "all"

@@ -70,6 +70,8 @@ const mockTranslate = (translationKey: string, options?: Record<string, number |
   return translations[translationKey] ?? translationKey;
 };
 
+const escapeRegExp = (value: string) => value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom");
 
@@ -159,7 +161,7 @@ vi.mock("src/components/MonacoEditor", () => ({
             const matches: Array<{
               range: { endColumn: number; endLineNumber: number; startColumn: number; startLineNumber: number };
             }> = [];
-            const pattern = new RegExp(query, "giu");
+            const pattern = new RegExp(escapeRegExp(query), "giu");
             let match = pattern.exec(valueRef.current);
 
             while (match !== null) {
