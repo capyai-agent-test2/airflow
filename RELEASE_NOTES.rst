@@ -5513,7 +5513,7 @@ Improvements
 - Better message on deserialization error (#30588)
 
 ``dag.test()`` returns the ``DagRun`` and keeps runnable tasks scheduled after failures
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 ``dag.test()`` now returns the created ``DagRun`` object instead of ``None``.
 This makes it easier to assert task-instance states in tests after the run
