@@ -1195,6 +1195,8 @@ class CloudSQLExecuteQueryOperator(GoogleCloudBaseOperator):
         Note that according to the Secret Manager requirements, the mentioned dict should be saved as a
         string, and encoded with base64.
         Note that this parameter is incompatible with parameters ``ssl_cert``, ``ssl_key``, ``ssl_root_cert``.
+    :param impersonation_chain: Optional service account to impersonate using short-term
+        credentials.
     """
 
     # [START gcp_sql_query_template_fields]
@@ -1202,6 +1204,7 @@ class CloudSQLExecuteQueryOperator(GoogleCloudBaseOperator):
         "sql",
         "gcp_cloudsql_conn_id",
         "gcp_conn_id",
+        "impersonation_chain",
         "ssl_server_cert",
         "ssl_client_cert",
         "ssl_client_key",
@@ -1220,6 +1223,7 @@ class CloudSQLExecuteQueryOperator(GoogleCloudBaseOperator):
         parameters: Iterable | Mapping[str, Any] | None = None,
         gcp_conn_id: str = "google_cloud_default",
         gcp_cloudsql_conn_id: str = "google_cloud_sql_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         sql_proxy_binary_path: str | None = None,
         ssl_server_cert: str | None = None,
         ssl_client_cert: str | None = None,
@@ -1231,6 +1235,7 @@ class CloudSQLExecuteQueryOperator(GoogleCloudBaseOperator):
         self.sql = sql
         self.gcp_conn_id = gcp_conn_id
         self.gcp_cloudsql_conn_id = gcp_cloudsql_conn_id
+        self.impersonation_chain = impersonation_chain
         self.autocommit = autocommit
         self.parameters = parameters
         self.gcp_connection: Connection | None = None
@@ -1275,6 +1280,7 @@ class CloudSQLExecuteQueryOperator(GoogleCloudBaseOperator):
         return CloudSQLDatabaseHook(
             gcp_cloudsql_conn_id=self.gcp_cloudsql_conn_id,
             gcp_conn_id=self.gcp_conn_id,
+            impersonation_chain=self.impersonation_chain,
             default_gcp_project_id=get_field(self.gcp_connection.extra_dejson, "project"),
             sql_proxy_binary_path=self.sql_proxy_binary_path,
             ssl_root_cert=self.ssl_server_cert,

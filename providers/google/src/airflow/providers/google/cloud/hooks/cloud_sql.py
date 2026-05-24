@@ -458,6 +458,9 @@ CLOUD_SQL_PROXY_DOWNLOAD_URL = "https://dl.google.com/cloudsql/cloud_sql_proxy.{
 CLOUD_SQL_PROXY_VERSION_DOWNLOAD_URL = (
     "https://storage.googleapis.com/cloudsql-proxy/{}/cloud_sql_proxy.{}.{}"
 )
+CLOUD_SQL_PROXY_V2_VERSION_DOWNLOAD_URL = (
+    "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/{}/cloud-sql-proxy.{}.{}"
+)
 
 
 class CloudSQLAsyncHook(GoogleBaseAsyncHook):
@@ -538,6 +541,7 @@ class CloudSqlProxyRunner(LoggingMixin):
         project_id: str = PROVIDE_PROJECT_ID,
         sql_proxy_version: str | None = None,
         sql_proxy_binary_path: str | None = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         *,
         sql_proxy_enable_iam_login: bool = False,
     ) -> None:
@@ -552,6 +556,7 @@ class CloudSqlProxyRunner(LoggingMixin):
         self.instance_specification = instance_specification
         self.project_id = project_id
         self.gcp_conn_id = gcp_conn_id
+        self.impersonation_chain = impersonation_chain
         self.sql_proxy_enable_iam_login = sql_proxy_enable_iam_login
         self.command_line_parameters: list[str] = []
         self.cloud_sql_proxy_socket_directory = self.path_prefix
@@ -560,6 +565,17 @@ class CloudSqlProxyRunner(LoggingMixin):
         self._build_command_line_parameters()
 
     def _build_command_line_parameters(self) -> None:
+        self.command_line_parameters = []
+        if self._is_v2_proxy():
+            if self._instance_uses_tcp():
+                self.command_line_parameters.append(self._format_v2_instance_specification())
+            else:
+                self.command_line_parameters.extend(["--unix-socket", self.cloud_sql_proxy_socket_directory])
+                self.command_line_parameters.append(self.instance_specification)
+            if self.sql_proxy_enable_iam_login:
+                self.command_line_parameters.append("--auto-iam-authn")
+            return
+
         self.command_line_parameters.extend(["-dir", self.cloud_sql_proxy_socket_directory])
         self.command_line_parameters.extend(["-instances", self.instance_specification])
         if self.sql_proxy_enable_iam_login:
@@ -612,23 +628,56 @@ class CloudSqlProxyRunner(LoggingMixin):
                     "The sql_proxy_version should match the regular expression "
                     f"{CLOUD_SQL_PROXY_VERSION_REGEX.pattern}"
                 )
-            download_url = CLOUD_SQL_PROXY_VERSION_DOWNLOAD_URL.format(
-                self.sql_proxy_version, system, processor
-            )
+            if self._is_v2_proxy():
+                download_url = CLOUD_SQL_PROXY_V2_VERSION_DOWNLOAD_URL.format(
+                    self.sql_proxy_version, system, processor
+                )
+            else:
+                download_url = CLOUD_SQL_PROXY_VERSION_DOWNLOAD_URL.format(
+                    self.sql_proxy_version, system, processor
+                )
         return download_url
+
+    def _is_v2_proxy(self) -> bool:
+        if not self.sql_proxy_version:
+            return False
+        match = re.match(r"^v?(\d+)\.", self.sql_proxy_version)
+        return bool(match and int(match.group(1)) >= 2)
+
+    def _instance_uses_tcp(self) -> bool:
+        return "=tcp:" in self.instance_specification
+
+    def _format_v2_instance_specification(self) -> str:
+        if not self._instance_uses_tcp():
+            return self.instance_specification
+        instance_name, port = self.instance_specification.split("=tcp:", 1)
+        return f"{instance_name}?port={port}"
 
     def _get_credential_parameters(self) -> list[str]:
         extras = GoogleBaseHook.get_connection(conn_id=self.gcp_conn_id).extra_dejson
         key_path = get_field(extras, "key_path")
         keyfile_dict = get_field(extras, "keyfile_dict")
-        if key_path:
-            credential_params = ["-credential_file", key_path]
+        if self.impersonation_chain:
+            if self._is_v2_proxy():
+                impersonation_target = (
+                    self.impersonation_chain
+                    if isinstance(self.impersonation_chain, str)
+                    else ",".join(self.impersonation_chain)
+                )
+                credential_params = ["--impersonate-service-account", impersonation_target]
+            else:
+                token = self._get_access_token(self.impersonation_chain)
+                credential_params = ["-token", token]
+        elif key_path:
+            credential_flag = "--credentials-file" if self._is_v2_proxy() else "-credential_file"
+            credential_params = [credential_flag, key_path]
         elif keyfile_dict:
             keyfile_content = keyfile_dict if isinstance(keyfile_dict, dict) else json.loads(keyfile_dict)
             self.log.info("Saving credentials to %s", self.credentials_path)
             with open(self.credentials_path, "w") as file:
                 json.dump(keyfile_content, file)
-            credential_params = ["-credential_file", self.credentials_path]
+            credential_flag = "--credentials-file" if self._is_v2_proxy() else "-credential_file"
+            credential_params = [credential_flag, self.credentials_path]
         else:
             self.log.info(
                 "The credentials are not supplied by neither key_path nor "
@@ -639,6 +688,8 @@ class CloudSqlProxyRunner(LoggingMixin):
             credential_params = []
 
         if not self.instance_specification:
+            if self._is_v2_proxy():
+                raise AirflowException("Cloud SQL Proxy v2 requires an explicit instance specification")
             project_id = get_field(extras, "project")
             if self.project_id:
                 project_id = self.project_id
@@ -651,6 +702,11 @@ class CloudSqlProxyRunner(LoggingMixin):
                 )
             credential_params.extend(["-projects", project_id])
         return credential_params
+
+    def _get_access_token(self, impersonation_chain: str | Sequence[str]) -> str:
+        return GoogleBaseHook(
+            gcp_conn_id=self.gcp_conn_id, impersonation_chain=impersonation_chain
+        )._get_access_token()
 
     def start_proxy(self) -> None:
         """
@@ -668,12 +724,12 @@ class CloudSqlProxyRunner(LoggingMixin):
         command_to_run.extend(self._get_credential_parameters())
         self.log.info("Running the command: `%s`", " ".join(command_to_run))
 
-        self.sql_proxy_process = Popen(command_to_run, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        self.sql_proxy_process = Popen(command_to_run, stdin=PIPE, stdout=PIPE, stderr=subprocess.STDOUT)
         self.log.info("The pid of cloud_sql_proxy: %s", self.sql_proxy_process.pid)
         while True:
             line = (
-                self.sql_proxy_process.stderr.readline().decode("utf-8")
-                if self.sql_proxy_process.stderr
+                self.sql_proxy_process.stdout.readline().decode("utf-8")
+                if self.sql_proxy_process.stdout
                 else ""
             )
             return_code = self.sql_proxy_process.poll()
@@ -1259,6 +1315,7 @@ class CloudSQLDatabaseHook(BaseHook):
             sql_proxy_version=self.sql_proxy_version,
             sql_proxy_binary_path=self.sql_proxy_binary_path,
             gcp_conn_id=self.gcp_conn_id,
+            impersonation_chain=self.impersonation_chain,
             sql_proxy_enable_iam_login=self.sql_proxy_enable_iam_login,
         )
 

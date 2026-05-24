@@ -21,6 +21,7 @@ import base64
 import json
 import os
 import platform
+import subprocess
 import tempfile
 from unittest import mock
 from unittest.mock import PropertyMock, call, mock_open
@@ -1898,6 +1899,17 @@ class TestCloudSqlProxyRunner:
         with pytest.raises(ValueError, match="The sql_proxy_version should match the regular expression"):
             runner._get_sql_proxy_download_url()
 
+    def test_cloud_sql_proxy_runner_v2_version_ok(self):
+        runner = CloudSqlProxyRunner(
+            path_prefix="12345678",
+            instance_specification="project:us-east-1:instance",
+            sql_proxy_version="v2.13.0",
+        )
+        assert runner._get_sql_proxy_download_url() == (
+            "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/"
+            f"v2.13.0/cloud-sql-proxy.{platform.system().lower()}.{get_processor()}"
+        )
+
     def test_cloud_sql_proxy_runner_adds_enable_iam_login_flag(self):
         runner = CloudSqlProxyRunner(
             path_prefix="12345678",
@@ -1914,6 +1926,55 @@ class TestCloudSqlProxyRunner:
         )
 
         assert "-enable_iam_login" not in runner.command_line_parameters
+
+    def test_cloud_sql_proxy_runner_v2_uses_expected_command_line_parameters(self):
+        runner = CloudSqlProxyRunner(
+            path_prefix="12345678",
+            instance_specification="project:us-east-1:instance",
+            sql_proxy_version="v2.13.0",
+            sql_proxy_enable_iam_login=True,
+        )
+
+        assert runner.command_line_parameters == [
+            "--unix-socket",
+            "12345678",
+            "project:us-east-1:instance",
+            "--auto-iam-authn",
+        ]
+
+    def test_cloud_sql_proxy_runner_v2_formats_tcp_instance_specification(self):
+        runner = CloudSqlProxyRunner(
+            path_prefix="12345678",
+            instance_specification="project:us-east-1:instance=tcp:5432",
+            sql_proxy_version="v2.13.0",
+        )
+
+        assert runner.command_line_parameters == ["project:us-east-1:instance?port=5432"]
+
+    @mock.patch("airflow.providers.google.cloud.hooks.cloud_sql.CloudSqlProxyRunner._get_access_token")
+    def test_cloud_sql_proxy_runner_v1_uses_impersonation_token(self, mock_get_access_token):
+        mock_get_access_token.return_value = "token"
+        runner = CloudSqlProxyRunner(
+            path_prefix="12345678",
+            instance_specification="project:us-east-1:instance",
+            impersonation_chain=IMPERSONATION_CHAIN,
+        )
+
+        assert runner._get_credential_parameters() == ["-token", "token"]
+        mock_get_access_token.assert_called_once_with(IMPERSONATION_CHAIN)
+
+    def test_cloud_sql_proxy_runner_v2_uses_impersonation_flag(self):
+        runner = CloudSqlProxyRunner(
+            path_prefix="12345678",
+            instance_specification="project:us-east-1:instance",
+            impersonation_chain=IMPERSONATION_CHAIN,
+            sql_proxy_version="v2.13.0",
+        )
+
+        assert runner._get_credential_parameters() == [
+            "--impersonate-service-account",
+            "ACCOUNT_1,ACCOUNT_2,ACCOUNT_3",
+        ]
 
     @mock.patch("airflow.providers.google.cloud.hooks.cloud_sql.GoogleBaseHook.get_connection")
     def test_cloud_sql_proxy_runner_keeps_key_path_credentials_with_iam_login(self, get_connection):
@@ -1933,6 +1994,51 @@ class TestCloudSqlProxyRunner:
 
         assert runner._get_credential_parameters() == ["-credential_file", "/tmp/key.json"]
         assert "-enable_iam_login" in runner.command_line_parameters
+
+    @mock.patch("airflow.providers.google.cloud.hooks.cloud_sql.GoogleBaseHook.get_connection")
+    def test_cloud_sql_proxy_runner_v2_uses_credentials_file_flag(self, get_connection):
+        connection = Connection(conn_id="google_conn", conn_type="google_cloud_platform")
+        if AIRFLOW_V_3_1_PLUS:
+            connection.extra = json.dumps({"key_path": "/tmp/key.json"})
+        else:
+            connection.set_extra(json.dumps({"key_path": "/tmp/key.json"}))
+        get_connection.return_value = connection
+        runner = CloudSqlProxyRunner(
+            path_prefix="12345678",
+            instance_specification="project:us-east-1:instance",
+            gcp_conn_id="google_conn",
+            sql_proxy_version="v2.13.0",
+        )
+
+        assert runner._get_credential_parameters() == ["--credentials-file", "/tmp/key.json"]
+
+    @mock.patch("airflow.providers.google.cloud.hooks.cloud_sql.Popen")
+    def test_cloud_sql_proxy_runner_merges_stdout_and_stderr(self, mock_popen):
+        process = mock.Mock()
+        process.pid = 123
+        process.stdout.readline.return_value = b"Ready for new connections\n"
+        process.poll.return_value = None
+        mock_popen.return_value = process
+
+        runner = CloudSqlProxyRunner(
+            path_prefix="12345678",
+            instance_specification="project:us-east-1:instance",
+            sql_proxy_version="v2.13.0",
+        )
+
+        with (
+            mock.patch.object(runner, "_download_sql_proxy_if_needed"),
+            mock.patch.object(runner, "_get_credential_parameters", return_value=[]),
+            mock.patch("airflow.providers.google.cloud.hooks.cloud_sql.Path.mkdir"),
+        ):
+            runner.start_proxy()
+
+        mock_popen.assert_called_once_with(
+            [runner.sql_proxy_path, "--unix-socket", "12345678", "project:us-east-1:instance"],
+            stdin=mock.ANY,
+            stdout=mock.ANY,
+            stderr=subprocess.STDOUT,
+        )
 
 
 class TestCloudSQLAsyncHook:
