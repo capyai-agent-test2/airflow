@@ -1454,6 +1454,56 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
             pip_install_options=["--no-deps"],
         )
 
+    @mock.patch("airflow.providers.standard.operators.python.subprocess.check_output")
+    def test_get_installed_requirements_list(self, mocked_check_output):
+        mocked_check_output.return_value = "zipp==3.20.0\npip==24.2\napache-airflow==3.0.0\n"
+
+        def f():
+            return None
+
+        operator = PythonVirtualenvOperator(
+            task_id=self.task_id,
+            python_callable=f,
+            requirements=["apache-airflow"],
+            venv_cache_hash_on_installed_packages=True,
+        )
+
+        installed_requirements = operator._get_installed_requirements_list(Path("/tmp/test-venv"))
+
+        assert installed_requirements == ["apache-airflow==3.0.0", "pip==24.2", "zipp==3.20.0"]
+        mocked_check_output.assert_called_once_with(
+            ["/tmp/test-venv/bin/python", "-m", "pip", "freeze", "--all", "--local"],
+            text=True,
+        )
+
+    def test_ensure_venv_cache_exists_uses_installed_packages_hash(self, tmp_path):
+        def f():
+            return None
+
+        operator = PythonVirtualenvOperator(
+            task_id=self.task_id,
+            python_callable=f,
+            requirements=["example-package"],
+            venv_cache_path=tmp_path,
+            venv_cache_hash_on_installed_packages=True,
+        )
+        expected_hash_data = '{"installed_requirements_list": ["example-package==1.2.3"]}'
+
+        with (
+            mock.patch.object(operator, "_prepare_venv") as mocked_prepare_venv,
+            mock.patch.object(
+                operator,
+                "_calculate_cache_hash_from_installed_packages",
+                return_value=("deadbeef", expected_hash_data),
+            ) as mocked_installed_hash,
+        ):
+            venv_path = operator._ensure_venv_cache_exists(tmp_path)
+
+        assert venv_path == tmp_path / "venv-deadbeef"
+        assert (venv_path / "install_complete_marker.json").read_text(encoding="utf8") == expected_hash_data
+        mocked_prepare_venv.assert_called_once()
+        mocked_installed_hash.assert_called_once()
+
     @pytest.mark.parametrize(
         "serializer",
         [

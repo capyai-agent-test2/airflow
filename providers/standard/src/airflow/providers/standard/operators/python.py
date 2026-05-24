@@ -819,6 +819,11 @@ class PythonVirtualenvOperator(_BasePythonVirtualenvOperator):
         virtual environment will be cached, creates a sub-folder venv-{hash} whereas hash will be replaced
         with a checksum of requirements. If not provided the virtual environment will be created and deleted
         in a temp folder for every execution.
+    :param venv_cache_hash_on_installed_packages: If ``True`` and ``venv_cache_path`` is set, the cache hash
+        is computed from the installed package versions in a freshly prepared virtual environment instead of the
+        declared requirements. This refreshes cached environments when unpinned dependencies resolve to newer
+        versions, but it also resolves and prepares the virtual environment before cache reuse can be decided on
+        every task run.
     :param env_vars: A dictionary containing additional environment variables to set for the virtual
         environment when it is executed.
     :param inherit_env: Whether to inherit the current environment variables when executing the virtual
@@ -853,6 +858,7 @@ class PythonVirtualenvOperator(_BasePythonVirtualenvOperator):
         index_urls: None | Collection[str] | str = None,
         index_urls_from_connection_ids: None | Collection[str] | str = None,
         venv_cache_path: None | os.PathLike[str] = None,
+        venv_cache_hash_on_installed_packages: bool = False,
         env_vars: dict[str, str] | None = None,
         inherit_env: bool = True,
         **kwargs,
@@ -893,6 +899,7 @@ class PythonVirtualenvOperator(_BasePythonVirtualenvOperator):
         else:
             self.index_urls_from_connection_ids = None
         self.venv_cache_path = venv_cache_path
+        self.venv_cache_hash_on_installed_packages = venv_cache_hash_on_installed_packages
         super().__init__(
             python_callable=python_callable,
             serializer=serializer,
@@ -936,12 +943,14 @@ class PythonVirtualenvOperator(_BasePythonVirtualenvOperator):
             index_urls=self.index_urls,
         )
 
-    def _calculate_cache_hash(self, exclude_cloudpickle: bool = False) -> tuple[str, str]:
+    def _calculate_cache_hash_from_requirements(
+        self, requirements: list[str], *, requirements_key: str = "requirements_list"
+    ) -> tuple[str, str]:
         """
         Generate the hash of the cache folder to use.
 
         The following factors are used as input for the hash:
-        - (sorted) list of requirements
+        - (sorted) list of requirements or installed packages
         - pip install options
         - flag of system site packages
         - python version
@@ -951,7 +960,7 @@ class PythonVirtualenvOperator(_BasePythonVirtualenvOperator):
         Returns a hash and the data dict which is the base for the hash as text.
         """
         hash_dict = {
-            "requirements_list": self._requirements_list(exclude_cloudpickle=exclude_cloudpickle),
+            requirements_key: sorted(requirements),
             "pip_install_options": self.pip_install_options,
             "index_urls": self.index_urls,
             "cache_key": str(Variable.get("python_virtualenv_operator_cache_key", "")),
@@ -963,8 +972,72 @@ class PythonVirtualenvOperator(_BasePythonVirtualenvOperator):
         requirements_hash = hash_object.hexdigest()
         return requirements_hash[:8], hash_text
 
+    def _calculate_cache_hash(self, exclude_cloudpickle: bool = False) -> tuple[str, str]:
+        return self._calculate_cache_hash_from_requirements(
+            self._requirements_list(exclude_cloudpickle=exclude_cloudpickle)
+        )
+
+    def _get_installed_requirements_list(self, venv_path: Path) -> list[str]:
+        cmd = [str(venv_path / "bin" / "python"), "-m", "pip", "freeze", "--all", "--local"]
+        try:
+            output = subprocess.check_output(cmd, text=True)
+        except subprocess.CalledProcessError as e:
+            raise AirflowException(f"Unable to inspect installed packages in {venv_path}") from e
+        return sorted(line.strip() for line in output.splitlines() if line.strip())
+
+    def _calculate_cache_hash_from_installed_packages(self, venv_path: Path) -> tuple[str, str]:
+        return self._calculate_cache_hash_from_requirements(
+            self._get_installed_requirements_list(venv_path),
+            requirements_key="installed_requirements_list",
+        )
+
+    def _ensure_venv_cache_exists_using_installed_packages(self, venv_cache_path: Path) -> Path:
+        requested_hash, requested_hash_data = self._calculate_cache_hash()
+        venv_cache_path.mkdir(parents=True, exist_ok=True)
+        with open(venv_cache_path / f"venv-{requested_hash}.lock", "w") as f:
+            import fcntl
+
+            fcntl.flock(f, fcntl.LOCK_EX)
+
+            with TemporaryDirectory(prefix=f"venv-{requested_hash}-", dir=venv_cache_path) as tmp_dir:
+                prepared_venv_path = Path(tmp_dir)
+                try:
+                    self._prepare_venv(prepared_venv_path)
+                    cache_hash, hash_data = self._calculate_cache_hash_from_installed_packages(
+                        prepared_venv_path
+                    )
+                    venv_path = venv_cache_path / f"venv-{cache_hash}"
+                    self.log.info("Python virtual environment will be cached in %s", venv_path)
+                    hash_marker = venv_path / "install_complete_marker.json"
+                    if (
+                        venv_path.exists()
+                        and hash_marker.exists()
+                        and hash_marker.read_text(encoding="utf8") == hash_data
+                    ):
+                        self.log.info("Reusing cached Python virtual environment in %s", venv_path)
+                        return venv_path
+                    if venv_path.exists():
+                        self.log.warning(
+                            "Found a previous virtual environment in %s with the same resolved hash but "
+                            "different parameters. Re-creating it. Requested venv setup: '%s'.",
+                            venv_path,
+                            requested_hash_data,
+                        )
+                        shutil.rmtree(venv_path)
+                    hash_marker = prepared_venv_path / "install_complete_marker.json"
+                    hash_marker.write_text(hash_data, encoding="utf8")
+                    prepared_venv_path.rename(venv_path)
+                except Exception as e:
+                    raise AirflowException(
+                        f"Unable to create new virtual environment in {venv_cache_path}"
+                    ) from e
+            self.log.info("New Python virtual environment created in %s", venv_path)
+            return venv_path
+
     def _ensure_venv_cache_exists(self, venv_cache_path: Path) -> Path:
         """Ensure a valid virtual environment is set up and will create inplace."""
+        if self.venv_cache_hash_on_installed_packages:
+            return self._ensure_venv_cache_exists_using_installed_packages(venv_cache_path)
         cache_hash, hash_data = self._calculate_cache_hash()
         venv_path = venv_cache_path / f"venv-{cache_hash}"
         self.log.info("Python virtual environment will be cached in %s", venv_path)
