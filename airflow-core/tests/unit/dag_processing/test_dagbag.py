@@ -41,7 +41,12 @@ from airflow.dag_processing.dagbag import (
     _capture_with_reraise,
     _validate_executor_fields,
 )
-from airflow.dag_processing.importers import DagImportResult, DagImportWarning
+from airflow.dag_processing.importers import (
+    AbstractDagImporter,
+    DagImporterRegistry,
+    DagImportResult,
+    DagImportWarning,
+)
 from airflow.exceptions import UnknownExecutorException
 from airflow.executors.executor_loader import ExecutorLoader
 from airflow.models.dag import DagModel
@@ -1133,8 +1138,8 @@ with airflow.DAG(
         dag_file = tmp_path / "test_dag.py"
         dag_file.write_text("# airflow\n# DAG")
         dagbag = DagBag(dag_folder=os.fspath(tmp_path), include_examples=False, collect_dags=False)
-        mock_registry = mock.Mock()
-        mock_registry.get_importer.return_value.import_file.return_value = DagImportResult(
+        mock_importer = mock.create_autospec(AbstractDagImporter, instance=True)
+        mock_importer.import_file.return_value = DagImportResult(
             file_path=os.fspath(dag_file),
             warnings=[
                 DagImportWarning(
@@ -1145,6 +1150,8 @@ with airflow.DAG(
                 )
             ],
         )
+        mock_registry = mock.create_autospec(DagImporterRegistry, instance=True)
+        mock_registry.get_importer.return_value = mock_importer
 
         with (
             mock.patch("airflow.dag_processing.dagbag.get_importer_registry", return_value=mock_registry),
