@@ -71,6 +71,14 @@ describe("TriggerDagRouteModal", () => {
     );
   });
 
+  it("defaults interval mode to manual when interval bounds are prefilled from the URL", () => {
+    renderComponent("/dags/example_dag/trigger?data_interval_start=2026-01-01T00:00&data_interval_end=2026-01-02T00:00");
+
+    expect(screen.getByTestId("prefill-config")).toHaveTextContent(
+      '{"dataIntervalStart":"2026-01-01T00:00","dataIntervalEnd":"2026-01-02T00:00","dataIntervalMode":"manual"}',
+    );
+  });
+
   it("closes the route-backed modal by navigating to the parent Dag page", () => {
     renderComponent("/dags/example_dag/trigger?message=hello");
 

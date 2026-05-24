@@ -88,5 +88,12 @@ export const getTriggerDagPrefillConfig = (searchParams: URLSearchParams): Trigg
     prefillConfig.conf = conf;
   }
 
+  if (
+    prefillConfig.dataIntervalMode === undefined &&
+    (prefillConfig.dataIntervalStart !== undefined || prefillConfig.dataIntervalEnd !== undefined)
+  ) {
+    prefillConfig.dataIntervalMode = "manual";
+  }
+
   return Object.keys(prefillConfig).length > 0 ? prefillConfig : undefined;
 };
