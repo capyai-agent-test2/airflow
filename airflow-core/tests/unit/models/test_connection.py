@@ -194,6 +194,17 @@ class TestConnection:
                 {"foo": "bar"},
                 None,
             ),
+            (
+                "azure://appid:super-secret?tenantId=tenant&subscriptionId=sub",
+                "azure",
+                "",
+                "appid",
+                "super-secret",
+                None,
+                "",
+                {"tenantId": "tenant", "subscriptionId": "sub"},
+                None,
+            ),
         ],
     )
     def test_parse_from_uri(
