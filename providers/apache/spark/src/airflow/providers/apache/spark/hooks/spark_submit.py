@@ -561,7 +561,6 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         env = {**os.environ, **(self._env or {})}
         if self._connection["keytab"] is not None and self._connection["principal"] is not None:
             renew_from_kt(self._connection["principal"], self._connection["keytab"], exit_on_fail=False)
-            env = os.environ.copy()
             ccache = airflow_conf.get_mandatory_value("kerberos", "ccache")
             env["KRB5CCNAME"] = ccache
         return env

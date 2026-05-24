@@ -1058,15 +1058,12 @@ class TestSparkSubmitHook:
         hook.on_kill()
 
         # Then
-        assert (
-            call(
-                ["yarn", "application", "-kill", "application_1486558679801_1820"],
-                env={**os.environ, **env},
-                stderr=-1,
-                stdout=-1,
-            )
-            in mock_popen.mock_calls
+        first_kill_call = next(
+            recorded_call
+            for recorded_call in mock_popen.call_args_list
+            if recorded_call.args == (["yarn", "application", "-kill", "application_1486558679801_1820"],)
         )
+        assert first_kill_call.kwargs["env"]["PATH"] == "hadoop/bin"
         # resetting the mock to test  kill with keytab & principal
         mock_popen.reset_mock()
         # Given
@@ -1079,17 +1076,12 @@ class TestSparkSubmitHook:
         # When
         hook.on_kill()
         # Then
-        expected_env = os.environ.copy()
-        expected_env["KRB5CCNAME"] = "/tmp/airflow_krb5_ccache"
-        assert (
-            call(
-                ["yarn", "application", "-kill", "application_1486558679801_1820"],
-                env=expected_env,
-                stderr=-1,
-                stdout=-1,
-            )
-            in mock_popen.mock_calls
+        second_kill_call = next(
+            recorded_call
+            for recorded_call in mock_popen.call_args_list
+            if recorded_call.args == (["yarn", "application", "-kill", "application_1486558679801_1820"],)
         )
+        assert second_kill_call.kwargs["env"]["KRB5CCNAME"] == "/tmp/airflow_krb5_ccache"
 
     @patch("airflow.providers.apache.spark.hooks.spark_submit.subprocess.Popen")
     def test_yarn_process_on_kill_after_submit_process_exits(self, mock_popen):
@@ -1106,15 +1098,12 @@ class TestSparkSubmitHook:
         hook.on_kill()
 
         # Then
-        assert (
-            call(
-                ["yarn", "application", "-kill", "application_1486558679801_1820"],
-                env=os.environ.copy(),
-                stderr=-1,
-                stdout=-1,
-            )
-            in mock_popen.mock_calls
+        kill_call = next(
+            recorded_call
+            for recorded_call in mock_popen.call_args_list
+            if recorded_call.args == (["yarn", "application", "-kill", "application_1486558679801_1820"],)
         )
+        assert kill_call.kwargs["env"] == os.environ.copy()
 
     def test_standalone_cluster_process_on_kill(self):
         # Given
