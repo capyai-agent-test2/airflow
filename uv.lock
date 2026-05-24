@@ -1151,7 +1151,8 @@ apache-tinkerpop = [
 ]
 apache-webhdfs = [
     { name = "apache-airflow-providers-apache-hdfs" },
-]arangodb = [
+]
+arangodb = [
     { name = "apache-airflow-providers-arangodb" },
 ]
 asana = [
