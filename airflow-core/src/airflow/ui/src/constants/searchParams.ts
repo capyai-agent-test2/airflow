@@ -19,6 +19,7 @@
 export enum SearchParamsKeys {
   AFTER = "after",
   ASSET_EVENT_DATE_RANGE = "asset_event_date_range",
+  ASSET_EVENT_ID = "asset_event_id",
   BEFORE = "before",
   BODY_SEARCH = "body_search",
   BUNDLE_VERSION = "bundle_version",

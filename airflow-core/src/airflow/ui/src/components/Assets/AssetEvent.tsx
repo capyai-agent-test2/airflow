@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, Text, HStack } from "@chakra-ui/react";
+import { Box, Button, Text, HStack } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
 import { FiDatabase } from "react-icons/fi";
 import { Link } from "react-router-dom";
@@ -31,9 +31,13 @@ import { TriggeredRuns } from "./TriggeredRuns";
 export const AssetEvent = ({
   assetId,
   event,
+  isSelected = false,
+  onSelect,
 }: {
   readonly assetId?: number;
   readonly event: AssetEventResponse;
+  readonly isSelected?: boolean;
+  readonly onSelect?: () => void;
 }) => {
   const { t: translate } = useTranslation("dashboard");
   const { t: rootTranslate } = useTranslation();
@@ -48,10 +52,36 @@ export const AssetEvent = ({
   }
 
   return (
-    <Box borderBottomWidth={1} fontSize={13} pb={2}>
-      <Text fontWeight="bold">
-        <Time datetime={event.timestamp} />
-      </Text>
+    <Box
+      borderBottomWidth={1}
+      borderColor={isSelected ? "border.inverted" : "transparent"}
+      borderLeftRadius="md"
+      borderLeftWidth={isSelected ? 4 : 0}
+      fontSize={13}
+      pb={2}
+      pt={1}
+      textAlign="left"
+      transition="border-color 0.2s ease"
+      width="100%"
+    >
+      {onSelect === undefined ? (
+        <Text fontWeight="bold">
+          <Time datetime={event.timestamp} />
+        </Text>
+      ) : (
+        <Button
+          aria-pressed={isSelected}
+          justifyContent="flex-start"
+          onClick={onSelect}
+          p={0}
+          size="sm"
+          variant="ghost"
+        >
+          <Text fontWeight="bold">
+            <Time datetime={event.timestamp} />
+          </Text>
+        </Button>
+      )}
       {Boolean(assetId) ? undefined : (
         <HStack>
           <Box>
