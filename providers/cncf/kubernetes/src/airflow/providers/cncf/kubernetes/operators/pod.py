@@ -1428,7 +1428,9 @@ class KubernetesPodOperator(BaseOperator):
             except kubernetes.client.exceptions.ApiException:
                 self.log.exception("Unable to delete pod %s", self.pod.metadata.name)
 
-    def build_pod_request_obj(self, context: Context | None = None) -> k8s.V1Pod:
+    def build_pod_request_obj(
+        self, context: Context | None = None, *, include_in_cluster_label: bool = True
+    ) -> k8s.V1Pod:
         """
         Return V1Pod object based on pod template file, full pod spec, and other operator parameters.
 
@@ -1539,12 +1541,9 @@ class KubernetesPodOperator(BaseOperator):
         pod.metadata.labels.update(labels)
         # Add Airflow Version to the label
         # And a label to identify that pod is launched by KubernetesPodOperator
-        pod.metadata.labels.update(
-            {
-                "airflow_version": airflow_version.replace("+", "-"),
-                "airflow_kpo_in_cluster": str(self.hook.is_in_cluster),
-            }
-        )
+        pod.metadata.labels.update({"airflow_version": airflow_version.replace("+", "-")})
+        if include_in_cluster_label:
+            pod.metadata.labels.update({"airflow_kpo_in_cluster": str(self.hook.is_in_cluster)})
         pod_mutation_hook(pod)
         return pod
 
@@ -1555,7 +1554,7 @@ class KubernetesPodOperator(BaseOperator):
         Does not include labels specific to the task instance (since there isn't
         one in a dry_run) and excludes all empty elements.
         """
-        pod = self.build_pod_request_obj()
+        pod = self.build_pod_request_obj(include_in_cluster_label=False)
         print(yaml.dump(prune_dict(pod.to_dict(), mode="strict")))
 
     def process_duplicate_label_pods(self, pod_list: list[k8s.V1Pod]) -> k8s.V1Pod:
