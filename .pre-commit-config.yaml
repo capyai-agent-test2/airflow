@@ -188,7 +188,8 @@ repos:
           ^(?:.*/)?SKILL\.md$
         exclude:
           (?x)
-          ^scripts/ci/license-templates/
+          ^scripts/ci/license-templates/|
+          ^\.github/skills/setup-steward/
       - id: insert-license
         name: Add license for all other files
         args:
@@ -811,6 +812,12 @@ repos:
         name: start_date not in default_args
         entry: "default_args\\s*=\\s*{\\s*(\"|')start_date(\"|')|(\"|')start_date(\"|'):"
         files: \.*example_dags.*\.py$
+        pass_filenames: true
+      - id: check-example-dag-tags
+        name: Check example DAGs carry the "example" tag
+        entry: ./scripts/ci/prek/check_example_dag_tags.py
+        language: python
+        files: ^.*/example_dags/.*\.py$
         pass_filenames: true
       - id: check-apache-license-rat
         name: Check if licenses are OK for Apache
