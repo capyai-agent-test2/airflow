@@ -149,6 +149,37 @@ class TestRouterLevelDefaultDeny:
         )
 
 
+class TestOpenAPIAuthorizationRequirements:
+    def test_openapi_includes_route_authorization_requirements(self):
+        app = create_app()
+
+        get_dag_operation = app.openapi()["paths"]["/api/v2/dags/{dag_id}"]["get"]
+        assert get_dag_operation["x-airflow-authorization-requirements"] == ["Dag access (`method=GET`)"]
+        assert "Authorization requirements:\n- Dag access (`method=GET`)" in get_dag_operation["description"]
+
+    def test_openapi_includes_multiple_authorization_requirements(self):
+        app = create_app()
+
+        get_upstream_asset_events = app.openapi()["paths"][
+            "/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/upstreamAssetEvents"
+        ]["get"]
+        assert get_upstream_asset_events["x-airflow-authorization-requirements"] == [
+            "Asset access (`method=GET`)",
+            "Dag access (`method=GET`, `access_entity=RUN`)",
+        ]
+        assert (
+            "Authorization requirements:\n"
+            "- Asset access (`method=GET`)\n"
+            "- Dag access (`method=GET`, `access_entity=RUN`)"
+        ) in get_upstream_asset_events["description"]
+
+    def test_openapi_preserves_endpoint_docstring_description(self):
+        app = create_app()
+
+        get_dag_operation = app.openapi()["paths"]["/api/v2/dags/{dag_id}"]["get"]
+        assert get_dag_operation["description"].startswith("Get basic information about a Dag.")
+
+
 class TestCorsMiddlewareAllowCredentials:
     @pytest.mark.parametrize(
         ("config_value", "expected_allow_credentials"),
