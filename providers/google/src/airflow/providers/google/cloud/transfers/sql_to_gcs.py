@@ -20,22 +20,28 @@
 from __future__ import annotations
 
 import abc
+import base64
 import csv
 import json
 import os
 from collections.abc import Sequence
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
+from functools import cached_property
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from airflow.providers.common.compat.sdk import BaseHook
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from airflow.providers.google.version_compat import BaseOperator
 
 if TYPE_CHECKING:
     from airflow.providers.common.compat.openlineage.facet import OutputDataset
     from airflow.providers.common.compat.sdk import Context
+    from airflow.providers.common.sql.hooks.sql import DbApiHook
 
 
 class BaseSQLToGCSOperator(BaseOperator):
@@ -516,3 +522,68 @@ class BaseSQLToGCSOperator(BaseOperator):
                 name=extract_ds_name_from_gcs_path(self.filename.split("{}", maxsplit=1)[0]),
             )
         ]
+
+
+class SqlToGCSOperator(BaseSQLToGCSOperator):
+    """
+    Copy data from a SQL connection to Google Cloud Storage in JSON, CSV or Parquet format.
+
+    :param sql_conn_id: Reference to a specific SQL connection.
+    :param sql_hook_params: Extra config params to be passed to the underlying hook.
+        Should match the desired hook constructor params.
+    """
+
+    ui_color = "#a0e08c"
+
+    def __init__(self, *, sql_conn_id: str, sql_hook_params: dict | None = None, **kwargs) -> None:
+        if kwargs.get("schema_filename") and kwargs.get("schema") is None:
+            raise ValueError("The generic SqlToGCSOperator requires `schema` when `schema_filename` is set.")
+        if kwargs.get("export_format", "json").lower() == "parquet" and kwargs.get("schema") is None:
+            raise ValueError("The generic SqlToGCSOperator requires `schema` when `export_format='parquet'`.")
+        super().__init__(**kwargs)
+        self.sql_conn_id = sql_conn_id
+        self.sql_hook_params = sql_hook_params
+
+    @cached_property
+    def db_hook(self) -> DbApiHook:
+        conn = BaseHook.get_connection(self.sql_conn_id)
+        return conn.get_hook(hook_params=self.sql_hook_params)
+
+    def query(self):
+        """Query the configured SQL connection and return a cursor to the results."""
+        conn = self.db_hook.get_conn()
+        cursor = conn.cursor()
+        self.log.info("Executing: %s", self.sql)
+        if self.parameters is None:
+            cursor.execute(self.sql)
+        else:
+            cursor.execute(self.sql, self.parameters)
+        return cursor
+
+    def field_to_bigquery(self, field) -> dict[str, str]:
+        """Fall back to STRING columns when a provider-specific type map is unavailable."""
+        return {"name": field[0], "type": "STRING", "mode": "NULLABLE"}
+
+    def convert_type(self, value, schema_type, stringify_dict=False, **kwargs):
+        """Convert common DB-API values to JSON/CSV-friendly representations."""
+        if value is None:
+            return value
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, date):
+            return (
+                value.isoformat() if schema_type == "DATE" else datetime.combine(value, time.min).isoformat()
+            )
+        if isinstance(value, time):
+            return value.isoformat()
+        if isinstance(value, timedelta):
+            return str((datetime.min + value).time())
+        if isinstance(value, Decimal):
+            return float(value)
+        if isinstance(value, bytes):
+            if schema_type == "INTEGER":
+                return int.from_bytes(value, "big")
+            return base64.standard_b64encode(value).decode("ascii")
+        if stringify_dict and isinstance(value, dict):
+            return json.dumps(value)
+        return value

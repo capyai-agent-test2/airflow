@@ -16,7 +16,10 @@
 # under the License.
 from __future__ import annotations
 
+import base64
 import json
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from unittest import mock
 from unittest.mock import MagicMock, Mock
 
@@ -24,7 +27,7 @@ import pandas as pd
 import pytest
 
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
-from airflow.providers.google.cloud.transfers.sql_to_gcs import BaseSQLToGCSOperator
+from airflow.providers.google.cloud.transfers.sql_to_gcs import BaseSQLToGCSOperator, SqlToGCSOperator
 
 SQL = "SELECT * FROM test_table"
 BUCKET = "TEST-BUCKET-1"
@@ -591,3 +594,106 @@ class TestBaseSQLToGCSOperator:
         assert len(result) == 1
         assert result[0].namespace == "gs://my-bucket"
         assert result[0].name == expected_name
+
+
+class TestSqlToGCSOperator:
+    def test_requires_schema_when_schema_filename_is_set(self):
+        with pytest.raises(ValueError, match="requires `schema` when `schema_filename` is set"):
+            SqlToGCSOperator(
+                task_id=TASK_ID,
+                sql=SQL,
+                sql_conn_id="sql_default",
+                bucket=BUCKET,
+                filename=FILENAME,
+                schema_filename=SCHEMA_FILE,
+            )
+
+    def test_requires_schema_for_parquet_export(self):
+        with pytest.raises(ValueError, match="requires `schema` when `export_format='parquet'`"):
+            SqlToGCSOperator(
+                task_id=TASK_ID,
+                sql=SQL,
+                sql_conn_id="sql_default",
+                bucket=BUCKET,
+                filename=FILENAME,
+                export_format="parquet",
+            )
+
+    @mock.patch("airflow.providers.google.cloud.transfers.sql_to_gcs.NamedTemporaryFile")
+    @mock.patch.object(GCSHook, "upload")
+    @mock.patch("airflow.providers.google.cloud.transfers.sql_to_gcs.BaseHook.get_connection")
+    def test_exec_json_with_generic_sql_hook(self, mock_get_connection, mock_upload, mock_tempfile):
+        cursor_mock = Mock()
+        cursor_mock.description = [
+            ("created_at", "ignored", 0, 0, 0, 0, False),
+            ("score", "ignored", 0, 0, 0, 0, False),
+            ("payload", "ignored", 0, 0, 0, 0, False),
+            ("blob_value", "ignored", 0, 0, 0, 0, False),
+            ("just_date", "ignored", 0, 0, 0, 0, False),
+            ("just_time", "ignored", 0, 0, 0, 0, False),
+            ("duration", "ignored", 0, 0, 0, 0, False),
+        ]
+        cursor_mock.__iter__ = Mock(
+            return_value=iter(
+                [
+                    [
+                        datetime(2024, 1, 2, 3, 4, 5),
+                        Decimal("7.5"),
+                        {"hello": "world"},
+                        b"\x01\x02",
+                        date(2024, 1, 2),
+                        time(3, 4, 5),
+                        timedelta(hours=1, minutes=2, seconds=3),
+                    ]
+                ]
+            )
+        )
+
+        hook_mock = Mock()
+        hook_mock.get_conn.return_value.cursor.return_value = cursor_mock
+        mock_get_connection.return_value.get_hook.return_value = hook_mock
+
+        mock_file = mock_tempfile.return_value
+        mock_file.name = TMP_FILE_NAME
+        mock_file.tell.return_value = 1
+
+        result = SqlToGCSOperator(
+            task_id=TASK_ID,
+            sql=SQL,
+            sql_conn_id="sql_default",
+            bucket=BUCKET,
+            filename=FILENAME,
+            export_format="json",
+            stringify_dict=True,
+        ).execute(context={})
+
+        assert result == {
+            "bucket": BUCKET,
+            "total_row_count": 1,
+            "total_files": 1,
+            "files": [{"file_name": FILENAME.format(0), "file_mime_type": APP_JSON, "file_row_count": 1}],
+        }
+        mock_get_connection.assert_any_call("sql_default")
+        mock_get_connection.return_value.get_hook.assert_called_once_with(hook_params=None)
+        cursor_mock.execute.assert_called_once_with(SQL)
+
+        written = "".join(call.args[0] for call in mock_file.write.call_args_list)
+        assert written == (
+            json.dumps(
+                {
+                    "blob_value": base64.standard_b64encode(b"\x01\x02").decode("ascii"),
+                    "created_at": "2024-01-02T03:04:05",
+                    "duration": "01:02:03",
+                    "just_date": "2024-01-02T00:00:00",
+                    "just_time": "03:04:05",
+                    "payload": json.dumps({"hello": "world"}),
+                    "score": 7.5,
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+        mock_upload.assert_called_once_with(
+            BUCKET, FILENAME.format(0), TMP_FILE_NAME, mime_type=APP_JSON, gzip=False, metadata=None
+        )
