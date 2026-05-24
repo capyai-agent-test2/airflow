@@ -45,10 +45,34 @@ const cardDef = (assetId?: number): CardDef<AssetEventResponse> => ({
   },
 });
 
+const selectableCardDef = ({
+  assetId,
+  onSelectEvent,
+  selectedEventId,
+}: {
+  readonly assetId?: number;
+  readonly onSelectEvent: (eventId: number) => void;
+  readonly selectedEventId?: number;
+}): CardDef<AssetEventResponse> => ({
+  card: ({ row }) => (
+    <AssetEvent
+      assetId={assetId}
+      event={row}
+      isSelected={row.id === selectedEventId}
+      onSelect={() => onSelectEvent(row.id)}
+    />
+  ),
+  meta: {
+    customSkeleton: <Skeleton height="120px" width="100%" />,
+  },
+});
+
 type AssetEventProps = {
   readonly assetId?: number;
   readonly data?: AssetEventCollectionResponse;
   readonly isLoading?: boolean;
+  readonly onSelectEvent?: (eventId: number) => void;
+  readonly selectedEventId?: number;
   readonly setOrderBy?: (order: string) => void;
   readonly setTableUrlState?: (state: TableState) => void;
   readonly showFilters?: boolean;
@@ -60,6 +84,8 @@ export const AssetEvents = ({
   assetId,
   data,
   isLoading,
+  onSelectEvent,
+  selectedEventId,
   setOrderBy,
   setTableUrlState,
   showFilters = false,
@@ -114,7 +140,11 @@ export const AssetEvents = ({
       {showFilters ? <AssetEventsFilter /> : null}
       <Separator mt={2.5} />
       <DataTable
-        cardDef={cardDef(assetId)}
+        cardDef={
+          onSelectEvent === undefined
+            ? cardDef(assetId)
+            : selectableCardDef({ assetId, onSelectEvent, selectedEventId })
+        }
         columns={[]}
         data={data?.asset_events ?? []}
         displayMode="card"

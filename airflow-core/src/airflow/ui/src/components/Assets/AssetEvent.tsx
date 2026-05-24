@@ -31,9 +31,13 @@ import { TriggeredRuns } from "./TriggeredRuns";
 export const AssetEvent = ({
   assetId,
   event,
+  isSelected = false,
+  onSelect,
 }: {
   readonly assetId?: number;
   readonly event: AssetEventResponse;
+  readonly isSelected?: boolean;
+  readonly onSelect?: () => void;
 }) => {
   const { t: translate } = useTranslation("dashboard");
   const { t: rootTranslate } = useTranslation();
@@ -48,7 +52,22 @@ export const AssetEvent = ({
   }
 
   return (
-    <Box borderBottomWidth={1} fontSize={13} pb={2}>
+    <Box
+      aria-pressed={onSelect === undefined ? undefined : isSelected}
+      as={onSelect === undefined ? "div" : "button"}
+      borderBottomWidth={1}
+      borderColor={isSelected ? "border.inverted" : "transparent"}
+      borderLeftRadius="md"
+      borderLeftWidth={isSelected ? 4 : 0}
+      cursor={onSelect === undefined ? "default" : "pointer"}
+      fontSize={13}
+      onClick={onSelect}
+      pb={2}
+      pt={1}
+      textAlign="left"
+      transition="border-color 0.2s ease"
+      width="100%"
+    >
       <Text fontWeight="bold">
         <Time datetime={event.timestamp} />
       </Text>

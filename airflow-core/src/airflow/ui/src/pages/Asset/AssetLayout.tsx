@@ -18,12 +18,17 @@
  */
 import { HStack, Box, Text, Code } from "@chakra-ui/react";
 import { useReactFlow } from "@xyflow/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import { useParams, useSearchParams } from "react-router-dom";
 
-import { useAssetServiceGetAsset, useAssetServiceGetAssetEvents } from "openapi/queries";
+import {
+  useAssetServiceGetAsset,
+  useAssetServiceGetAssetEvents,
+  useAssetServiceGetAssetQueuedEvents,
+} from "openapi/queries";
+import { AssetEventDetails } from "src/components/Assets/AssetEventDetails";
 import { AssetEvents } from "src/components/Assets/AssetEvents";
 import { BreadcrumbStats } from "src/components/BreadcrumbStats";
 import { useTableURLState } from "src/components/DataTable/useTableUrlState";
@@ -63,8 +68,8 @@ export const AssetLayout = () => {
     },
   ];
 
-  const { DAG_ID, END_DATE, START_DATE, TASK_ID } = SearchParamsKeys;
-  const [searchParams] = useSearchParams();
+  const { ASSET_EVENT_ID, DAG_ID, END_DATE, START_DATE, TASK_ID } = SearchParamsKeys;
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data, isLoading: isLoadingEvents } = useAssetServiceGetAssetEvents(
     {
       assetId: asset?.id,
@@ -78,6 +83,15 @@ export const AssetLayout = () => {
     },
     undefined,
     { enabled: Boolean(asset?.id) },
+  );
+  const { data: queuedEvents } = useAssetServiceGetAssetQueuedEvents({ assetId: asset?.id ?? 0 }, undefined, {
+    enabled: Boolean(asset?.id),
+  });
+
+  const selectedEventId = searchParams.get(ASSET_EVENT_ID);
+  const selectedEvent = useMemo(
+    () => data?.asset_events.find((event) => event.id === Number(selectedEventId)) ?? data?.asset_events[0],
+    [data?.asset_events, selectedEventId],
   );
 
   const setOrderBy = (value: string) => {
@@ -93,6 +107,13 @@ export const AssetLayout = () => {
   };
 
   const { fitView, getZoom } = useReactFlow();
+
+  const onSelectEvent = (eventId: number) => {
+    const nextSearchParams = new URLSearchParams(searchParams);
+
+    nextSearchParams.set(ASSET_EVENT_ID, eventId.toString());
+    setSearchParams(nextSearchParams);
+  };
 
   return (
     <>
@@ -151,10 +172,13 @@ export const AssetLayout = () => {
             ) : null}
 
             <Box h="100%" overflow="auto" pt={2}>
+              <AssetEventDetails event={selectedEvent} queuedEvents={queuedEvents} />
               <AssetEvents
                 assetId={asset?.id}
                 data={data}
                 isLoading={isLoadingEvents}
+                onSelectEvent={onSelectEvent}
+                selectedEventId={selectedEvent?.id}
                 setOrderBy={setOrderBy}
                 setTableUrlState={setTableURLState}
                 showFilters={true}
