@@ -27,7 +27,8 @@ To debug Dags in an IDE, you can set up the ``dag.test`` command in your Dag fil
 serialized python process.
 
 This approach can be used with any supported database (including a local SQLite database) and will
-*fail fast* as all tasks run in a single process.
+run tasks locally in a single process while still following task dependencies
+and trigger rules.
 
 To set up ``dag.test``, add these two lines to the bottom of your Dag file:
 
@@ -43,6 +44,11 @@ needed. Here are some examples of arguments:
 * ``use_executor`` if you want to test the Dag using an executor. By default ``dag.test`` runs the Dag without an
   executor, it just runs all the tasks locally.
   By providing this argument, the Dag is executed using the executor configured in the Airflow environment.
+
+The ``dag.test()`` call returns the created :class:`~airflow.models.dagrun.DagRun`,
+so you can inspect task-instance states after the run finishes. If one task
+fails, Airflow still schedules later tasks whose dependencies and trigger rules
+allow them to run.
 
 Conditionally skipping tasks
 ----------------------------
