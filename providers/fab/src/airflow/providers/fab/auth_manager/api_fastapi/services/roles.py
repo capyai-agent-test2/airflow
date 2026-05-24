@@ -59,6 +59,25 @@ class FABAuthManagerRoles:
                     detail=f"The specified resource: {resource_name!r} was not found",
                 )
 
+    @staticmethod
+    def _replace_role_permissions(
+        security_manager: FabAirflowSecurityManagerOverride,
+        role: Role,
+        perms: list[tuple[str, str]],
+    ) -> None:
+        desired_permissions = set(perms)
+
+        for permission in list(role.permissions):
+            permission_tuple = (permission.action.name, permission.resource.name)
+            if permission_tuple not in desired_permissions:
+                security_manager.remove_permission_from_role(role, permission)
+
+        for action_name, resource_name in perms:
+            permission = security_manager.get_permission(
+                action_name, resource_name
+            ) or security_manager.create_permission(action_name, resource_name)
+            security_manager.add_permission_to_role(role, permission)
+
     @classmethod
     def create_role(cls, body: RoleBody) -> RoleResponse:
         security_manager = get_fab_auth_manager().security_manager
@@ -154,9 +173,11 @@ class FABAuthManagerRoles:
         else:
             update_data = RoleResponse(name=body.name, permissions=body.permissions or [])
 
-        perms: list[tuple[str, str]] = [(ar.action.name, ar.resource.name) for ar in (body.permissions or [])]
+        perms: list[tuple[str, str]] = [
+            (ar.action.name, ar.resource.name) for ar in (update_data.permissions or [])
+        ]
         cls._check_action_and_resource(security_manager, perms)
-        security_manager.bulk_sync_roles([{"role": name, "perms": perms}])
+        cls._replace_role_permissions(security_manager, existing, perms)
 
         new_name = update_data.name
         if new_name and new_name != existing.name:
