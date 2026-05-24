@@ -290,6 +290,31 @@ class TestEmailSmtp:
 
     @mock.patch("smtplib.SMTP_SSL")
     @mock.patch("smtplib.SMTP")
+    def test_send_mime_conn_id_parses_string_bool_extras(self, mock_smtp, mock_smtp_ssl, monkeypatch):
+        monkeypatch.setenv(
+            "AIRFLOW_CONN_SMTP_TEST_CONN",
+            json.dumps(
+                {
+                    "conn_type": "smtp",
+                    "host": "smtp.example.com",
+                    "port": 2525,
+                    "login": "test-user",
+                    "password": "test-p@$$word",
+                    "extra": {
+                        "disable_tls": "false",
+                        "disable_ssl": "true",
+                    },
+                }
+            ),
+        )
+
+        email.send_mime_email("from", "to", MIMEMultipart(), dryrun=False, conn_id="smtp_test_conn")
+
+        assert mock_smtp.return_value.starttls.called
+        assert not mock_smtp_ssl.called
+
+    @mock.patch("smtplib.SMTP_SSL")
+    @mock.patch("smtplib.SMTP")
     def test_send_mime_ssl_none_context(self, mock_smtp, mock_smtp_ssl):
         mock_smtp_ssl.return_value = mock.Mock()
         with conf_vars({("smtp", "smtp_ssl"): "True", ("email", "ssl_context"): "none"}):

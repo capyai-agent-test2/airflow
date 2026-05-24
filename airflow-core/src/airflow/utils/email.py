@@ -32,6 +32,7 @@ from typing import Any
 
 from airflow.configuration import conf
 from airflow.exceptions import AirflowException
+from airflow.utils.strings import to_boolean
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,12 @@ def _get_email_connection(conn_id: str | None):
         return Connection.get_connection_from_secrets(conn_id)
     except AirflowException:
         return None
+
+
+def _get_bool_connection_extra(value: object) -> bool:
+    if isinstance(value, str):
+        return to_boolean(value)
+    return bool(value)
 
 
 def send_email(
@@ -270,9 +277,9 @@ def send_mime_email(
 
         extra = airflow_conn.extra_dejson
         if "disable_tls" in extra:
-            smtp_starttls = not bool(extra["disable_tls"])
+            smtp_starttls = not _get_bool_connection_extra(extra["disable_tls"])
         if "disable_ssl" in extra:
-            smtp_ssl = not bool(extra["disable_ssl"])
+            smtp_ssl = not _get_bool_connection_extra(extra["disable_ssl"])
         if "retry_limit" in extra:
             smtp_retry_limit = int(extra["retry_limit"])
         if "timeout" in extra:
