@@ -1865,7 +1865,6 @@ XSS
 xyz
 yaml
 Yandex
-yandex
 yandexcloud
 YDB
 ydb
