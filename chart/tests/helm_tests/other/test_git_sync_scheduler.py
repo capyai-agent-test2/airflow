@@ -96,9 +96,7 @@ class TestGitSyncSchedulerTest:
             "imagePullPolicy": "Always",
             "envFrom": [{"secretRef": {"name": "proxy-config"}}],
             "env": [
-                {"name": "GIT_SYNC_REV", "value": "HEAD"},
                 {"name": "GITSYNC_REF", "value": "test-branch"},
-                {"name": "GIT_SYNC_BRANCH", "value": "test-branch"},
                 {"name": "GIT_SYNC_REPO", "value": "https://github.com/apache/airflow.git"},
                 {"name": "GITSYNC_REPO", "value": "https://github.com/apache/airflow.git"},
                 {"name": "GIT_SYNC_DEPTH", "value": "1"},
@@ -168,9 +166,7 @@ class TestGitSyncSchedulerTest:
             "imagePullPolicy": "Always",
             "envFrom": [{"secretRef": {"name": "proxy-config"}}],
             "env": [
-                {"name": "GIT_SYNC_REV", "value": "HEAD"},
                 {"name": "GITSYNC_REF", "value": "test-branch"},
-                {"name": "GIT_SYNC_BRANCH", "value": "test-branch"},
                 {"name": "GIT_SYNC_REPO", "value": "https://github.com/apache/airflow.git"},
                 {"name": "GITSYNC_REPO", "value": "https://github.com/apache/airflow.git"},
                 {"name": "GIT_SYNC_DEPTH", "value": "1"},
@@ -198,6 +194,37 @@ class TestGitSyncSchedulerTest:
                 "timeoutSeconds": 1,
             },
         }
+
+    @pytest.mark.parametrize(
+        ("git_sync_values", "expected_ref"),
+        [
+            ({"branch": "main", "rev": "HEAD", "ref": "v1.2.3"}, "v1.2.3"),
+            ({"branch": "feature-branch"}, "feature-branch"),
+            ({"rev": "0123456789abcdef0123456789abcdef01234567"}, "0123456789abcdef0123456789abcdef01234567"),
+        ],
+    )
+    def test_should_render_single_target_ref_for_git_sync_v4(self, git_sync_values, expected_ref):
+        docs = render_chart(
+            values={
+                "executor": "LocalExecutor",
+                "dags": {
+                    "gitSync": {
+                        "enabled": True,
+                        "ref": "v2-2-stable",
+                        "branch": "v2-2-stable",
+                        "rev": "HEAD",
+                        **git_sync_values,
+                    }
+                },
+            },
+            show_only=["templates/scheduler/scheduler-deployment.yaml"],
+        )
+
+        env = jmespath.search("spec.template.spec.containers[1].env", docs[0])
+
+        assert {"name": "GITSYNC_REF", "value": expected_ref} in env
+        assert not any(entry["name"] == "GIT_SYNC_BRANCH" for entry in env)
+        assert not any(entry["name"] == "GIT_SYNC_REV" for entry in env)
 
     def test_validate_if_ssh_params_are_added(self):
         docs = render_chart(

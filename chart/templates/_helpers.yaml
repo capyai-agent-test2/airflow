@@ -208,6 +208,26 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 
 {{/* Git sync container */}}
+{{- define "git_sync_target_ref" -}}
+  {{- $gitSync := .Values.dags.gitSync -}}
+  {{- $defaultBranch := "v2-2-stable" -}}
+  {{- $defaultRef := "v2-2-stable" -}}
+  {{- $defaultRev := "HEAD" -}}
+  {{- if and $gitSync.ref (ne $gitSync.ref $defaultRef) -}}
+    {{- $gitSync.ref -}}
+  {{- else if and $gitSync.branch (ne $gitSync.branch $defaultBranch) -}}
+    {{- $gitSync.branch -}}
+  {{- else if and $gitSync.rev (ne $gitSync.rev $defaultRev) -}}
+    {{- $gitSync.rev -}}
+  {{- else if $gitSync.ref -}}
+    {{- $gitSync.ref -}}
+  {{- else if $gitSync.branch -}}
+    {{- $gitSync.branch -}}
+  {{- else -}}
+    {{- $gitSync.rev -}}
+  {{- end -}}
+{{- end }}
+
 {{- define "git_sync_container" }}
 - name: {{ .Values.dags.gitSync.containerName }}{{ if .is_init }}-init{{ end }}
   image: {{ template "git_sync_image" . }}
@@ -215,12 +235,8 @@ If release name contains chart name it will be used as a full name.
   securityContext: {{- include "localContainerSecurityContext" .Values.dags.gitSync | nindent 4 }}
   envFrom: {{- include "custom_git_sync_environment_from" . | default "\n  []" | indent 2 }}
   env:
-    - name: GIT_SYNC_REV
-      value: {{ .Values.dags.gitSync.rev | quote }}
     - name: GITSYNC_REF
-      value: {{ .Values.dags.gitSync.ref | quote }}
-    - name: GIT_SYNC_BRANCH
-      value: {{ .Values.dags.gitSync.branch | quote }}
+      value: {{ include "git_sync_target_ref" . | quote }}
     - name: GIT_SYNC_REPO
       value: {{ .Values.dags.gitSync.repo | quote }}
     - name: GITSYNC_REPO
