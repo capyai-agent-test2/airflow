@@ -287,6 +287,13 @@ export const $AssetEventResponse = {
     description: 'Asset event serializer for responses.'
 } as const;
 
+export const $AssetEventType = {
+    type: 'string',
+    enum: ['manual', 'task', 'trigger'],
+    title: 'AssetEventType',
+    description: 'Supported asset event producer types.'
+} as const;
+
 export const $AssetResponse = {
     properties: {
         id: {

@@ -11,6 +11,13 @@
     },
     "title": "Audit Log"
   },
+  "assetEvent": {
+    "filters": {
+      "manual": "Manual",
+      "task": "Dag Task",
+      "trigger": "Asset Watcher"
+    }
+  },
   "xcom": {
     "add": {
       "error": "Failed to add XCom",

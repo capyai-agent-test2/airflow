@@ -433,6 +433,14 @@ paths:
           - type: integer
           - type: 'null'
           title: Source Map Index
+      - name: event_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/AssetEventType'
+          - type: 'null'
+          title: Event Type
       - name: name_pattern
         in: query
         required: false
@@ -11284,6 +11292,14 @@ components:
       - timestamp
       title: AssetEventResponse
       description: Asset event serializer for responses.
+    AssetEventType:
+      type: string
+      enum:
+      - manual
+      - task
+      - trigger
+      title: AssetEventType
+      description: Supported asset event producer types.
     AssetResponse:
       properties:
         id:

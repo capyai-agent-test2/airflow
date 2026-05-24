@@ -897,6 +897,9 @@ class TestGetAssetEvents(TestAssets):
         ("params", "total_entries"),
         [
             ({"asset_id": "2"}, 1),
+            ({"event_type": "manual"}, 0),
+            ({"event_type": "task"}, 2),
+            ({"event_type": "trigger"}, 0),
             ({"source_dag_id": "source_dag_id"}, 2),
             ({"source_task_id": "source_task_id"}, 2),
             ({"source_run_id": "source_run_id_1"}, 1),
@@ -918,6 +921,48 @@ class TestGetAssetEvents(TestAssets):
         response = test_client.get("/assets/events", params=params)
         assert response.status_code == 200
         assert response.json()["total_entries"] == total_entries
+
+    def test_filtering_by_event_type(self, test_client):
+        self.create_assets(num=3)
+        self.create_provided_asset_event(
+            asset_event=AssetEvent(
+                id=1,
+                asset_id=1,
+                extra={"from_rest_api": True},
+                timestamp=DEFAULT_DATE,
+            )
+        )
+        self.create_provided_asset_event(
+            asset_event=AssetEvent(
+                id=2,
+                asset_id=2,
+                extra={"foo": "bar"},
+                source_task_id="source_task_id",
+                source_dag_id="source_dag_id",
+                source_run_id="source_run_id_2",
+                timestamp=DEFAULT_DATE,
+            )
+        )
+        self.create_provided_asset_event(
+            asset_event=AssetEvent(
+                id=3,
+                asset_id=3,
+                extra={"from_trigger": True, "payload": {"name": "watcher"}},
+                timestamp=DEFAULT_DATE,
+            )
+        )
+
+        response = test_client.get("/assets/events", params={"event_type": "manual"})
+        assert response.status_code == 200
+        assert [asset_event["id"] for asset_event in response.json()["asset_events"]] == [1]
+
+        response = test_client.get("/assets/events", params={"event_type": "task"})
+        assert response.status_code == 200
+        assert [asset_event["id"] for asset_event in response.json()["asset_events"]] == [2]
+
+        response = test_client.get("/assets/events", params={"event_type": "trigger"})
+        assert response.status_code == 200
+        assert [asset_event["id"] for asset_event in response.json()["asset_events"]] == [3]
 
     @pytest.mark.parametrize(
         ("params", "expected_ids"),

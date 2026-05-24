@@ -63,11 +63,15 @@ export const AssetLayout = () => {
     },
   ];
 
-  const { DAG_ID, END_DATE, START_DATE, TASK_ID } = SearchParamsKeys;
+  const { DAG_ID, END_DATE, EVENT_TYPE, START_DATE, TASK_ID } = SearchParamsKeys;
   const [searchParams] = useSearchParams();
+  const eventType = searchParams.get(EVENT_TYPE);
+  const assetEventType =
+    eventType === "manual" || eventType === "task" || eventType === "trigger" ? eventType : undefined;
   const { data, isLoading: isLoadingEvents } = useAssetServiceGetAssetEvents(
     {
       assetId: asset?.id,
+      eventType: assetEventType,
       limit: pagination.pageSize,
       offset: pagination.pageIndex * pagination.pageSize,
       orderBy,
