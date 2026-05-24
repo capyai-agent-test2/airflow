@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest import mock
 from uuid import UUID, uuid4
@@ -288,6 +288,39 @@ class TestTIRunState:
             },
         )
         assert response.status_code == 409
+
+    def test_ti_run_includes_execution_timeout_seconds(
+        self, client, session, create_task_instance_of_operator, time_machine
+    ):
+        instant_str = "2024-09-30T12:00:00Z"
+        instant = timezone.parse(instant_str)
+        time_machine.move_to(instant, tick=False)
+
+        ti = create_task_instance_of_operator(
+            EmptyOperator,
+            dag_id=str(uuid4()),
+            session=session,
+            logical_date=instant,
+            task_id="timeout_task",
+            execution_timeout=timedelta(seconds=42),
+        )
+        ti.state = State.QUEUED
+        ti.dag_run.state = DagRunState.RUNNING
+        session.commit()
+
+        response = client.patch(
+            f"/execution/task-instances/{ti.id}/run",
+            json={
+                "state": "running",
+                "hostname": "random-hostname",
+                "unixname": "random-unixname",
+                "pid": 100,
+                "start_date": instant_str,
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["execution_timeout_seconds"] == 42.0
 
     def test_ti_run_returns_execution_token(
         self, client, exec_app, session, create_task_instance, time_machine

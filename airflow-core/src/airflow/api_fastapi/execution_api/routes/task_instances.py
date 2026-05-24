@@ -300,6 +300,11 @@ def ti_run(
             should_retry=_is_eligible_to_retry(previous_state, ti.try_number, ti.max_tries),
         )
 
+        with contextlib.suppress(TaskNotFound):
+            if ser_dag := dag_bag.get_dag_for_run(dag_run=dr, session=session):
+                if execution_timeout := ser_dag.get_task(ti.task_id).execution_timeout:
+                    context.execution_timeout_seconds = execution_timeout.total_seconds()
+
         # Only set if they are non-null
         if ti.next_method:
             context.next_method = ti.next_method

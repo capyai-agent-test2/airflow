@@ -1028,6 +1028,9 @@ def startup(msg: StartupDetails) -> tuple[RuntimeTaskInstance, Context, Logger]:
     except Exception:
         log.exception("error calling listener")
 
+    if msg.ti_context.execution_timeout_seconds is not None:
+        SUPERVISOR_COMMS.send(SetExecutionTimeout(timeout_seconds=msg.ti_context.execution_timeout_seconds))
+
     with _airflow_parsing_context_manager(dag_id=msg.ti.dag_id, task_id=msg.ti.task_id):
         ti = parse(msg, log)
     log.debug("Dag file parsed", file=msg.dag_rel_path)
@@ -1060,7 +1063,7 @@ def startup(msg: StartupDetails) -> tuple[RuntimeTaskInstance, Context, Logger]:
         # ideally, we should never reach here, but if we do, we should return None, None, None
         return None, None, None
 
-    if ti.task.execution_timeout:
+    if ti.task.execution_timeout and msg.ti_context.execution_timeout_seconds is None:
         SUPERVISOR_COMMS.send(SetExecutionTimeout(timeout_seconds=ti.task.execution_timeout.total_seconds()))
 
     return ti, ti.get_template_context(), log

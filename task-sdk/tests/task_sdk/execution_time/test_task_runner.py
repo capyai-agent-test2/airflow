@@ -1430,7 +1430,41 @@ def test_task_run_with_user_impersonation_remove_krb5ccname_on_reexecuted_proces
         assert "KRB5CCNAME" not in os.environ
 
 
-def test_startup_sends_execution_timeout_to_supervisor(mocked_parse, make_ti_context, mock_supervisor_comms):
+def test_startup_sends_execution_timeout_to_supervisor_before_parsing(
+    mocked_parse, make_ti_context, mock_supervisor_comms
+):
+    task = PythonOperator(
+        task_id="timeout_task",
+        execution_timeout=timedelta(seconds=42),
+        python_callable=lambda: None,
+    )
+    what = StartupDetails(
+        ti=TaskInstance(
+            id=uuid7(),
+            task_id="timeout_task",
+            dag_id="basic_dag",
+            run_id="c",
+            try_number=1,
+            dag_version_id=uuid7(),
+        ),
+        dag_rel_path="",
+        bundle_info=FAKE_BUNDLE,
+        ti_context=make_ti_context(execution_timeout_seconds=42.0),
+        start_date=timezone.utcnow(),
+        sentry_integration="",
+    )
+
+    mocked_parse(what, "basic_dag", task)
+    mock_supervisor_comms._get_response.return_value = what
+
+    startup(get_startup_details())
+
+    mock_supervisor_comms.send.assert_called_once_with(SetExecutionTimeout(timeout_seconds=42.0))
+
+
+def test_startup_sends_execution_timeout_to_supervisor_after_parsing_when_missing_from_context(
+    mocked_parse, make_ti_context, mock_supervisor_comms
+):
     task = PythonOperator(
         task_id="timeout_task",
         execution_timeout=timedelta(seconds=42),
