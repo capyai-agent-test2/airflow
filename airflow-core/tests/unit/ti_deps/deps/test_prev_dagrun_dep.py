@@ -333,3 +333,62 @@ def test_dagrun_dep(mock_get_previous_dagrun, mock_get_previous_scheduled_dagrun
         ti.xcom_push.assert_called_with(key="past_depends_met", value=True)
     else:
         ti.xcom_push.assert_not_called()
+
+
+@patch("airflow.models.dagrun.DagRun.get_previous_scheduled_dagrun")
+@patch("airflow.models.dagrun.DagRun.get_previous_dagrun")
+def test_dagrun_dep_with_depends_on_previous_tasks(
+    mock_get_previous_dagrun, mock_get_previous_scheduled_dagrun
+):
+    task = BaseOperator(
+        task_id="test_task",
+        dag=DAG("test_dag", schedule=timedelta(days=1), start_date=datetime(2016, 1, 1)),
+        depends_on_previous_tasks=("upstream_a", "upstream_b"),
+        start_date=datetime(2016, 1, 1),
+    )
+    prev_dagrun = Mock(logical_date=datetime(2016, 1, 2))
+    mock_get_previous_scheduled_dagrun.return_value = prev_dagrun
+    mock_get_previous_dagrun.return_value = prev_dagrun
+    dagrun = Mock(
+        **{
+            "backfill_id": None,
+            "logical_date": datetime(2016, 1, 3),
+            "dag_id": "test_dag",
+        },
+    )
+    ti = Mock(
+        task=task,
+        task_id=task.task_id,
+        **{"get_dagrun.return_value": dagrun, "xcom_push.return_value": None},
+    )
+
+    dep = PrevDagrunDep()
+    with patch.multiple(
+        dep,
+        _has_tis=Mock(return_value=True),
+        _count_unsuccessful_tis=Mock(
+            side_effect=lambda dagrun, task_id, *, session: int(task_id == "upstream_b")
+        ),
+        _has_unsuccessful_dependants=Mock(),
+    ):
+        statuses = tuple(dep.get_dep_statuses(ti=ti, dep_context=DepContext()))
+
+    assert len(statuses) == 1
+    assert not statuses[0].passed
+    assert "depends_on_previous_tasks requires task 'upstream_b'" in statuses[0].reason
+
+
+def test_depends_on_previous_tasks_conflicts_with_depends_on_past():
+    with pytest.raises(
+        ValueError,
+        match="depends_on_previous_tasks cannot be used with depends_on_past or wait_for_downstream",
+    ):
+        BaseOperator(task_id="test_task", depends_on_past=True, depends_on_previous_tasks=("other_task",))
+
+
+def test_depends_on_previous_tasks_conflicts_with_wait_for_downstream():
+    with pytest.raises(
+        ValueError,
+        match="wait_for_downstream cannot be used with depends_on_previous_tasks",
+    ):
+        BaseOperator(task_id="test_task", wait_for_downstream=True, depends_on_previous_tasks=("other_task",))

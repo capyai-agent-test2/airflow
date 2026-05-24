@@ -760,6 +760,7 @@ def test_mapped_xcom_push_skipped_tasks(create_runtime_ti, mock_supervisor_comms
         ("is_setup", True, False),
         ("is_teardown", True, False),
         ("depends_on_past", True, False),
+        ("depends_on_previous_tasks", ["old_task"], ["new_task"]),
         ("ignore_first_depends_on_past", True, False),
         ("wait_for_past_depends_before_skipping", True, False),
         ("wait_for_downstream", True, False),

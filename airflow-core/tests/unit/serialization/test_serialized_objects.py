@@ -1113,6 +1113,17 @@ class TestSerializedBaseOperator:
         assert isinstance(result, datetime)
         assert result.timestamp() == timestamp
 
+    def test_depends_on_previous_tasks_round_trip(self):
+        from airflow.serialization.serialized_objects import DagSerialization
+
+        with DAG(dag_id="test_depends_on_previous_tasks_ser", start_date=DEFAULT_DATE) as dag:
+            BaseOperator(task_id="op", depends_on_previous_tasks=("task_a", "task_b"))
+
+        deserialized_dag = DagSerialization.deserialize_dag(DagSerialization.serialize_dag(dag))
+
+        task = deserialized_dag.task_dict["op"]
+        assert task.depends_on_previous_tasks == ["task_a", "task_b"]
+
 
 class TestRetryPolicySerialization:
     """Test that retry_policy is serialized as a boolean flag (has_retry_policy)."""
