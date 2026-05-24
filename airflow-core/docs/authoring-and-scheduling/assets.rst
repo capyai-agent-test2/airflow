@@ -326,16 +326,24 @@ The shorthand for this is ``@asset.multi``:
         """Split input into two."""
 
 
+.. _dynamic_data_events_emitting_and_asset_creation_through_assetalias:
+
 Dynamic data events emitting and asset creation through AssetAlias
 -----------------------------------------------------------------------
-An asset alias can be used to emit asset events of assets with association to the aliases. Downstreams can depend on resolved asset. This feature allows you to define complex dependencies for Dag executions based on asset updates.
+An ``AssetAlias`` is a stable name for an outlet whose concrete assets are only known during task execution. A task
+declares the alias in ``outlets`` up front, and then attaches one or more real ``Asset`` objects to that alias at
+runtime. Downstream Dags can depend either on the alias itself or on any resolved asset created through it. This lets
+you express dynamic asset-producing tasks without having to know every final asset URI when the Dag file is parsed.
 
 How to use AssetAlias
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-``AssetAlias`` has one single argument ``name`` that uniquely identifies the asset. The task must first declare the alias as an outlet, and use ``outlet_events`` or yield ``Metadata`` to add events to it.
+``AssetAlias`` has one single argument ``name`` that uniquely identifies the alias. The task must first declare the
+alias as an outlet, and then use ``outlet_events`` or yield ``Metadata`` to associate concrete assets with it.
 
-The following example creates an asset event against the S3 URI ``f"s3://bucket/my-task"``  with optional extra information ``extra``. If the asset does not exist, Airflow will dynamically create it and log a warning message.
+The following example declares ``AssetAlias("my-task-outputs")`` as the task outlet and, during task execution,
+associates the concrete asset ``Asset("s3://bucket/my-task")`` with it. If the asset does not exist yet, Airflow
+will dynamically create it and log a warning message.
 
 **Emit an asset event during task execution through outlet_events**
 
