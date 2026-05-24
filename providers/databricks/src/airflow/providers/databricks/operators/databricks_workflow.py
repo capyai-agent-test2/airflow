@@ -184,12 +184,17 @@ class _CreateDatabricksWorkflowOperator(BaseOperator):
 
     def create_workflow_json(self, context: Context | None = None) -> dict[str, object]:
         """Create a workflow json to be used in the Databricks API."""
-        task_json = [
-            task._convert_to_databricks_workflow_task(  # type: ignore[attr-defined]
-                relevant_upstreams=self.relevant_upstreams, task_dict=self.tasks_to_convert, context=context
+        task_json = []
+        for task in self.tasks_to_convert.values():
+            if context is not None:
+                task.render_template_fields(context=context)
+            task_json.append(
+                task._convert_to_databricks_workflow_task(  # type: ignore[attr-defined]
+                    relevant_upstreams=self.relevant_upstreams,
+                    task_dict=self.tasks_to_convert,
+                    context=context,
+                )
             )
-            for task_id, task in self.tasks_to_convert.items()
-        ]
 
         default_json = {
             "name": self.job_name,

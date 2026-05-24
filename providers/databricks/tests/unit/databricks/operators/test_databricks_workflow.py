@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -30,6 +31,7 @@ from airflow import DAG
 from airflow.models.baseoperator import BaseOperator
 from airflow.providers.common.compat.sdk import AirflowException
 from airflow.providers.databricks.hooks.databricks import RunLifeCycleState
+from airflow.providers.databricks.operators.databricks import DatabricksTaskBaseOperator
 from airflow.providers.databricks.operators.databricks_workflow import (
     DatabricksWorkflowTaskGroup,
     WorkflowRunMetadata,
@@ -47,6 +49,23 @@ ACCESS_CONTROL_LIST = [
         "permission_level": "CAN_MANAGE",
     }
 ]
+
+
+class TemplatedDatabricksTaskOperator(DatabricksTaskBaseOperator):
+    template_fields = ("application_args",)
+
+    def __init__(self, application_args: list[str], **kwargs: Any) -> None:
+        self.application_args = application_args
+        super().__init__(
+            caller="TemplatedDatabricksTaskOperator", new_cluster={"spark_version": "test"}, **kwargs
+        )
+
+    def _get_task_base_json(self) -> dict[str, Any]:
+        return {
+            "spark_jar_task": {
+                "parameters": self.application_args,
+            }
+        }
 
 
 @pytest.fixture
@@ -108,6 +127,34 @@ def test_create_workflow_json(mock_databricks_hook, context, mock_task_group):
     assert workflow_json["timeout_seconds"] == 0
 
     assert "access_control_list" not in workflow_json
+
+
+def test_create_workflow_json_renders_child_task_template_fields(mock_databricks_hook, mock_task_group):
+    """Test that child Databricks task template fields are rendered before workflow conversion."""
+    dag = DAG("test", schedule=None, start_date=DEFAULT_DATE)
+    operator = _CreateDatabricksWorkflowOperator(
+        task_id="test_task",
+        dag=dag,
+        databricks_conn_id="databricks_default",
+    )
+    operator.task_group = mock_task_group
+
+    task = TemplatedDatabricksTaskOperator(
+        task_id="task_1",
+        dag=dag,
+        application_args=["--date", "{{ ds }}"],
+    )
+    operator.add_task(task.task_id, task)
+
+    workflow_json = operator.create_workflow_json(context={"ds": "2021-01-01"})
+
+    assert workflow_json["tasks"] == [
+        {
+            "task_key": task.databricks_task_key,
+            "depends_on": [],
+            "spark_jar_task": {"parameters": ["--date", "2021-01-01"]},
+        }
+    ]
 
 
 @pytest.mark.parametrize("access_control_list", [ACCESS_CONTROL_LIST, []])
