@@ -368,6 +368,7 @@ class CloudRunExecuteJobOperator(GoogleCloudBaseOperator):
                 context=context,
                 log_uri=self.operation.metadata.log_uri,
             )
+            self._log_job_logs_uri(log_uri=self.operation.metadata.log_uri)
 
         if not self.deferrable:
             result: Execution = self._wait_for_operation(self.operation)
@@ -420,6 +421,9 @@ class CloudRunExecuteJobOperator(GoogleCloudBaseOperator):
             use_regional_endpoint=self.use_regional_endpoint,
         )
         return Job.to_dict(job)
+
+    def _log_job_logs_uri(self, log_uri: str) -> None:
+        self.log.info("Cloud Run job logs: %s", log_uri)
 
     def _fail_if_execution_failed(self, execution: Execution):
         task_count = execution.task_count
