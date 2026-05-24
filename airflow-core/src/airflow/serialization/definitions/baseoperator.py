@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import datetime
 import functools
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import methodtools
 
+from airflow.sdk.definitions._internal.templater import Templater
 from airflow.serialization.definitions.node import DAGNode
 from airflow.serialization.definitions.param import SerializedParamsDict
 from airflow.serialization.enums import DagAttributeTypes
@@ -58,7 +60,7 @@ DEFAULT_OPERATOR_DEPS: frozenset[BaseTIDep] = frozenset(
 )
 
 
-class SerializedBaseOperator(DAGNode):
+class SerializedBaseOperator(DAGNode, Templater):
     """
     Serialized representation of a BaseOperator instance.
 
@@ -310,7 +312,23 @@ class SerializedBaseOperator(DAGNode):
         return self._task_display_name or self.task_id
 
     def expand_start_trigger_args(self, *, context: Context) -> StartTriggerArgs | None:
-        return self.start_trigger_args
+        if not self.start_trigger_args:
+            return None
+        if not self.start_trigger_args.trigger_kwargs:
+            return self.start_trigger_args
+
+        trigger_kwargs = self.start_trigger_args.trigger_kwargs.copy()
+        trigger_kwargs_target = trigger_kwargs
+        if trigger_kwargs.get("__type") == DagAttributeTypes.DICT:
+            trigger_kwargs_target = trigger_kwargs["__var"].copy()
+            trigger_kwargs["__var"] = trigger_kwargs_target
+        for field_name in self.template_fields:
+            if field_name in trigger_kwargs_target:
+                trigger_kwargs_target[field_name] = getattr(self, field_name)
+        return replace(self.start_trigger_args, trigger_kwargs=trigger_kwargs)
+
+    def render_template_fields(self, context: Context) -> None:
+        self._do_render_template_fields(self, self.template_fields, context, self.get_template_env(), set())
 
     @property
     def weight_rule(self) -> PriorityWeightStrategy:

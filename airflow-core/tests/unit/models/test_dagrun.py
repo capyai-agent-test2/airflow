@@ -2484,6 +2484,42 @@ def test_schedule_tis_start_trigger_kwargs_e2e(dag_maker, session):
     assert trigger_row.kwargs == {"delta": datetime.timedelta(seconds=2)}
 
 
+@pytest.mark.need_serialized_dag
+def test_schedule_tis_start_trigger_renders_templated_trigger_kwargs(dag_maker, session):
+    class TestOperator(BaseOperator):
+        template_fields = ("message",)
+        start_from_trigger = True
+
+        def __init__(self, *, message: str, **kwargs):
+            super().__init__(**kwargs)
+            self.message = message
+            self.start_trigger_args = StartTriggerArgs(
+                trigger_cls="airflow.triggers.testing.SuccessTrigger",
+                trigger_kwargs={"message": message},
+                next_method="execute_complete",
+                next_kwargs=None,
+                timeout=None,
+            )
+
+        def execute_complete(self):
+            pass
+
+    with dag_maker(session=session):
+        TestOperator(task_id="test_task", message="{{ dag_run.conf['message'] }}")
+
+    dr: DagRun = dag_maker.create_dagrun(conf={"message": "Hello from trigger"})
+    ti = dr.get_task_instance("test_task")
+    ti.task = dr.dag.get_task("test_task")
+
+    dr.schedule_tis((ti,), session=session)
+
+    assert ti.state == TaskInstanceState.DEFERRED
+
+    trigger_row = session.get(Trigger, ti.trigger_id)
+    assert trigger_row is not None
+    assert trigger_row.kwargs == {"message": "Hello from trigger"}
+
+
 def test_schedule_tis_empty_operator_try_number(dag_maker, session: Session):
     """
     When empty operator is not actually run, then we need to increment the try_number,

@@ -820,6 +820,16 @@ class TestBaseOperator:
         ):
             MockOperator(task_id="one", arg1="{{ foo }}", arg2=lambda context, jinja_env: "bar")
 
+    def test_expand_start_trigger_args_uses_rendered_template_fields(self):
+        MockOperator.start_from_trigger = True
+        task = MockOperator(task_id="one", arg1="{{ foo }}", arg2="static")
+
+        task.render_template_fields(context={"foo": "rendered"})
+        start_trigger_args = task.expand_start_trigger_args(context={})
+
+        assert start_trigger_args is not None
+        assert start_trigger_args.trigger_kwargs == {"arg1": "rendered", "arg2": "static"}
+
     def test_params_source(self):
         # Test bug when copying an operator attached to a Dag
         with DAG(

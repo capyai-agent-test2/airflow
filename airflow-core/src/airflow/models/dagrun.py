@@ -2016,7 +2016,7 @@ class DagRun(Base, LoggingMixin):
             # to see whether this feature is turned on and defer this task.
             # If not, we'll add this "ti" into "schedulable_ti_ids" and later
             # execute it to run in the worker.
-            elif not ti.defer_task(session=session):
+            elif not self._prepare_start_from_trigger_task(ti) or not ti.defer_task(session=session):
                 schedulable_ti_ids.append(ti.id)
                 if ti.state == TaskInstanceState.UP_FOR_RESCHEDULE:
                     reschedule_ti_ids.add(ti.id)
@@ -2119,6 +2119,36 @@ class DagRun(Base, LoggingMixin):
                 count += getattr(result, "rowcount", 0)
 
         return count
+
+    def _prepare_start_from_trigger_task(self, ti: TI) -> bool:
+        if ti.task is None or not getattr(ti.task, "start_from_trigger", False):
+            return False
+
+        from airflow.api_fastapi.execution_api.datamodels.taskinstance import (
+            DagRun as DagRunDataModel,
+            TaskInstance as TaskInstanceDataModel,
+            TIRunContext,
+        )
+        from airflow.sdk.execution_time.task_runner import RuntimeTaskInstance
+
+        runtime_ti = RuntimeTaskInstance.model_construct(
+            **TaskInstanceDataModel.model_validate(ti, from_attributes=True).model_dump(exclude_unset=True),
+            task=ti.task,
+            _ti_context_from_server=TIRunContext(
+                dag_run=DagRunDataModel.model_validate(ti.dag_run, from_attributes=True),
+                max_tries=ti.max_tries,
+                variables=[],
+                connections=[],
+                xcom_keys_to_clear=[],
+            ),
+        )
+        context = runtime_ti.get_template_context()
+
+        if ti.task.template_fields:
+            ti.task.render_template_fields(context)
+        ti.task.start_from_trigger = ti.task.expand_start_from_trigger(context=context)
+        ti.task.start_trigger_args = ti.task.expand_start_trigger_args(context=context)
+        return ti.task.start_from_trigger and ti.task.start_trigger_args is not None
 
     @provide_session
     def get_log_template(self, *, session: Session = NEW_SESSION) -> LogTemplate:
