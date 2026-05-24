@@ -43,12 +43,12 @@ configure local settings.
 Default loggers in the shipped configuration
 --------------------------------------------
 
-The default configuration defines a small number of named loggers and relies on normal Python
-logger propagation for most component logs:
+The default configuration defines a small number of named loggers. Standard-library loggers follow
+normal Python propagation rules, while many Airflow components emit logs through structlog:
 
-* ``root`` uses the ``console`` handler. Component logs such as the scheduler, API server, worker,
-  triggerer, and webserver generally propagate here unless you override them in a custom logging
-  config.
+* ``root`` uses the ``console`` handler. This is the default destination for standard-library
+  loggers that propagate to root, including additional third-party loggers that you attach through
+  the default config.
 * ``airflow.task`` uses the ``task`` handler. This writes one log per task instance try under
   :ref:`config:logging__base_log_folder` and can be extended with remote task logging.
 * ``flask_appbuilder`` uses the ``console`` handler with
