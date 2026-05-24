@@ -91,6 +91,22 @@ class TestDatabricksDbfsHook:
         with pytest.raises(AirflowException, match="Local file already exists"):
             self.hook.download_file("/FileStore/download.txt", str(destination))
 
+    def test_download_file_cleans_partial_file_on_failure(self, tmp_path):
+        destination = tmp_path / "nested" / "download.txt"
+        self.hook.get_status = mock.Mock(return_value={"is_dir": False, "file_size": 11})
+        self.hook.read = mock.Mock(
+            side_effect=[
+                {"bytes_read": 6, "data": base64.b64encode(b"hello ").decode()},
+                AirflowException("read failed"),
+            ]
+        )
+
+        with pytest.raises(AirflowException, match="read failed"):
+            self.hook.download_file("/FileStore/download.txt", str(destination), chunk_size=6)
+
+        assert not destination.exists()
+        assert list(destination.parent.iterdir()) == []
+
     @pytest.mark.asyncio
     @mock.patch("airflow.providers.databricks.hooks.databricks_base.aiohttp.ClientSession.put")
     async def test_async_base_hook_supports_put(self, mock_put):

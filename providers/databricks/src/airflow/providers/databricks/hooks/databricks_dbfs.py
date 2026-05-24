@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from base64 import b64decode
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 import requests
@@ -124,16 +125,27 @@ class DatabricksDbfsHook(BaseDatabricksHook):
         destination.parent.mkdir(parents=True, exist_ok=True)
         offset = 0
         file_size = int(status.get("file_size", 0))
+        temp_path: Path | None = None
 
-        with destination.open("wb") as handle:
-            while offset < file_size:
-                chunk = self.read(dbfs_path, offset=offset, length=min(chunk_size, file_size - offset))
-                bytes_read = int(chunk["bytes_read"])
-                if bytes_read <= 0:
-                    raise AirflowException(
-                        f"Databricks returned an empty read before reaching EOF for {dbfs_path}"
-                    )
-                handle.write(b64decode(chunk["data"]))
-                offset += bytes_read
+        try:
+            with NamedTemporaryFile(dir=destination.parent, delete=False) as temp_file:
+                temp_path = Path(temp_file.name)
+                with temp_path.open("wb") as handle:
+                    while offset < file_size:
+                        chunk = self.read(
+                            dbfs_path, offset=offset, length=min(chunk_size, file_size - offset)
+                        )
+                        bytes_read = int(chunk["bytes_read"])
+                        if bytes_read <= 0:
+                            raise AirflowException(
+                                f"Databricks returned an empty read before reaching EOF for {dbfs_path}"
+                            )
+                        handle.write(b64decode(chunk["data"]))
+                        offset += bytes_read
+            temp_path.replace(destination)
+        except Exception:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+            raise
 
         return local_path
