@@ -243,6 +243,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         self._driver_status: str | None = None
         self._spark_exit_code: int | None = None
         self._env: dict[str, Any] | None = None
+        self._submit_sp_terminated_for_status_tracking = False
         self._post_submit_commands: list[str] = list(post_submit_commands) if post_submit_commands else []
 
     def _resolve_should_track_driver_status(self) -> bool:
@@ -254,7 +255,9 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
         :return: if the driver status should be tracked
         """
-        return "spark://" in self._connection["master"] and self._connection["deploy_mode"] == "cluster"
+        return self._connection["deploy_mode"] == "cluster" and (
+            "spark://" in self._connection["master"] or self._is_yarn
+        )
 
     def _resolve_connection(self) -> dict[str, Any]:
         # Build from connection master or default to yarn if not available
@@ -507,6 +510,16 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
         :return: full command to be executed
         """
+        if self._is_yarn:
+            if not self._yarn_application_id:
+                raise AirflowException(
+                    "Invalid status: attempted to poll YARN application status but no application id is known."
+                )
+            connection_cmd = ["yarn", "application", "-status", self._yarn_application_id]
+            self.log.info(connection_cmd)
+            self.log.debug("Poll driver status cmd: %s", connection_cmd)
+            return connection_cmd
+
         curl_max_wait_time = 30
         spark_host = self._connection["master"]
         if spark_host.endswith(":6066"):
@@ -542,6 +555,15 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         self.log.debug("Poll driver status cmd: %s", connection_cmd)
 
         return connection_cmd
+
+    def _build_yarn_process_env(self) -> dict[str, str]:
+        """Build environment variables for YARN CLI commands."""
+        env = {**os.environ, **(self._env or {})}
+        if self._connection["keytab"] is not None and self._connection["principal"] is not None:
+            renew_from_kt(self._connection["principal"], self._connection["keytab"], exit_on_fail=False)
+            ccache = airflow_conf.get_mandatory_value("kerberos", "ccache")
+            env["KRB5CCNAME"] = ccache
+        return env
 
     def _resolve_kerberos_principal(self, principal: str | None) -> str:
         """Resolve kerberos principal."""
@@ -612,6 +634,8 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
         self._process_spark_submit_log(iter(self._submit_sp.stdout))  # type: ignore
         returncode = self._submit_sp.wait()
+        if self._submit_sp_terminated_for_status_tracking and self._yarn_application_id:
+            returncode = 0
 
         # Check spark-submit return code. In Kubernetes mode, also check the value
         # of exit code in the log, as it may differ.
@@ -630,9 +654,10 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
             # We want the Airflow job to wait until the Spark driver is finished
             if self._should_track_driver_status:
-                if self._driver_id is None:
+                if self._driver_id is None and self._yarn_application_id is None:
                     raise AirflowException(
-                        "No driver id is known: something went wrong when executing the spark submit command"
+                        "No driver or application id is known: something went wrong when executing the spark "
+                        "submit command"
                     )
 
                 # We start with the SUBMITTED status as initial status
@@ -670,6 +695,17 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                 if match:
                     self._yarn_application_id = match.group(0)
                     self.log.info("Identified spark application id: %s", self._yarn_application_id)
+                    if (
+                        self._should_track_driver_status
+                        and self._submit_sp
+                        and self._submit_sp.poll() is None
+                    ):
+                        self.log.info(
+                            "Terminating spark-submit process after YARN accepted application %s",
+                            self._yarn_application_id,
+                        )
+                        self._submit_sp.kill()
+                        self._submit_sp_terminated_for_status_tracking = True
 
             # If we run Kubernetes cluster mode, we want to extract the driver pod id
             # from the logs so we can kill the application when we stop it unexpectedly
@@ -703,6 +739,8 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                     self.log.info("identified spark driver id: %s", self._driver_id)
 
             self.log.info(line)
+            if self._submit_sp_terminated_for_status_tracking:
+                break
 
     def _process_spark_status_log(self, itr: Iterator[Any]) -> None:
         """
@@ -712,9 +750,17 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         """
         driver_found = False
         valid_response = False
+        yarn_application_state = None
+        yarn_application_final_state = None
         # Consume the iterator
         for line_raw in itr:
             line = line_raw.strip()
+
+            if self._is_yarn:
+                if line.startswith("State :"):
+                    yarn_application_state = line.split(":", 1)[1].strip().upper()
+                elif line.startswith("Final-State :"):
+                    yarn_application_final_state = line.split(":", 1)[1].strip().upper()
 
             # A valid Spark status response should contain a submissionId
             if "submissionId" in line:
@@ -726,6 +772,18 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                 driver_found = True
 
             self.log.debug("spark driver status log: %s", line)
+
+        if self._is_yarn:
+            if yarn_application_state == "FINISHED":
+                if yarn_application_final_state == "SUCCEEDED":
+                    self._driver_status = "FINISHED"
+                elif yarn_application_final_state:
+                    self._driver_status = yarn_application_final_state
+                else:
+                    self._driver_status = yarn_application_state
+            elif yarn_application_state:
+                self._driver_status = yarn_application_state
+            return
 
         if valid_response and not driver_found:
             self._driver_status = "UNKNOWN"
@@ -774,12 +832,16 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             self.log.debug("polling status of spark driver with id %s", self._driver_id)
 
             poll_drive_status_cmd = self._build_track_driver_status_command()
+            kwargs: dict[str, Any] = {}
+            if self._is_yarn:
+                kwargs["env"] = self._build_yarn_process_env()
             status_process: Any = subprocess.Popen(
                 poll_drive_status_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 bufsize=-1,
                 universal_newlines=True,
+                **kwargs,
             )
 
             self._process_spark_status_log(iter(status_process.stdout))
@@ -831,43 +893,32 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             self.log.info("Sending kill signal to %s", self._connection["spark_binary"])
             self._submit_sp.kill()
 
-            if self._yarn_application_id:
-                kill_cmd = f"yarn application -kill {self._yarn_application_id}".split()
-                env = {**os.environ, **(self._env or {})}
-                if self._connection["keytab"] is not None and self._connection["principal"] is not None:
-                    # we are ignoring renewal failures from renew_from_kt
-                    # here as the failure could just be due to a non-renewable ticket,
-                    # we still attempt to kill the yarn application
-                    renew_from_kt(
-                        self._connection["principal"], self._connection["keytab"], exit_on_fail=False
-                    )
-                    env = os.environ.copy()
-                    ccacche = airflow_conf.get_mandatory_value("kerberos", "ccache")
-                    env["KRB5CCNAME"] = ccacche
+        if self._yarn_application_id:
+            kill_cmd = f"yarn application -kill {self._yarn_application_id}".split()
+            env = self._build_yarn_process_env()
+            with subprocess.Popen(
+                kill_cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            ) as yarn_kill:
+                self.log.info("YARN app killed with return code: %s", yarn_kill.wait())
 
-                with subprocess.Popen(
-                    kill_cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                ) as yarn_kill:
-                    self.log.info("YARN app killed with return code: %s", yarn_kill.wait())
+        if self._kubernetes_driver_pod:
+            self.log.info("Killing pod %s on Kubernetes", self._kubernetes_driver_pod)
 
-            if self._kubernetes_driver_pod:
-                self.log.info("Killing pod %s on Kubernetes", self._kubernetes_driver_pod)
+            # Currently only instantiate Kubernetes client for killing a spark pod.
+            try:
+                import kubernetes
 
-                # Currently only instantiate Kubernetes client for killing a spark pod.
-                try:
-                    import kubernetes
+                client = kube_client.get_kube_client()
+                api_response = client.delete_namespaced_pod(
+                    self._kubernetes_driver_pod,
+                    self._connection["namespace"],
+                    body=kubernetes.client.V1DeleteOptions(),
+                    pretty=True,
+                )
 
-                    client = kube_client.get_kube_client()
-                    api_response = client.delete_namespaced_pod(
-                        self._kubernetes_driver_pod,
-                        self._connection["namespace"],
-                        body=kubernetes.client.V1DeleteOptions(),
-                        pretty=True,
-                    )
+                self.log.info("Spark on K8s killed with response: %s", api_response)
 
-                    self.log.info("Spark on K8s killed with response: %s", api_response)
-
-                except kube_client.ApiException:
-                    self.log.exception("Exception when attempting to kill Spark on K8s")
+            except kube_client.ApiException:
+                self.log.exception("Exception when attempting to kill Spark on K8s")
 
         self._run_post_submit_commands()
