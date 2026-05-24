@@ -3007,6 +3007,34 @@ class TestKubernetesPodOperatorAsync:
         with pytest.raises(AirflowException, match=expect_match):
             k.cleanup(pod, pod)
 
+    @patch(KUB_OP_PATH.format("process_pod_deletion"))
+    @patch(KUB_OP_PATH.format("patch_already_checked"))
+    def test_cleanup_uses_base_container_state_when_pod_still_running(
+        self, patch_already_checked_mock, process_pod_deletion_mock
+    ):
+        k = KubernetesPodOperator(task_id="task", on_finish_action="delete_pod")
+        pod = k.build_pod_request_obj(create_context(k))
+        pod.status = V1PodStatus(
+            phase=PodPhase.RUNNING,
+            container_statuses=[
+                k8s.V1ContainerStatus(
+                    name=k.base_container_name,
+                    image="ubuntu",
+                    image_id="docker-pullable://ubuntu",
+                    ready=False,
+                    restart_count=0,
+                    state=k8s.V1ContainerState(
+                        terminated=k8s.V1ContainerStateTerminated(exit_code=0, reason="Completed")
+                    ),
+                )
+            ],
+        )
+
+        k.cleanup(pod, pod)
+
+        patch_already_checked_mock.assert_called_once_with(pod, reraise=False)
+        process_pod_deletion_mock.assert_called_once_with(pod, reraise=False)
+
     @patch(KUB_OP_PATH.format("_write_logs"))
     @patch("airflow.providers.cncf.kubernetes.operators.pod.KubernetesPodOperator.cleanup")
     @patch("airflow.providers.cncf.kubernetes.operators.pod.KubernetesPodOperator.find_pod")
