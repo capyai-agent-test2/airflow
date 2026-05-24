@@ -16,6 +16,8 @@
 # under the License.
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import structlog
 import structlog.testing
 from starlette.applications import Starlette
@@ -23,7 +25,11 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from airflow.api_fastapi.common.http_access_log import _HEALTH_PATHS, HttpAccessLogMiddleware
+from airflow.api_fastapi.common.http_access_log import (
+    _HEALTH_PATHS,
+    HttpAccessLogMiddleware,
+    _build_metric_tags,
+)
 
 
 def _make_app(raise_exc: bool = False) -> Starlette:
@@ -130,3 +136,57 @@ def test_non_http_scope_not_logged():
 
 def test_health_paths_constant():
     assert "/api/v2/monitor/health" in _HEALTH_PATHS
+
+
+@patch("airflow.api_fastapi.common.http_access_log.stats.incr")
+@patch("airflow.api_fastapi.common.http_access_log.stats.timing")
+def test_emits_request_metrics(mock_timing, mock_incr):
+    client = TestClient(_make_app(), raise_server_exceptions=False)
+
+    response = client.get("/?foo=bar")
+
+    assert response.status_code == 200
+    expected_tags = {
+        "endpoint": "/",
+        "method": "GET",
+        "status": "200",
+        "status_group": "2xx",
+    }
+    mock_incr.assert_called_once_with("api_server.http.requests", tags=expected_tags)
+    mock_timing.assert_called_once()
+    assert mock_timing.call_args.args[0] == "api_server.http.request_duration"
+    assert mock_timing.call_args.args[1] >= 0
+    assert mock_timing.call_args.kwargs == {"tags": expected_tags}
+
+
+@patch("airflow.api_fastapi.common.http_access_log.stats.incr")
+@patch("airflow.api_fastapi.common.http_access_log.stats.timing")
+def test_emits_error_metric_for_failed_requests(mock_timing, mock_incr):
+    client = TestClient(_make_app(raise_exc=True), raise_server_exceptions=False)
+
+    response = client.get("/")
+
+    assert response.status_code == 500
+    expected_tags = {
+        "endpoint": "/",
+        "method": "GET",
+        "status": "500",
+        "status_group": "5xx",
+    }
+    assert mock_incr.call_args_list == [
+        (("api_server.http.requests",), {"tags": expected_tags}),
+        (("api_server.http.request_errors",), {"tags": expected_tags}),
+    ]
+    mock_timing.assert_called_once()
+    assert mock_timing.call_args.kwargs == {"tags": expected_tags}
+
+
+def test_build_metric_tags_uses_unmatched_endpoint_for_missing_route():
+    scope = {"method": "GET"}
+
+    assert _build_metric_tags(scope, 404) == {
+        "endpoint": "_unmatched",
+        "method": "GET",
+        "status": "404",
+        "status_group": "4xx",
+    }
