@@ -2562,6 +2562,37 @@ def test_schedule_tis_start_trigger_does_not_leak_rendered_values_between_runs(d
     assert second_trigger.kwargs == {"message": "second value"}
 
 
+@pytest.mark.need_serialized_dag
+def test_schedule_tis_start_trigger_falls_back_when_ti_cannot_build_runtime_context(dag_maker, session):
+    class TestOperator(BaseOperator):
+        start_from_trigger = True
+        start_trigger_args = StartTriggerArgs(
+            trigger_cls="airflow.triggers.testing.SuccessTrigger",
+            trigger_kwargs={},
+            next_method="execute_complete",
+            timeout=None,
+        )
+
+        def execute_complete(self):
+            pass
+
+    with dag_maker(session=session):
+        TestOperator(task_id="test_task")
+
+    dr: DagRun = dag_maker.create_dagrun()
+    ti = dr.get_task_instance("test_task")
+    ti.task = dr.dag.get_task("test_task")
+    ti.dag_version_id = None
+
+    assert dr.schedule_tis((ti,), session=session) == 1
+    session.commit()
+    session.expire_all()
+
+    refreshed_ti = session.scalar(select(TI).where(TI.id == ti.id))
+    assert refreshed_ti is not None
+    assert refreshed_ti.state == TaskInstanceState.SCHEDULED
+
+
 def test_schedule_tis_empty_operator_try_number(dag_maker, session: Session):
     """
     When empty operator is not actually run, then we need to increment the try_number,

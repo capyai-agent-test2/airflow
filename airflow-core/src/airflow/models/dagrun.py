@@ -2126,6 +2126,8 @@ class DagRun(Base, LoggingMixin):
             return False
         ti.task = copy(ti.task)
 
+        from pydantic import ValidationError
+
         from airflow.api_fastapi.execution_api.datamodels.taskinstance import (
             DagRun as DagRunDataModel,
             TaskInstance as TaskInstanceDataModel,
@@ -2133,17 +2135,22 @@ class DagRun(Base, LoggingMixin):
         )
         from airflow.sdk.execution_time.task_runner import RuntimeTaskInstance
 
-        runtime_ti = RuntimeTaskInstance.model_construct(
-            **TaskInstanceDataModel.model_validate(ti, from_attributes=True).model_dump(exclude_unset=True),
-            task=ti.task,
-            _ti_context_from_server=TIRunContext(
-                dag_run=DagRunDataModel.model_validate(ti.dag_run, from_attributes=True),
-                max_tries=ti.max_tries,
-                variables=[],
-                connections=[],
-                xcom_keys_to_clear=[],
-            ),
-        )
+        try:
+            runtime_ti = RuntimeTaskInstance.model_construct(
+                **TaskInstanceDataModel.model_validate(ti, from_attributes=True).model_dump(
+                    exclude_unset=True
+                ),
+                task=ti.task,
+                _ti_context_from_server=TIRunContext(
+                    dag_run=DagRunDataModel.model_validate(ti.dag_run, from_attributes=True),
+                    max_tries=ti.max_tries,
+                    variables=[],
+                    connections=[],
+                    xcom_keys_to_clear=[],
+                ),
+            )
+        except ValidationError:
+            return False
         context = runtime_ti.get_template_context()
 
         ti.task.start_from_trigger = ti.task.expand_start_from_trigger(context=context)
