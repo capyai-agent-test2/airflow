@@ -326,9 +326,16 @@ class TestBaseChartTest:
                 "release": release_name,
                 "heritage": "Helm",
                 "chart": mock.ANY,
+                "app.kubernetes.io/name": "airflow",
+                "app.kubernetes.io/instance": release_name,
+                "app.kubernetes.io/managed-by": "Helm",
+                "app.kubernetes.io/version": mock.ANY,
+                "app.kubernetes.io/part-of": "airflow",
+                "helm.sh/chart": mock.ANY,
             }
             if component:
                 expected_labels["component"] = component
+                expected_labels["app.kubernetes.io/component"] = component
             if k8s_object_name == f"{release_name}-scheduler":
                 expected_labels["executor"] = "CeleryExecutor"
                 if executor == "CeleryExecutor,KubernetesExecutor":
