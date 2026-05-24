@@ -14,22 +14,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Whether the FastAPI server includes the ``Access-Control-Allow-Credentials`` header on\nCORS responses. Defaults to True to preserve existing behavior; set to False if you have\nconfigured ``access_control_allow_origins`` and do not want browsers to send credentials\n(cookies, Authorization header) with cross-origin requests.\n",
@@ -114,22 +99,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Default setting for wrap toggle on DAG code and TI log views.\n",
@@ -142,22 +112,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Boolean for running SwaggerUI in the webserver.\n",
@@ -198,22 +153,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "By default, the webserver shows paused DAGs. Flip this to hide paused\nDAGs by default\n",
@@ -278,22 +218,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Require confirmation when changing a DAG in the web UI. This is to prevent accidental changes\nto a DAG that may be running on sensitive environments like production.\nWhen set to ``True``, confirmation dialog will be shown when a user tries to Pause/Unpause,\nTrigger a DAG\n",
@@ -488,22 +413,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Allow ``..`` (consecutive dots) in DAG IDs and run IDs. By default, ``..`` is blocked to prevent\npath traversal attacks. Set to ``True`` only if you have existing DAGs or runs whose IDs contain\n``..`` and cannot be renamed.\n",
@@ -547,22 +457,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "If ``True``, serialized DAGs are compressed before writing to DB.\n\n.. note::\n\n    This will disable the DAG dependencies view\n",
@@ -608,22 +503,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Should a traceback be shown in the UI for dagbag import errors,\ninstead of just the exception message\n",
@@ -724,22 +604,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Should tasks be executed via forking of the parent process\n\n* ``False``: Execute via forking of the parent process\n* ``True``: Spawning a new python process, slower than fork, but means plugin changes picked\n  up by tasks straight away\n",
@@ -766,22 +631,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Hide sensitive **Variables** or **Connection extra json keys** from UI\nand task logs when set to ``True``\n\n.. note::\n\n    Connection passwords are always hidden in logs\n",
@@ -812,22 +662,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "By default Airflow providers are lazily-discovered (discovery and imports happen only when required).\nSet it to ``False``, if you want to discover providers whenever 'airflow' is invoked via cli or\nloaded from module.\n",
@@ -840,22 +675,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "By default Airflow plugins are lazily-loaded (only loaded when required). Set it to ``False``,\nif you want to load plugins whenever 'airflow' is invoked via cli or loaded from module.\n",
@@ -969,22 +789,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Whether to run the Airflow environment in multi-team mode.\nIn this mode, different teams can have scoped access to their own resources while still sharing the\nsame underlying deployment.\n",
@@ -1028,22 +833,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Default value for whether cleared, rerun, or backfilled tasks should use\nthe latest bundle version. When set to True, reruns and backfills pick up\nthe latest code. When set to False, they use the original bundle version.\nWhen unset, the fallback depends on the call site: False for clearing or\nrerunning tasks, True for creating backfills (preserving the historical\ndefaults for each). Individual DAGs can override this with the\n``rerun_with_latest_version`` parameter.\n"
@@ -1166,22 +956,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Always run tasks with the latest code.  If set to True, the bundle version will not\nbe stored on the dag run and therefore, the latest code will always be used.\n\n.. note::\n\n  This setting only applies to bundles that support versioning and does not affect\n  DAG versions displayed in the UI.\n",
@@ -1238,22 +1013,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "The dag_processor reads dag files to extract the airflow modules that are going to be used,\nand imports them ahead of time to avoid having to re-do it for each parsing process.\nThis flag can be set to ``False`` to disable this behavior in case an airflow module needs\nto be freshly imported each time (at the cost of increased DAG parsing time).\n",
@@ -1458,22 +1218,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Check connection at the start of each connection pool checkout.\nTypically, this is a simple statement like \"SELECT 1\".\nSee `SQLAlchemy Pooling: Disconnect Handling - Pessimistic\n<https://docs.sqlalchemy.org/en/14/core/pooling.html#disconnect-handling-pessimistic>`__\nfor more details.\n",
@@ -1538,22 +1283,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Whether email alerts should be sent when a task failed\n",
@@ -1566,22 +1296,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Whether email alerts should be sent when a task is retried\n",
@@ -1670,22 +1385,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Allow to disable ticket forwardability.\n",
@@ -1698,22 +1398,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Allow to remove source IP from token, useful when using token behind NATted Docker host.\n",
@@ -1798,22 +1483,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "By default Celery sends all logs into stderr.\nIf enabled any previous logging handlers will get *removed*.\nWith this option AirFlow will create new handlers\nand send low level logs like INFO and WARNING to stdout,\nwhile sending higher severity logs to stderr.\n",
@@ -1905,22 +1575,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Enable JSON-structured logging for all output. When ``True``, every log line emitted by\nthe process is a single-line JSON object (including HTTP access logs from the API server).\nRecommended for production / cloud-native deployments where logs are collected by a log\naggregator.\n",
@@ -2077,22 +1732,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "If ``True``, all metrics are also emitted to the console. Defaults to ``False``.\n",
@@ -2123,22 +1763,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Enables sending metrics to OpenTelemetry.\n",
@@ -2174,22 +1799,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "If ``True``, SSL will be enabled. Defaults to ``False``.\nTo establish an HTTPS connection to the OpenTelemetry collector,\nyou need to configure the SSL certificate and key within the OpenTelemetry collector's\n``config.yml`` file.\n",
@@ -2210,22 +1820,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "To enable datadog integration to send airflow metrics.\n",
@@ -2238,22 +1833,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Set to ``False`` to disable metadata tags for some of the emitted metrics\n",
@@ -2283,22 +1863,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "To enable sending Airflow metrics with StatsD-Influxdb tagging convention.\n",
@@ -2311,22 +1876,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Enables the statsd host to be resolved into IPv6 address\n",
@@ -2339,22 +1889,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Enables sending metrics to StatsD.\n",
@@ -2397,22 +1932,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "The default value of attribute \"deferrable\" in operators and sensors.\n",
@@ -2456,22 +1976,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Whether to enable memray's ``native_traces`` and ``trace_python_allocators`` options\nwhen ``memray_trace_components`` is set. Captures C/C++ stack frames for compiled\nextensions (numpy, pandas, etc.) and small ``pymalloc`` allocations that would\notherwise be invisible.\n\nThis adds significant runtime overhead and produces much larger profile files, so\nleave it disabled unless the default trace lacks the detail you need. Native symbol\nresolution is most accurate on Linux and less precise on macOS. See\nhttps://bloomberg.github.io/memray/api.html for the underlying ``Tracker`` options.\n",
@@ -2503,22 +2008,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Turn on scheduler catchup by setting this to ``True``.\nDefault behavior is unchanged and\nCommand Line Backfills still work, but the scheduler\nwill not do scheduler catchup if this is ``False``,\nhowever it can be set on a per DAG basis in the\nDAG definition (catchup)\n",
@@ -2531,22 +2021,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Whether to create DAG runs that span an interval or one single point in time for cron schedules, when\na cron string is provided to ``schedule`` argument of a DAG.\n\n* ``True``: **CronDataIntervalTimetable** is used, which is suitable\n  for DAGs with well-defined data interval. You get contiguous intervals from the end of the previous\n  interval up to the scheduled datetime.\n* ``False``: **CronTriggerTimetable** is used, which is closer to the behavior of cron itself.\n\nNotably, for **CronTriggerTimetable**, the logical date is the same as the time the DAG Run will\ntry to schedule, while for **CronDataIntervalTimetable**, the logical date is the beginning of\nthe data interval, but the DAG Run will try to schedule at the end of the data interval.\n\nWhen a DAG is switched from **CronTriggerTimetable** to **CronDataIntervalTimetable** (for example,\nby flipping this setting from ``False`` to ``True``), the next scheduled run skips one period past\nthe most recent **CronTriggerTimetable** run to avoid colliding with its logical date.\n",
@@ -2559,22 +2034,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Whether to create DAG runs that span an interval or one single point in time when a timedelta or\nrelativedelta is provided to ``schedule`` argument of a DAG.\n\n* ``True``: **DeltaDataIntervalTimetable** is used, which is suitable for DAGs with well-defined data\n  interval. You get contiguous intervals from the end of the previous interval up to the scheduled\n  datetime.\n* ``False``: **DeltaTriggerTimetable** is used, which is suitable for DAGs that simply want to say\n  e.g. \"run this every day\" and do not care about the data interval.\n\nNotably, for **DeltaTriggerTimetable**, the logical date is the same as the time the DAG Run will\ntry to schedule, while for **DeltaDataIntervalTimetable**, the logical date is the beginning of\nthe data interval, but the DAG Run will try to schedule at the end of the data interval.\n",
@@ -2600,22 +2060,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "When you start a scheduler, airflow starts a tiny web server\nsubprocess to serve a health check if this is set to ``True``\n",
@@ -2628,22 +2073,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Whether to enable memory allocation tracing in the scheduler. If enabled, Airflow will start\ntracing memory allocation and log the top 10 memory usages at the error level upon receiving the\nsignal SIGUSR1.\nThis is an expensive operation and generally should not be used except for debugging purposes.\n",
@@ -2656,22 +2086,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Setting this to ``True`` will make first task instance of a task\nignore depends_on_past setting. A task instance will be considered\nas the first task instance of a task when there is no task instance\nin the DB with a logical_date earlier than it., i.e. no manual marking\nsuccess will be needed for a newly added task to be scheduled.\n",
@@ -2749,22 +2164,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Only count scheduler runs where the scheduler was idle (no tasks queued or finished)\ntoward the run limit set by ``[scheduler] num_runs``. The count resets whenever a task is processed.\n",
@@ -2964,22 +2364,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Turn off scheduler use of cron intervals by setting this to ``False``.\nDAGs submitted manually in the web UI or with trigger_dag will still run.\n",
@@ -2992,22 +2377,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Should the scheduler issue ``SELECT ... FOR UPDATE`` in relevant queries.\nIf this is set to ``False`` then you should not run more than a single\nscheduler at once\n",
@@ -3050,22 +2420,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": ".. note:: |experimental|\n\nEnables local caching of Variables, when parsing DAGs only.\nUsing this option can make dag parsing faster if Variables are used in top level code, at the expense\nof longer propagation time for changes.\nPlease note that this cache concerns only the DAG parsing step. There is no caching in place when DAG\ntasks are run.\n",
@@ -3110,22 +2465,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Enable error reporting to Sentry",
@@ -3181,22 +2521,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Determines whether to use an SSL connection when talking to the SMTP server.\n",
@@ -3209,22 +2534,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Determines whether to use the STARTTLS command when connecting to the SMTP server.\n",
@@ -3265,22 +2575,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "If set to True, all task state keys for a task instance are automatically cleared\nwhen that task instance moved to SUCCESS.\n\nDefaults to False so that task state persists after success for observability \u2014\noperators and the UI can inspect what the task wrote (e.g. submitted job IDs,\nadvanced watermarks) after the run completes.\nConsider setting to True if you do not need post-success visibility and want automatic\ncleanup without waiting for the global retention period.\n",
@@ -3340,22 +2635,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "If True, all traces are also emitted to the console. Defaults to False.\n",
@@ -3373,22 +2653,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "Enables sending traces to OpenTelemetry.\n",
@@ -3419,22 +2684,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "If True, SSL will be enabled.  Defaults to False.\nTo establish an HTTPS connection to the OpenTelemetry collector,\nyou need to configure the SSL certificate and key within the OpenTelemetry collector's\nconfig.yml file.\n",
@@ -3532,22 +2782,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "true",
-                "false",
-                "True",
-                "False",
-                "1",
-                "0",
-                "yes",
-                "no",
-                "Yes",
-                "No",
-                "on",
-                "off",
-                "On",
-                "Off"
-              ]
+              "pattern": "^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
             }
           ],
           "description": "When set to True, deferred tasks will register triggers with the task queue they originated from,\nand triggerers can selectively run triggers based on their queue assignment. Only relevant when using\nexecutors which support task queue assignment. For more details, refer to the trigger docs.\n",

@@ -23,23 +23,7 @@ from typing import Any
 
 import yaml
 
-BOOLEAN_STRING_VALUES = [
-    "true",
-    "false",
-    "True",
-    "False",
-    "1",
-    "0",
-    "yes",
-    "no",
-    "Yes",
-    "No",
-    "on",
-    "off",
-    "On",
-    "Off",
-]
-
+BOOLEAN_STRING_PATTERN = r"^(?:[Tt]|[Tt][Rr][Uu][Ee]|1|[Ff]|[Ff][Aa][Ll][Ss][Ee]|0)$"
 INTEGER_STRING_PATTERN = r"^-?\d+$"
 FLOAT_STRING_PATTERN = r"^-?(?:\d+(?:\.\d+)?|\.\d+)$"
 CONFIG_TEMPLATES_DIR = Path(__file__).parent
@@ -52,7 +36,7 @@ def build_option_schema(option_data: dict[str, Any]) -> dict[str, Any]:
     if option_type == "boolean":
         option_schema["oneOf"] = [
             {"type": "boolean"},
-            {"type": "string", "enum": BOOLEAN_STRING_VALUES},
+            {"type": "string", "pattern": BOOLEAN_STRING_PATTERN},
         ]
     elif option_type == "integer":
         option_schema["oneOf"] = [

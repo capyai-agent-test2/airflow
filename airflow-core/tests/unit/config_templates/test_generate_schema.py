@@ -16,13 +16,14 @@
 # under the License.
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 import yaml
 
 from airflow.config_templates.generate_schema import (
-    BOOLEAN_STRING_VALUES,
+    BOOLEAN_STRING_PATTERN,
     FLOAT_STRING_PATTERN,
     INTEGER_STRING_PATTERN,
     build_option_schema,
@@ -45,7 +46,7 @@ CONFIG_TEMPLATES_DIR = Path(__file__).parents[3] / "src" / "airflow" / "config_t
             {
                 "oneOf": [
                     {"type": "boolean"},
-                    {"type": "string", "enum": BOOLEAN_STRING_VALUES},
+                    {"type": "string", "pattern": BOOLEAN_STRING_PATTERN},
                 ],
                 "default": "True",
             },
@@ -87,3 +88,19 @@ def test_generated_schema_snapshot_is_up_to_date():
         config = yaml.safe_load(config_file)
 
     assert schema_path.read_text(encoding="utf-8") == render_airflow_config_schema(config)
+
+
+@pytest.mark.parametrize(
+    ("value", "matches"),
+    [
+        pytest.param("t", True, id="lowercase-t"),
+        pytest.param("T", True, id="uppercase-t"),
+        pytest.param("true", True, id="lowercase-true"),
+        pytest.param("FALSE", True, id="uppercase-false"),
+        pytest.param("0", True, id="zero"),
+        pytest.param("yes", False, id="yes-not-supported"),
+        pytest.param("on", False, id="on-not-supported"),
+    ],
+)
+def test_boolean_string_pattern_matches_parser_contract(value: str, matches: bool):
+    assert (re.fullmatch(BOOLEAN_STRING_PATTERN, value) is not None) is matches
