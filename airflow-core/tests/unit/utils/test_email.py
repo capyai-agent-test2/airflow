@@ -124,6 +124,25 @@ class TestEmail:
         assert call_kwargs["from_email"] == "from@test.com"
         assert not mock_send_email_smtp.called
 
+    @pytest.mark.db_test
+    @mock.patch("airflow.utils.email.send_email_smtp")
+    def test_custom_backend_sender_prefers_connection_extra(self, mock_send_email_smtp, monkeypatch):
+        monkeypatch.setenv(
+            "AIRFLOW_CONN_SMTP_DEFAULT",
+            "smtp://user:password@smtp.example.com:587?from_email=conn-from%40test.com",
+        )
+        with conf_vars(
+            {
+                ("email", "email_backend"): "unit.utils.test_email.send_email_test",
+                ("email", "email_conn_id"): "smtp_default",
+                ("email", "from_email"): "config-from@test.com",
+            }
+        ):
+            email.send_email("to", "subject", "content")
+        _, call_kwargs = send_email_test.call_args
+        assert call_kwargs["from_email"] == "conn-from@test.com"
+        assert not mock_send_email_smtp.called
+
     def test_build_mime_message(self):
         mail_from = "from@example.com"
         mail_to = "to@example.com"
@@ -208,6 +227,17 @@ class TestEmailSmtp:
         mimeapp = MIMEApplication("attachment")
         assert mimeapp.get_payload() == msg.get_payload()[-1].get_payload()
         assert msg["Reply-To"] == "reply_to@example.com"
+
+    @mock.patch("airflow.utils.email.send_mime_email")
+    def test_send_smtp_prefers_connection_extra_sender(self, mock_send_mime, monkeypatch):
+        monkeypatch.setenv(
+            "AIRFLOW_CONN_SMTP_DEFAULT",
+            "smtp://user:password@smtp.example.com:587?smtp_mail_from=conn-smtp%40test.com",
+        )
+        with conf_vars({("smtp", "smtp_mail_from"): "config-smtp@test.com"}):
+            email.send_email_smtp("to", "subject", "content")
+        _, call_args = mock_send_mime.call_args
+        assert call_args["e_from"] == "conn-smtp@test.com"
 
     @mock.patch("smtplib.SMTP_SSL")
     @mock.patch("smtplib.SMTP")
