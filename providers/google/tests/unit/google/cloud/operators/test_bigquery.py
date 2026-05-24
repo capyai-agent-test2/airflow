@@ -1828,6 +1828,129 @@ class TestBigQueryInsertJobOperator:
 
         assert isinstance(lineage.run_facets["errorMessage"], ErrorMessageRunFacet)
 
+    @mock.patch("airflow.providers.openlineage.api.emit_query_lineage")
+    @mock.patch("airflow.providers.google.cloud.operators.bigquery.BigQueryHook")
+    def test_execute_openlineage_events_for_script_job(self, mock_hook, mock_emit_query_lineage):
+        configuration = {
+            "query": {
+                "query": "CALL `test-project.test_dataset.test_routine`()",
+                "useLegacySql": False,
+            }
+        }
+        operator = BigQueryInsertJobOperator(
+            task_id="insert_script_job",
+            configuration=configuration,
+            location=TEST_DATASET_LOCATION,
+            job_id=TEST_JOB_ID,
+            project_id=TEST_GCP_PROJECT_ID,
+        )
+        operator.job_id = TEST_JOB_ID
+        operator.hook = mock_hook.return_value
+
+        script_job_properties = {
+            "status": {"state": "DONE"},
+            "statistics": {"numChildJobs": "2"},
+            "configuration": {"jobType": "QUERY", "query": {"query": configuration["query"]["query"]}},
+        }
+        child_job_one = {
+            "configuration": {
+                "jobType": "QUERY",
+                "query": {
+                    "query": "CREATE OR REPLACE TABLE target_dataset.output_table1 AS SELECT * FROM input_table1",
+                    "destinationTable": {
+                        "projectId": TEST_GCP_PROJECT_ID,
+                        "datasetId": "target_dataset",
+                        "tableId": "output_table1",
+                    },
+                },
+            },
+            "statistics": {
+                "query": {
+                    "referencedTables": [
+                        {
+                            "projectId": TEST_GCP_PROJECT_ID,
+                            "datasetId": "source_dataset",
+                            "tableId": "input_table1",
+                        }
+                    ]
+                }
+            },
+        }
+        child_job_two = {
+            "configuration": {
+                "jobType": "QUERY",
+                "query": {
+                    "query": "CREATE OR REPLACE TABLE target_dataset.output_table2 AS SELECT * FROM input_table2",
+                    "destinationTable": {
+                        "projectId": TEST_GCP_PROJECT_ID,
+                        "datasetId": "target_dataset",
+                        "tableId": "output_table2",
+                    },
+                },
+            },
+            "statistics": {
+                "query": {
+                    "referencedTables": [
+                        {
+                            "projectId": TEST_GCP_PROJECT_ID,
+                            "datasetId": "source_dataset",
+                            "tableId": "input_table2",
+                        }
+                    ]
+                }
+            },
+        }
+
+        job_properties_by_id = {
+            TEST_JOB_ID: script_job_properties,
+            "child-job-1": child_job_one,
+            "child-job-2": child_job_two,
+        }
+
+        def get_job(*, job_id):
+            return MagicMock(_properties=job_properties_by_id[job_id])
+
+        mock_client = mock_hook.return_value.get_client.return_value
+        mock_client.get_job.side_effect = get_job
+        mock_client.list_jobs.return_value = [
+            MagicMock(job_id="child-job-1"),
+            MagicMock(job_id="child-job-2"),
+        ]
+        mock_client.get_table.side_effect = Exception()
+
+        task_instance = MagicMock(dag_id=TEST_DAG_ID, task_id=operator.task_id)
+
+        lineage = operator.get_openlineage_facets_on_complete(task_instance)
+
+        assert lineage.inputs == []
+        assert lineage.outputs == []
+        assert lineage.run_facets == {
+            "bigQueryJob": mock.ANY,
+            "externalQuery": ExternalQueryRunFacet(externalQueryId=TEST_JOB_ID, source="bigquery"),
+        }
+        assert lineage.job_facets == {"sql": SQLJobFacet(query=configuration["query"]["query"])}
+
+        assert mock_emit_query_lineage.call_count == 2
+        first_call, second_call = mock_emit_query_lineage.call_args_list
+
+        assert first_call.kwargs["query_id"] == "child-job-1"
+        assert first_call.kwargs["job_name"] == f"{TEST_DAG_ID}.insert_script_job.query.1"
+        assert [dataset.name for dataset in first_call.kwargs["inputs"]] == [
+            f"{TEST_GCP_PROJECT_ID}.source_dataset.input_table1"
+        ]
+        assert [dataset.name for dataset in first_call.kwargs["outputs"]] == [
+            f"{TEST_GCP_PROJECT_ID}.target_dataset.output_table1"
+        ]
+
+        assert second_call.kwargs["query_id"] == "child-job-2"
+        assert second_call.kwargs["job_name"] == f"{TEST_DAG_ID}.insert_script_job.query.2"
+        assert [dataset.name for dataset in second_call.kwargs["inputs"]] == [
+            f"{TEST_GCP_PROJECT_ID}.source_dataset.input_table2"
+        ]
+        assert [dataset.name for dataset in second_call.kwargs["outputs"]] == [
+            f"{TEST_GCP_PROJECT_ID}.target_dataset.output_table2"
+        ]
+
     @pytest.mark.db_test
     @mock.patch("airflow.providers.google.cloud.operators.bigquery.BigQueryHook")
     def test_execute_force_rerun_async(self, mock_hook):

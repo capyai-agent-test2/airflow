@@ -46,6 +46,8 @@ from airflow.providers.google.cloud.openlineage.utils import (
 )
 
 if TYPE_CHECKING:
+    from openlineage.client.event_v2 import Dataset as OpenLineageDataset
+
     from airflow.providers.common.compat.openlineage.facet import Dataset, RunFacet
     from airflow.providers.google.cloud.openlineage.facets import BigQueryJobRunFacet
 
@@ -53,7 +55,7 @@ if TYPE_CHECKING:
 class _BigQueryInsertJobOperatorOpenLineageMixin:
     """Mixin for BigQueryInsertJobOperator to extract OpenLineage metadata."""
 
-    def get_openlineage_facets_on_complete(self, _):
+    def get_openlineage_facets_on_complete(self, task_instance):
         """
         Retrieve OpenLineage data for a completed BigQuery job.
 
@@ -109,14 +111,8 @@ class _BigQueryInsertJobOperatorOpenLineageMixin:
             run_facets["bigQueryJob"] = self._get_bigquery_job_run_facet(job_properties)
 
             if get_from_nullable_chain(job_properties, ["statistics", "numChildJobs"]):
-                self.log.debug("Found SCRIPT job. Extracting lineage from child jobs instead.")
-                # SCRIPT job type has no input / output information but spawns child jobs that have one
-                # https://cloud.google.com/bigquery/docs/information-schema-jobs#multi-statement_query_job
-                for child_job_id in self._client.list_jobs(parent_job=self.job_id):
-                    child_job_properties = self._client.get_job(job_id=child_job_id)._properties
-                    child_inputs, child_outputs = self._get_inputs_and_outputs(child_job_properties)
-                    inputs.extend(child_inputs)
-                    outputs.extend(child_outputs)
+                self.log.debug("Found SCRIPT job. Emitting lineage for child jobs instead of aggregating it.")
+                self._emit_child_job_lineage_events(task_instance=task_instance, parent_job_id=self.job_id)
             else:
                 inputs, outputs = self._get_inputs_and_outputs(job_properties)
 
@@ -138,6 +134,40 @@ class _BigQueryInsertJobOperatorOpenLineageMixin:
             run_facets=run_facets,
             job_facets={"sql": SQLJobFacet(query=SQLParser.normalize_sql(self.sql))} if self.sql else {},
         )
+
+    def _emit_child_job_lineage_events(self, task_instance, parent_job_id: str) -> None:
+        from airflow.providers.openlineage.api import emit_query_lineage
+        from airflow.providers.openlineage.sqlparser import SQLParser
+
+        if task_instance is None:
+            self.log.debug("Skipping child job lineage emission because task instance is unavailable.")
+            return
+
+        for child_job_number, child_job in enumerate(
+            self._client.list_jobs(parent_job=parent_job_id), start=1
+        ):
+            child_job_id = getattr(child_job, "job_id", child_job)
+            child_job_properties = self._client.get_job(job_id=child_job_id)._properties
+            child_inputs, child_outputs = self._get_inputs_and_outputs(child_job_properties)
+            child_query = get_from_nullable_chain(child_job_properties, ["configuration", "query", "query"])
+
+            emit_query_lineage(
+                query_id=child_job_id,
+                query_source_namespace=BIGQUERY_NAMESPACE,
+                inputs=[self._to_openlineage_dataset(dataset) for dataset in child_inputs],
+                outputs=[self._to_openlineage_dataset(dataset) for dataset in child_outputs],
+                task_instance=task_instance,
+                job_name=f"{task_instance.dag_id}.{task_instance.task_id}.query.{child_job_number}",
+                additional_job_facets={"sql": SQLJobFacet(query=SQLParser.normalize_sql(child_query))}
+                if child_query
+                else None,
+            )
+
+    @staticmethod
+    def _to_openlineage_dataset(dataset) -> OpenLineageDataset:
+        from openlineage.client.event_v2 import Dataset as OpenLineageDataset
+
+        return OpenLineageDataset(namespace=dataset.namespace, name=dataset.name)
 
     def _get_inputs_and_outputs(self, properties: dict) -> tuple[list[InputDataset], list[OutputDataset]]:
         job_type = get_from_nullable_chain(properties, ["configuration", "jobType"])
