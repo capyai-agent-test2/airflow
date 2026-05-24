@@ -82,6 +82,32 @@ other users. ``Admin`` users have ``Op`` permission plus additional permissions:
 Custom Roles
 '''''''''''''
 
+You can declare custom roles at startup in either ``airflow.cfg`` or ``webserver_config.py``.
+The startup sync only adds missing roles and permissions; it does not prune extra permissions
+or overwrite later manual edits in the metadata DB.
+
+In ``airflow.cfg``, set ``[fab] custom_role_definitions`` to JSON using the same ``role`` and
+``perms`` structure used by the FAB security manager:
+
+.. code-block:: ini
+
+   [fab]
+   custom_role_definitions = [{"role": "CustomViewer", "perms": [["can_read", "Website"], ["can_read", "Dags"]]}]
+
+In ``webserver_config.py``, define ``AUTH_ROLE_CONFIGS`` with the same structure:
+
+.. code-block:: python
+
+   AUTH_ROLE_CONFIGS = [
+       {
+           "role": "CustomViewer",
+           "perms": [
+               ("can_read", "Website"),
+               ("can_read", "Dags"),
+           ],
+       },
+   ]
+
 Dag Level Role
 ^^^^^^^^^^^^^^
 ``Admin`` can create a set of roles which are only allowed to view a certain set of Dags. This is called Dag level access. Each Dag defined in the Dag model table

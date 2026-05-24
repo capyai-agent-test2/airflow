@@ -191,6 +191,13 @@ def get_provider_info():
                         "example": "Admin",
                         "default": "",
                     },
+                    "custom_role_definitions": {
+                        "description": 'Declarative custom FAB role definitions to create during the startup role sync.\nThe value must be a JSON list of objects with ``role`` and ``perms`` keys, for\nexample ``[{"role": "CustomViewer", "perms": [["can_read", "Website"]]}]``.\n\nRoles and permissions declared here are additive: startup creates missing roles and\ngrants missing permissions, but does not remove extra permissions or overwrite later\nmanual changes stored in the metadata database.\n\nThe equivalent ``webserver_config.py`` setting is ``AUTH_ROLE_CONFIGS`` using the same\nstructure as a Python list.\n',
+                        "version_added": "3.7.0",
+                        "type": "string",
+                        "example": '[{"role": "CustomViewer", "perms": [["can_read", "Website"]]}]',
+                        "default": "[]",
+                    },
                 },
             }
         },

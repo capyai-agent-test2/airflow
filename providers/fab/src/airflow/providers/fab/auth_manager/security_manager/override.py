@@ -69,7 +69,7 @@ from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.orm import joinedload
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from airflow.providers.common.compat.sdk import conf
+from airflow.providers.common.compat.sdk import AirflowConfigException, conf
 from airflow.providers.fab.auth_manager.models import (
     Action,
     Group,
@@ -1183,7 +1183,7 @@ class FabAirflowSecurityManagerOverride(AirflowSecurityManagerV2):
         self.create_perm_vm_for_all_dag()
 
         # Sync the default roles (Admin, Viewer, User, Op, public) with related permissions
-        self.bulk_sync_roles(self.ROLE_CONFIGS)
+        self.bulk_sync_roles(self.ROLE_CONFIGS + self._get_custom_role_configs())
 
         self.add_homepage_access_to_custom_roles()
         # init existing roles, the rest role could be created through UI.
@@ -1272,6 +1272,54 @@ class FabAirflowSecurityManagerOverride(AirflowSecurityManagerV2):
 
                 if perm not in role.permissions:
                     self.add_permission_to_role(role, perm)
+
+    def _get_custom_role_configs(self) -> list[dict[str, Any]]:
+        role_configs = []
+        if airflow_role_configs := conf.getjson("fab", "custom_role_definitions", fallback=[]):
+            role_configs.extend(
+                self._normalize_custom_role_configs(
+                    airflow_role_configs, source="[fab] custom_role_definitions"
+                )
+            )
+        if webserver_role_configs := current_app.config.get("AUTH_ROLE_CONFIGS", []):
+            role_configs.extend(
+                self._normalize_custom_role_configs(
+                    webserver_role_configs, source="webserver_config.py AUTH_ROLE_CONFIGS"
+                )
+            )
+        return role_configs
+
+    @staticmethod
+    def _normalize_custom_role_configs(role_configs: Any, *, source: str) -> list[dict[str, Any]]:
+        if not isinstance(role_configs, list):
+            raise AirflowConfigException(f"{source} must be a list of role definitions.")
+
+        normalized_role_configs = []
+        for index, role_config in enumerate(role_configs):
+            if not isinstance(role_config, dict):
+                raise AirflowConfigException(f"{source}[{index}] must be a mapping.")
+
+            role_name = role_config.get("role")
+            perms = role_config.get("perms")
+            if not isinstance(role_name, str) or not role_name:
+                raise AirflowConfigException(f"{source}[{index}].role must be a non-empty string.")
+            if not isinstance(perms, list):
+                raise AirflowConfigException(f"{source}[{index}].perms must be a list of permissions.")
+
+            normalized_perms = []
+            for perm_index, perm in enumerate(perms):
+                if (
+                    not isinstance(perm, (list, tuple))
+                    or len(perm) != 2
+                    or not all(isinstance(value, str) and value for value in perm)
+                ):
+                    raise AirflowConfigException(
+                        f"{source}[{index}].perms[{perm_index}] must be a pair of non-empty strings."
+                    )
+                normalized_perms.append((perm[0], perm[1]))
+
+            normalized_role_configs.append({"role": role_name, "perms": normalized_perms})
+        return normalized_role_configs
 
     """
     -----------

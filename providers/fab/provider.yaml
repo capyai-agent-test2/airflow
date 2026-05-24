@@ -282,6 +282,22 @@ config:
         type: string
         example: "Admin"
         default: ""
+      custom_role_definitions:
+        description: |
+          Declarative custom FAB role definitions to create during the startup role sync.
+          The value must be a JSON list of objects with ``role`` and ``perms`` keys, for
+          example ``[{"role": "CustomViewer", "perms": [["can_read", "Website"]]}]``.
+
+          Roles and permissions declared here are additive: startup creates missing roles and
+          grants missing permissions, but does not remove extra permissions or overwrite later
+          manual changes stored in the metadata database.
+
+          The equivalent ``webserver_config.py`` setting is ``AUTH_ROLE_CONFIGS`` using the same
+          structure as a Python list.
+        version_added: 3.7.0
+        type: string
+        example: '[{"role": "CustomViewer", "perms": [["can_read", "Website"]]}]'
+        default: "[]"
 
 auth-managers:
   - airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
