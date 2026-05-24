@@ -22,7 +22,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Annotated, cast
 
 from fastapi import Depends, HTTPException, Query, status
-from sqlalchemy import Text, and_, delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import joinedload, subqueryload
 
@@ -137,6 +137,14 @@ class AssetEventType(str, Enum):
 class EventTypeFilter(BaseParam[AssetEventType | None]):
     """Filter asset events by their producer type."""
 
+    @staticmethod
+    def _json_true(key: str):
+        return AssetEvent.extra[key].as_boolean().is_(True)
+
+    @staticmethod
+    def _json_not_true(key: str):
+        return or_(AssetEvent.extra[key].is_(None), AssetEvent.extra[key].as_boolean().is_not(True))
+
     def to_orm(self, select: Select) -> Select:
         if self.value is None and self.skip_none:
             return select
@@ -146,7 +154,8 @@ class EventTypeFilter(BaseParam[AssetEventType | None]):
                 and_(
                     AssetEvent.source_dag_id.is_(None),
                     AssetEvent.source_task_id.is_(None),
-                    AssetEvent.extra.cast(Text).contains('"from_rest_api"'),
+                    self._json_true("from_rest_api"),
+                    self._json_not_true("from_trigger"),
                 )
             )
         if self.value == AssetEventType.TASK:
@@ -161,7 +170,8 @@ class EventTypeFilter(BaseParam[AssetEventType | None]):
                 and_(
                     AssetEvent.source_dag_id.is_(None),
                     AssetEvent.source_task_id.is_(None),
-                    AssetEvent.extra.cast(Text).contains('"from_trigger"'),
+                    self._json_true("from_trigger"),
+                    self._json_not_true("from_rest_api"),
                 )
             )
         raise ValueError(f"Unsupported asset event type filter: {self.value}")
