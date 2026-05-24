@@ -173,6 +173,9 @@ spec:
         {{- if and $localOrDagProcessorDisabled .Values.dags.gitSync.enabled }}
           {{- include "git_sync_container" (dict "Values" .Values "is_init" "true" "Template" .Template) | nindent 8 }}
         {{- end }}
+        {{- if and .Values.plugins.gitSync.enabled (not .Values.plugins.persistence.enabled) }}
+          {{- include "plugins_git_sync_container" (dict "Values" .Values "is_init" "true" "Template" .Template) | nindent 8 }}
+        {{- end }}
         {{- if .Values.scheduler.extraInitContainers }}
           {{- tpl (toYaml .Values.scheduler.extraInitContainers) . | nindent 8 }}
         {{- end }}
@@ -240,6 +243,9 @@ spec:
             {{- if and $localOrDagProcessorDisabled (or .Values.dags.persistence.enabled .Values.dags.gitSync.enabled) }}
               {{- include "airflow_dags_mount" . | nindent 12 }}
             {{- end }}
+            {{- if or .Values.plugins.persistence.enabled .Values.plugins.gitSync.enabled }}
+              {{- include "airflow_plugins_mount" . | nindent 12 }}
+            {{- end }}
             {{- if .Values.volumeMounts }}
               {{- toYaml .Values.volumeMounts | nindent 12 }}
             {{- end }}
@@ -253,6 +259,9 @@ spec:
             {{- end }}
         {{- if and $localOrDagProcessorDisabled .Values.dags.gitSync.enabled }}
           {{- include "git_sync_container" . | indent 8 }}
+        {{- end }}
+        {{- if .Values.plugins.gitSync.enabled }}
+          {{- include "plugins_git_sync_container" . | indent 8 }}
         {{- end }}
         {{- if .Values.scheduler.logGroomerSidecar.enabled }}
         - name: scheduler-log-groomer
@@ -327,6 +336,17 @@ spec:
           {{- include "git_sync_ssh_key_volume" . | indent 8 }}
         {{- end }}
         {{- end }}
+        {{- end }}
+        {{- if .Values.plugins.persistence.enabled }}
+        - name: plugins
+          persistentVolumeClaim:
+            claimName: {{ template "airflow_plugins_volume_claim" . }}
+        {{- else if .Values.plugins.gitSync.enabled }}
+        - name: plugins
+          emptyDir: {{- toYaml (default (dict) .Values.plugins.gitSync.emptyDirConfig) | nindent 12 }}
+        {{- end }}
+        {{- if and .Values.plugins.gitSync.enabled (or .Values.plugins.gitSync.sshKeySecret .Values.plugins.gitSync.sshKey) }}
+          {{- include "plugins_git_sync_ssh_key_volume" . | indent 8 }}
         {{- end }}
         {{- if .Values.volumes }}
           {{- toYaml .Values.volumes | nindent 8 }}

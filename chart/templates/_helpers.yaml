@@ -199,11 +199,27 @@ If release name contains chart name it will be used as a full name.
   {{- end }}
 {{- end }}
 
+{{/* User defined plugins gitSync container environment from */}}
+{{- define "custom_plugins_git_sync_environment_from" }}
+  {{- $Global := . }}
+  {{- with .Values.plugins.gitSync.envFrom }}
+    {{- tpl . $Global | nindent 2 }}
+  {{- end }}
+{{- end }}
+
 {{/* Git ssh key volume */}}
 {{- define "git_sync_ssh_key_volume" }}
 - name: git-sync-ssh-key
   secret:
     secretName: {{ template "git_sync_ssh_key" . }}
+    defaultMode: 288
+{{- end }}
+
+{{/* Plugins git ssh key volume */}}
+{{- define "plugins_git_sync_ssh_key_volume" }}
+- name: plugins-git-sync-ssh-key
+  secret:
+    secretName: {{ template "plugins_git_sync_ssh_key" . }}
     defaultMode: 288
 {{- end }}
 
@@ -362,6 +378,161 @@ If release name contains chart name it will be used as a full name.
   {{- end }}
 {{- end }}
 
+{{/* Plugins git sync container */}}
+{{- define "plugins_git_sync_container" }}
+- name: {{ .Values.plugins.gitSync.containerName }}{{ if .is_init }}-init{{ end }}
+  image: {{ template "git_sync_image" . }}
+  imagePullPolicy: {{ .Values.images.gitSync.pullPolicy }}
+  securityContext: {{- include "localContainerSecurityContext" .Values.plugins.gitSync | nindent 4 }}
+  envFrom: {{- include "custom_plugins_git_sync_environment_from" . | default "\n  []" | indent 2 }}
+  env:
+    - name: GIT_SYNC_REV
+      value: {{ .Values.plugins.gitSync.rev | quote }}
+    - name: GITSYNC_REF
+      value: {{ .Values.plugins.gitSync.ref | quote }}
+    - name: GIT_SYNC_BRANCH
+      value: {{ .Values.plugins.gitSync.branch | quote }}
+    - name: GIT_SYNC_REPO
+      value: {{ .Values.plugins.gitSync.repo | quote }}
+    - name: GITSYNC_REPO
+      value: {{ .Values.plugins.gitSync.repo | quote }}
+    - name: GIT_SYNC_DEPTH
+      value: {{ .Values.plugins.gitSync.depth | quote }}
+    - name: GITSYNC_DEPTH
+      value: {{ .Values.plugins.gitSync.depth | quote }}
+    - name: GIT_SYNC_ROOT
+      value: "/git"
+    - name: GITSYNC_ROOT
+      value: "/git"
+    - name: GIT_SYNC_DEST
+      value: "repo"
+    - name: GITSYNC_LINK
+      value: "repo"
+    - name: GIT_SYNC_ADD_USER
+      value: "true"
+    - name: GITSYNC_ADD_USER
+      value: "true"
+    - name: GITSYNC_PERIOD
+      value: {{ .Values.plugins.gitSync.period | quote }}
+    - name: GIT_SYNC_MAX_SYNC_FAILURES
+      value: {{ .Values.plugins.gitSync.maxFailures | quote }}
+    - name: GITSYNC_MAX_FAILURES
+      value: {{ .Values.plugins.gitSync.maxFailures | quote }}
+    {{- if or .Values.plugins.gitSync.sshKeySecret .Values.plugins.gitSync.sshKey }}
+    - name: GIT_SSH_KEY_FILE
+      value: "/etc/git-secret/ssh"
+    - name: GITSYNC_SSH_KEY_FILE
+      value: "/etc/git-secret/ssh"
+    - name: GIT_SYNC_SSH
+      value: "true"
+    - name: GITSYNC_SSH
+      value: "true"
+    {{- if .Values.plugins.gitSync.knownHosts }}
+    - name: GIT_KNOWN_HOSTS
+      value: "true"
+    - name: GITSYNC_SSH_KNOWN_HOSTS
+      value: "true"
+    - name: GIT_SSH_KNOWN_HOSTS_FILE
+      value: "/etc/git-secret/known_hosts"
+    - name: GITSYNC_SSH_KNOWN_HOSTS_FILE
+      value: "/etc/git-secret/known_hosts"
+    {{- else }}
+    - name: GIT_KNOWN_HOSTS
+      value: "false"
+    - name: GITSYNC_SSH_KNOWN_HOSTS
+      value: "false"
+    {{- end }}
+    {{ else if .Values.plugins.gitSync.credentialsSecret }}
+    - name: GIT_SYNC_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.plugins.gitSync.credentialsSecret | quote }}
+          key: GIT_SYNC_USERNAME
+    - name: GITSYNC_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.plugins.gitSync.credentialsSecret | quote }}
+          key: GITSYNC_USERNAME
+    - name: GIT_SYNC_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.plugins.gitSync.credentialsSecret | quote }}
+          key: GIT_SYNC_PASSWORD
+    - name: GITSYNC_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.plugins.gitSync.credentialsSecret | quote }}
+          key: GITSYNC_PASSWORD
+    {{- end }}
+    {{- if .Values.plugins.gitSync.wait }}
+    - name: GIT_SYNC_WAIT
+      value: {{ .Values.plugins.gitSync.wait | quote }}
+    {{- end }}
+    {{- if .is_init }}
+    - name: GIT_SYNC_ONE_TIME
+      value: "true"
+    - name: GITSYNC_ONE_TIME
+      value: "true"
+    {{- else }}
+    - name: GIT_SYNC_HTTP_BIND
+      value: ":{{ .Values.plugins.gitSync.httpPort }}"
+    - name: GITSYNC_HTTP_BIND
+      value: ":{{ .Values.plugins.gitSync.httpPort }}"
+    {{- end }}
+    {{- with .Values.plugins.gitSync.env }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  resources: {{ toYaml .Values.plugins.gitSync.resources | nindent 4 }}
+  {{- if not .is_init }}
+  {{- if .Values.plugins.gitSync.startupProbe.enabled }}
+  startupProbe:
+    httpGet:
+      path: /
+      port: {{ .Values.plugins.gitSync.httpPort }}
+    timeoutSeconds: {{ .Values.plugins.gitSync.startupProbe.timeoutSeconds }}
+    initialDelaySeconds: {{ .Values.plugins.gitSync.startupProbe.initialDelaySeconds }}
+    periodSeconds: {{ .Values.plugins.gitSync.startupProbe.periodSeconds }}
+    failureThreshold: {{ .Values.plugins.gitSync.startupProbe.failureThreshold }}
+  {{- end }}
+  {{- if and .Values.plugins.gitSync.recommendedProbeSetting (hasKey .Values.plugins.gitSync.livenessProbe "enabled") .Values.plugins.gitSync.livenessProbe.enabled }}
+  livenessProbe:
+    httpGet:
+      path: /
+      port: {{ .Values.plugins.gitSync.httpPort }}
+    timeoutSeconds: {{ .Values.plugins.gitSync.livenessProbe.timeoutSeconds | default 1 }}
+    initialDelaySeconds: {{ .Values.plugins.gitSync.livenessProbe.initialDelaySeconds | default 0 }}
+    periodSeconds: {{ .Values.plugins.gitSync.livenessProbe.periodSeconds | default 5 }}
+    failureThreshold: {{ .Values.plugins.gitSync.livenessProbe.failureThreshold | default 10 }}
+  {{- else if .Values.plugins.gitSync.livenessProbe }}
+  livenessProbe: {{ tpl (toYaml .Values.plugins.gitSync.livenessProbe) . | nindent 4 }}
+  {{- end }}
+  {{- if and .Values.plugins.gitSync.readinessProbe (not .Values.plugins.gitSync.recommendedProbeSetting) }}
+  readinessProbe: {{ tpl (toYaml .Values.plugins.gitSync.readinessProbe) . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  volumeMounts:
+  - name: plugins
+    mountPath: /git
+  {{- if or .Values.plugins.gitSync.sshKeySecret .Values.plugins.gitSync.sshKey }}
+  - name: plugins-git-sync-ssh-key
+    mountPath: /etc/git-secret/ssh
+    readOnly: true
+    subPath: gitSshKey
+  {{- if .Values.plugins.gitSync.knownHosts }}
+  - name: config
+    mountPath: /etc/git-secret/known_hosts
+    readOnly: true
+    subPath: plugins_known_hosts
+  {{- end }}
+  {{- end }}
+  {{- if .Values.plugins.gitSync.extraVolumeMounts }}
+    {{- tpl (toYaml .Values.plugins.gitSync.extraVolumeMounts) . | nindent 2 }}
+  {{- end }}
+  {{- if and .Values.plugins.gitSync.containerLifecycleHooks (not .is_init) }}
+  lifecycle: {{- tpl (toYaml .Values.plugins.gitSync.containerLifecycleHooks) . | nindent 4 }}
+  {{- end }}
+{{- end }}
+
 {{/* This helper will change when customers deploy a new image */}}
 {{- define "airflow_image" -}}
   {{- $repository := .Values.images.airflow.repository | default .Values.defaultAirflowRepository -}}
@@ -511,6 +682,11 @@ If release name contains chart name it will be used as a full name.
   {{- default (printf "%s-ssh-secret" (include "airflow.fullname" .)) .Values.dags.gitSync.sshKeySecret }}
 {{- end }}
 
+{{/* Create the name of the plugins git sync ssh secret to use */}}
+{{- define "plugins_git_sync_ssh_key" -}}
+  {{- default (printf "%s-plugins-ssh-secret" (include "airflow.fullname" .)) .Values.plugins.gitSync.sshKeySecret }}
+{{- end }}
+
 {{- define "celery_executor_namespace" -}}
   {{- print "airflow.providers.celery.executors.celery_executor.app" -}}
 {{- end }}
@@ -611,6 +787,51 @@ server_tls_key_file = /etc/pgbouncer/server.key
   subPath: {{ .Values.dags.persistence.subPath }}
   {{- end }}
   readOnly: {{ .Values.dags.gitSync.enabled | ternary "True" "False" }}
+{{- end }}
+
+{{- define "airflow_plugins" -}}
+  {{- if .Values.plugins.mountPath }}
+    {{- if .Values.plugins.gitSync.enabled }}
+      {{- if .Values.plugins.gitSync.subPath }}
+        {{- printf "%s/repo/%s" .Values.plugins.mountPath .Values.plugins.gitSync.subPath }}
+      {{- else }}
+        {{- printf "%s/repo" .Values.plugins.mountPath }}
+      {{- end }}
+    {{- else }}
+      {{- printf "%s" .Values.plugins.mountPath }}
+    {{- end }}
+  {{- else }}
+    {{- if .Values.plugins.gitSync.enabled }}
+      {{- if .Values.plugins.gitSync.subPath }}
+        {{- printf "%s/plugins/repo/%s" .Values.airflowHome .Values.plugins.gitSync.subPath }}
+      {{- else }}
+        {{- printf "%s/plugins/repo" .Values.airflowHome }}
+      {{- end }}
+    {{- else }}
+      {{- printf "%s/plugins" .Values.airflowHome }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- define "airflow_plugins_volume_claim" -}}
+  {{- if .Values.plugins.persistence.existingClaim }}
+    {{- .Values.plugins.persistence.existingClaim }}
+  {{- else }}
+    {{- printf "%s-plugins" .Release.Name }}
+  {{- end }}
+{{- end }}
+
+{{- define "airflow_plugins_mount" -}}
+- name: plugins
+  {{- if .Values.plugins.mountPath }}
+  mountPath: {{ .Values.plugins.mountPath }}
+  {{- else }}
+  mountPath: {{ printf "%s/plugins" .Values.airflowHome }}
+  {{- end }}
+  {{- if .Values.plugins.persistence.subPath }}
+  subPath: {{ .Values.plugins.persistence.subPath }}
+  {{- end }}
+  readOnly: {{ .Values.plugins.gitSync.enabled | ternary "True" "False" }}
 {{- end }}
 
 {{- define "airflow_config_path" -}}

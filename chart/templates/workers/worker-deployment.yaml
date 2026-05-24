@@ -252,6 +252,9 @@ spec:
         {{- if and .Values.dags.gitSync.enabled (not .Values.dags.persistence.enabled) }}
           {{- include "git_sync_container" (dict "Values" .Values "is_init" "true" "Template" .Template) | nindent 8 }}
         {{- end }}
+        {{- if and .Values.plugins.gitSync.enabled (not .Values.plugins.persistence.enabled) }}
+          {{- include "plugins_git_sync_container" (dict "Values" .Values "is_init" "true" "Template" .Template) | nindent 8 }}
+        {{- end }}
         {{- if .Values.workers.extraInitContainers }}
           {{- tpl (toYaml .Values.workers.extraInitContainers) . | nindent 8 }}
         {{- end }}
@@ -321,6 +324,9 @@ spec:
             {{- if or .Values.dags.persistence.enabled .Values.dags.gitSync.enabled }}
               {{- include "airflow_dags_mount" . | nindent 12 }}
             {{- end }}
+            {{- if or .Values.plugins.persistence.enabled .Values.plugins.gitSync.enabled }}
+              {{- include "airflow_plugins_mount" . | nindent 12 }}
+            {{- end }}
           envFrom: {{- include "custom_airflow_environment_from" . | default "\n  []" | indent 10 }}
           env:
             # Only signal the main process, not the process group, to make Warm Shutdown work properly
@@ -337,6 +343,9 @@ spec:
             {{- end }}
         {{- if and .Values.dags.gitSync.enabled (not .Values.dags.persistence.enabled) }}
           {{- include "git_sync_container" . | nindent 8 }}
+        {{- end }}
+        {{- if and .Values.plugins.gitSync.enabled (not .Values.plugins.persistence.enabled) }}
+          {{- include "plugins_git_sync_container" . | nindent 8 }}
         {{- end }}
         {{- if .Values.workers.logGroomerSidecar.enabled }}
         - name: worker-log-groomer
@@ -464,6 +473,17 @@ spec:
           emptyDir: {{- toYaml (default (dict) .Values.dags.gitSync.emptyDirConfig) | nindent 12 }}
         {{- if or .Values.dags.gitSync.sshKeySecret .Values.dags.gitSync.sshKey}}
           {{- include "git_sync_ssh_key_volume" . | indent 8 }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.plugins.persistence.enabled }}
+        - name: plugins
+          persistentVolumeClaim:
+            claimName: {{ template "airflow_plugins_volume_claim" . }}
+        {{- else if .Values.plugins.gitSync.enabled }}
+        - name: plugins
+          emptyDir: {{- toYaml (default (dict) .Values.plugins.gitSync.emptyDirConfig) | nindent 12 }}
+        {{- if or .Values.plugins.gitSync.sshKeySecret .Values.plugins.gitSync.sshKey}}
+          {{- include "plugins_git_sync_ssh_key_volume" . | indent 8 }}
         {{- end }}
         {{- end }}
   {{- if .Values.logs.persistence.enabled }}
