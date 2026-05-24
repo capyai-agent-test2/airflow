@@ -27,6 +27,24 @@
 Changelog
 ---------
 
+14.0.0
+......
+
+Breaking changes
+~~~~~~~~~~~~~~~~
+
+.. warning::
+   The Azure Batch hook and operator now target ``azure-batch>=15.0.0``.
+   This switches the provider to the track-2 ``BatchClient`` API and removes
+   support for Cloud Service pool configuration.
+
+* ``AzureBatchHook`` now uses ``BatchClient`` and accepts native Azure Identity
+  credentials directly.
+* ``AzureBatchOperator`` now uses track-2 Azure Batch model types such as
+  ``BatchJobManagerTask`` and ``BatchTaskContainerSettings``.
+* ``os_family`` and ``os_version`` are no longer supported for Batch pools.
+  Use virtual machine configuration fields instead.
+
 13.3.0
 ......
 
