@@ -1504,6 +1504,36 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
         mocked_prepare_venv.assert_called_once()
         mocked_installed_hash.assert_called_once()
 
+    def test_ensure_venv_cache_exists_reuses_resolved_hash_cache(self, tmp_path):
+        def f():
+            return None
+
+        operator = PythonVirtualenvOperator(
+            task_id=self.task_id,
+            python_callable=f,
+            requirements=["example-package"],
+            venv_cache_path=tmp_path,
+            venv_cache_hash_on_installed_packages=True,
+        )
+        existing_venv_path = tmp_path / "venv-deadbeef"
+        existing_venv_path.mkdir()
+        expected_hash_data = '{"installed_requirements_list": ["example-package==1.2.3"]}'
+        (existing_venv_path / "install_complete_marker.json").write_text(expected_hash_data, encoding="utf8")
+
+        with (
+            mock.patch.object(operator, "_prepare_venv") as mocked_prepare_venv,
+            mock.patch.object(
+                operator,
+                "_calculate_cache_hash_from_installed_packages",
+                return_value=("deadbeef", expected_hash_data),
+            ) as mocked_installed_hash,
+        ):
+            venv_path = operator._ensure_venv_cache_exists(tmp_path)
+
+        assert venv_path == existing_venv_path
+        assert not mocked_prepare_venv.call_args_list[0].args[0].exists()
+        mocked_installed_hash.assert_called_once()
+
     @pytest.mark.parametrize(
         "serializer",
         [

@@ -1007,26 +1007,28 @@ class PythonVirtualenvOperator(_BasePythonVirtualenvOperator):
                         prepared_venv_path
                     )
                     venv_path = venv_cache_path / f"venv-{cache_hash}"
-                    self.log.info("Python virtual environment will be cached in %s", venv_path)
-                    hash_marker = venv_path / "install_complete_marker.json"
-                    if (
-                        venv_path.exists()
-                        and hash_marker.exists()
-                        and hash_marker.read_text(encoding="utf8") == hash_data
-                    ):
-                        self.log.info("Reusing cached Python virtual environment in %s", venv_path)
-                        return venv_path
-                    if venv_path.exists():
-                        self.log.warning(
-                            "Found a previous virtual environment in %s with the same resolved hash but "
-                            "different parameters. Re-creating it. Requested venv setup: '%s'.",
-                            venv_path,
-                            requested_hash_data,
-                        )
-                        shutil.rmtree(venv_path)
-                    hash_marker = prepared_venv_path / "install_complete_marker.json"
-                    hash_marker.write_text(hash_data, encoding="utf8")
-                    prepared_venv_path.rename(venv_path)
+                    with open(f"{venv_path}.lock", "w") as resolved_lock_file:
+                        fcntl.flock(resolved_lock_file, fcntl.LOCK_EX)
+                        self.log.info("Python virtual environment will be cached in %s", venv_path)
+                        hash_marker = venv_path / "install_complete_marker.json"
+                        if (
+                            venv_path.exists()
+                            and hash_marker.exists()
+                            and hash_marker.read_text(encoding="utf8") == hash_data
+                        ):
+                            self.log.info("Reusing cached Python virtual environment in %s", venv_path)
+                            return venv_path
+                        if venv_path.exists():
+                            self.log.warning(
+                                "Found a previous virtual environment in %s with the same resolved hash but "
+                                "different parameters. Re-creating it. Requested venv setup: '%s'.",
+                                venv_path,
+                                requested_hash_data,
+                            )
+                            shutil.rmtree(venv_path)
+                        hash_marker = prepared_venv_path / "install_complete_marker.json"
+                        hash_marker.write_text(hash_data, encoding="utf8")
+                        prepared_venv_path.rename(venv_path)
                 except Exception as e:
                     raise AirflowException(
                         f"Unable to create new virtual environment in {venv_cache_path}"
