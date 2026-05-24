@@ -173,6 +173,12 @@ class TestOpenAPIAuthorizationRequirements:
             "- Dag access (`method=GET`, `access_entity=RUN`)"
         ) in get_upstream_asset_events["description"]
 
+    def test_openapi_preserves_endpoint_docstring_description(self):
+        app = create_app()
+
+        get_dag_operation = app.openapi()["paths"]["/api/v2/dags/{dag_id}"]["get"]
+        assert get_dag_operation["description"].startswith("Get basic information about a Dag.")
+
 
 class TestCorsMiddlewareAllowCredentials:
     @pytest.mark.parametrize(
