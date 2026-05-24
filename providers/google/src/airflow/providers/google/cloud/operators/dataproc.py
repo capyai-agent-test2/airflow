@@ -722,7 +722,9 @@ class DataprocCreateClusterOperator(GoogleCloudBaseOperator):
         self.num_retries_if_resource_is_not_ready = num_retries_if_resource_is_not_ready
 
     def prepare_template(self) -> None:
-        if not isinstance(self.cluster_config_raw, str):
+        if not isinstance(self.cluster_config_raw, str) or not self.cluster_config_raw.endswith(
+            (".yaml", ".yml", ".json")
+        ):
             return
 
         with open(self.cluster_config_raw) as file:

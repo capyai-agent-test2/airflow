@@ -1004,6 +1004,20 @@ class TestDataprocCreateClusterOperator(DataprocClusterTestBase):
 
         assert op.cluster_config == CONFIG
 
+    def test_prepare_template_ignores_non_file_string_cluster_config(self):
+        cluster_config = "{{ var.value.dataproc_cluster_config }}"
+        op = DataprocCreateClusterOperator(
+            task_id=TASK_ID,
+            region=GCP_REGION,
+            project_id=GCP_PROJECT,
+            cluster_name=CLUSTER_NAME,
+            cluster_config=cluster_config,
+        )
+
+        op.prepare_template()
+
+        assert op.cluster_config == cluster_config
+
     @mock.patch(DATAPROC_PATH.format("DataprocCreateClusterOperator._wait_for_cluster_in_deleting_state"))
     @mock.patch(DATAPROC_PATH.format("DataprocHook"))
     def test_execute_if_cluster_exists_in_error_state(self, mock_hook, mock_wait_for_deleting):
