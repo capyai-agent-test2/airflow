@@ -268,6 +268,7 @@ class TestRolesService:
         security_manager.find_role.return_value = role
         fab_auth_manager.security_manager = security_manager
         get_fab_auth_manager.return_value = fab_auth_manager
+        security_manager.get_permission.return_value = object()
         body = types.SimpleNamespace(
             name="viewer",
             permissions=[
@@ -282,12 +283,15 @@ class TestRolesService:
         assert out.permissions
         assert out.permissions[0].action.name == "can_edit"
         assert out.permissions[0].resource.name == "DAG"
+        security_manager.remove_permission_from_role.assert_called_once_with(role, role.permissions[0])
+        security_manager.add_permission_to_role.assert_called_once()
 
     def test_patch_role_rename_success(self, get_fab_auth_manager, fab_auth_manager, security_manager):
         role = _make_role_obj("viewer", [("can_edit", "DAG")])
         security_manager.find_role.return_value = role
         fab_auth_manager.security_manager = security_manager
         get_fab_auth_manager.return_value = fab_auth_manager
+        security_manager.get_permission.return_value = object()
         body = types.SimpleNamespace(
             name="editor",
             permissions=[
@@ -308,6 +312,7 @@ class TestRolesService:
         security_manager.find_role.return_value = role
         fab_auth_manager.security_manager = security_manager
         get_fab_auth_manager.return_value = fab_auth_manager
+        security_manager.get_permission.return_value = object()
         body = types.SimpleNamespace(
             name="viewer1",
             permissions=[
@@ -326,6 +331,8 @@ class TestRolesService:
         assert out.permissions
         assert out.permissions[0].action.name == "can_edit"
         assert out.permissions[0].resource.name == "DAG"
+        security_manager.remove_permission_from_role.assert_called_once_with(role, role.permissions[0])
+        security_manager.add_permission_to_role.assert_called_once()
 
     def test_patch_role_rename_with_update_mask(
         self, get_fab_auth_manager, fab_auth_manager, security_manager
@@ -334,6 +341,7 @@ class TestRolesService:
         security_manager.find_role.return_value = role
         fab_auth_manager.security_manager = security_manager
         get_fab_auth_manager.return_value = fab_auth_manager
+        security_manager.get_permission.return_value = object()
         body = types.SimpleNamespace(
             name="viewer1",
             permissions=[
@@ -352,6 +360,22 @@ class TestRolesService:
         assert out.permissions
         assert out.permissions[0].action.name == "can_read"
         assert out.permissions[0].resource.name == "DAG"
+        security_manager.remove_permission_from_role.assert_not_called()
+        security_manager.add_permission_to_role.assert_called_once()
+
+    def test_patch_role_can_clear_permissions(self, get_fab_auth_manager, fab_auth_manager, security_manager):
+        role = _make_role_obj("viewer", [("can_read", "DAG")])
+        security_manager.find_role.return_value = role
+        fab_auth_manager.security_manager = security_manager
+        get_fab_auth_manager.return_value = fab_auth_manager
+        body = types.SimpleNamespace(name="viewer", permissions=[])
+
+        out = FABAuthManagerRoles.patch_role(body=body, name="viewer")
+
+        assert out.name == "viewer"
+        assert out.permissions == []
+        security_manager.remove_permission_from_role.assert_called_once_with(role, role.permissions[0])
+        security_manager.add_permission_to_role.assert_not_called()
 
     def test_patch_role_not_found(self, get_fab_auth_manager, fab_auth_manager, security_manager):
         security_manager.find_role.return_value = None
