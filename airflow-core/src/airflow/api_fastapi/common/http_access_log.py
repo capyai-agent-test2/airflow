@@ -24,12 +24,30 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from airflow._shared.observability.metrics import stats
+
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = structlog.get_logger(logger_name="http.access")
 
 _HEALTH_PATHS = frozenset(["/api/v2/monitor/health"])
+
+
+def _get_request_endpoint(scope: Scope) -> str:
+    route = scope.get("route")
+    if route is None:
+        return "_unmatched"
+    return getattr(route, "path_format", getattr(route, "path", "_unmatched"))
+
+
+def _build_metric_tags(scope: Scope, status: int) -> dict[str, str]:
+    return {
+        "endpoint": _get_request_endpoint(scope),
+        "method": scope.get("method", "UNKNOWN"),
+        "status": str(status),
+        "status_group": f"{status // 100}xx" if status > 0 else "unknown",
+    }
 
 
 class HttpAccessLogMiddleware:
@@ -94,6 +112,12 @@ class HttpAccessLogMiddleware:
                     query = scope["query_string"].decode("ascii", errors="replace")
                     client = scope.get("client")
                     client_addr = f"{client[0]}:{client[1]}" if client else None
+                    metric_tags = _build_metric_tags(scope, status)
+
+                    stats.incr("api_server.http.requests", tags=metric_tags)
+                    stats.timing("api_server.http.request_duration", duration_us / 1000, tags=metric_tags)
+                    if status >= 400:
+                        stats.incr("api_server.http.request_errors", tags=metric_tags)
 
                     logger.info(
                         "request finished",

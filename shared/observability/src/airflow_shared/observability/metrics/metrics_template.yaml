@@ -310,6 +310,18 @@ metrics:
     legacy_name: "-"
     name_variables: []
 
+  - name: "api_server.http.requests"
+    description: "Number of HTTP requests handled by the API server, tagged by endpoint, method, and status"
+    type: "counter"
+    legacy_name: "-"
+    name_variables: ["endpoint", "method", "status", "status_group"]
+
+  - name: "api_server.http.request_errors"
+    description: "Number of API server HTTP requests that completed with an error status, tagged by endpoint, method, and status"
+    type: "counter"
+    legacy_name: "-"
+    name_variables: ["endpoint", "method", "status", "status_group"]
+
   # ==========
   # Gauges
   # ==========
@@ -600,6 +612,12 @@ metrics:
     type: "timer"
     legacy_name: "dagrun.duration.failed.{dag_id}"
     name_variables: ["dag_id"]
+
+  - name: "api_server.http.request_duration"
+    description: "Milliseconds taken to serve an API server HTTP request, tagged by endpoint, method, and status"
+    type: "timer"
+    legacy_name: "-"
+    name_variables: ["endpoint", "method", "status", "status_group"]
 
   - name: "dagrun.schedule_delay"
     description: "Milliseconds of delay between the scheduled DagRun
