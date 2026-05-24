@@ -36,6 +36,18 @@ from airflow.exceptions import AirflowException
 log = logging.getLogger(__name__)
 
 
+def _get_email_connection(conn_id: str | None):
+    if conn_id is None:
+        return None
+
+    try:
+        from airflow.models import Connection
+
+        return Connection.get_connection_from_secrets(conn_id)
+    except AirflowException:
+        return None
+
+
 def send_email(
     to: list[str] | Iterable[str],
     subject: str,
@@ -127,11 +139,14 @@ def send_email_smtp(
 
     >>> send_email("test@example.com", "foo", "<b>Foo</b> bar", ["/dev/null"], dryrun=True)
     """
-    smtp_mail_from = conf.get("smtp", "SMTP_MAIL_FROM")
+    smtp_mail_from = conf.get("smtp", "SMTP_MAIL_FROM", fallback=None)
+    airflow_conn = _get_email_connection(conn_id)
 
     if smtp_mail_from is not None:
         mail_from = smtp_mail_from
     else:
+        if from_email is None and airflow_conn is not None:
+            from_email = airflow_conn.extra_dejson.get("from_email")
         if from_email is None:
             raise ValueError(
                 "You should set from email - either by smtp/smtp_mail_from config or `from_email` parameter"
@@ -244,15 +259,24 @@ def send_mime_email(
     smtp_user = None
     smtp_password = None
 
-    if conn_id is not None:
-        try:
-            from airflow.models import Connection
+    airflow_conn = _get_email_connection(conn_id)
+    if airflow_conn is not None:
+        smtp_user = airflow_conn.login
+        smtp_password = airflow_conn.password
+        if airflow_conn.host is not None:
+            smtp_host = airflow_conn.host
+        if airflow_conn.port is not None:
+            smtp_port = airflow_conn.port
 
-            airflow_conn = Connection.get_connection_from_secrets(conn_id)
-            smtp_user = airflow_conn.login
-            smtp_password = airflow_conn.password
-        except AirflowException:
-            pass
+        extra = airflow_conn.extra_dejson
+        if "disable_tls" in extra:
+            smtp_starttls = not bool(extra["disable_tls"])
+        if "disable_ssl" in extra:
+            smtp_ssl = not bool(extra["disable_ssl"])
+        if "retry_limit" in extra:
+            smtp_retry_limit = int(extra["retry_limit"])
+        if "timeout" in extra:
+            smtp_timeout = int(extra["timeout"])
     if smtp_user is None or smtp_password is None:
         log.debug("No user/password found for SMTP, so logging in with no authentication.")
 
