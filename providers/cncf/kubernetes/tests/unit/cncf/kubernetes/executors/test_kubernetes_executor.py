@@ -1678,6 +1678,7 @@ class TestKubernetesExecutor:
         executor = KubernetesExecutor()
         messages, logs = executor.get_task_log(ti=ti, try_number=1)
 
+        mock_get_kube_client.assert_called_once_with(conf_source=executor.conf)
         mock_kube_client.read_namespaced_pod_log.assert_called_once()
         assert messages == [
             "Attempting to fetch logs from pod  through kube API",
@@ -1689,6 +1690,7 @@ class TestKubernetesExecutor:
         mock_kube_client.read_namespaced_pod_log.side_effect = Exception("error_fetching_pod_log")
 
         messages, logs = executor.get_task_log(ti=ti, try_number=1)
+        mock_get_kube_client.assert_called_with(conf_source=executor.conf)
         assert logs == [""]
         assert messages == [
             "Attempting to fetch logs from pod  through kube API",
@@ -1755,6 +1757,7 @@ class TestKubernetesJobWatcher:
             scheduler_job_id="123",
             kube_config=mock.MagicMock(),
         )
+        self.watcher.kube_config._conf = mock.sentinel.executor_conf
         self.watcher.kube_config.worker_pod_pending_fatal_container_state_reasons = [
             "CreateContainerConfigError",
             "CrashLoopBackOff",
@@ -2156,6 +2159,15 @@ class TestKubernetesJobWatcher:
                 self.watcher.run()
 
             mock_underscore_run.assert_called_once_with(mock.ANY, "0", mock.ANY, mock.ANY)
+
+    @mock.patch("airflow.providers.cncf.kubernetes.executors.kubernetes_executor_utils.get_kube_client")
+    def test_run_uses_kube_config_conf_source(self, mock_get_kube_client):
+        self.watcher._run = mock.MagicMock(side_effect=SystemError("sentinel"))
+
+        with pytest.raises(SystemError, match="sentinel"):
+            self.watcher.run()
+
+        mock_get_kube_client.assert_called_once_with(conf_source=mock.sentinel.executor_conf)
 
     @pytest.mark.parametrize(
         ("state_reasons", "expected_result"),
