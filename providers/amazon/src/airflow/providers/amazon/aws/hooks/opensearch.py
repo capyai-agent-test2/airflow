@@ -68,9 +68,10 @@ class OpenSearchAWSHook(OpenSearchHook):
             open_search_conn_class=open_search_conn_class,
             **kwargs,
         )
-        self.aws_conn_id = (
-            aws_conn_id or self.conn.extra_dejson.get("aws_conn_id") or AwsBaseHook.default_conn_name
-        )
+        if aws_conn_id is not None:
+            self.aws_conn_id = aws_conn_id
+        else:
+            self.aws_conn_id = self.conn.extra_dejson.get("aws_conn_id", AwsBaseHook.default_conn_name)
         self.signer_region_name = region_name or self.conn.extra_dejson.get("region_name")
         self.service = service or self.conn.extra_dejson.get("service") or "es"
 

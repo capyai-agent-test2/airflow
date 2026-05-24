@@ -51,6 +51,18 @@ def opensearch_connection() -> Connection:
 
 
 class TestOpenSearchAWSHook:
+    @mock.patch(f"{BASEHOOK_PATCH_PATH}.get_connection")
+    def test_preserves_explicit_empty_aws_conn_id(
+        self,
+        mock_get_connection,
+        opensearch_connection,
+    ) -> None:
+        mock_get_connection.return_value = opensearch_connection
+
+        hook = OpenSearchAWSHook(open_search_conn_id="opensearch_default", log_query=True, aws_conn_id="")
+
+        assert hook.aws_conn_id == ""
+
     @mock.patch("airflow.providers.amazon.aws.hooks.opensearch.OpenSearch")
     @mock.patch("airflow.providers.amazon.aws.hooks.opensearch.RequestsAWSV4SignerAuth")
     @mock.patch.object(AwsBaseHook, "get_credentials")
