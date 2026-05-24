@@ -91,8 +91,7 @@ class DatabricksJobRunSensor(BaseSensorOperator):
                 f"Could not find task_key {self.task_key!r} in Databricks run {self.run_id}."
             )
 
-        task_runs.sort(key=lambda task: task.get("start_time", 0))
-        return task_runs[-1]
+        return max(task_runs, key=lambda task: (task["run_id"], task.get("start_time") or 0))
 
     def _build_task_error_message(self, run_state: RunState) -> str:
         return (

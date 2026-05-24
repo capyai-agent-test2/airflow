@@ -116,6 +116,38 @@ class TestDatabricksJobRunSensor:
         db_mock.get_run_page_url.assert_called_once_with(20)
 
     @mock.patch("airflow.providers.databricks.sensors.databricks.DatabricksHook")
+    def test_poke_task_success_prefers_latest_run_id_when_start_time_missing(self, db_mock_class):
+        sensor = DatabricksJobRunSensor(task_id=TASK_ID, run_id=RUN_ID, task_key=TASK_KEY)
+        db_mock = db_mock_class.return_value
+        db_mock.get_run_tasks.return_value = [
+            {
+                "task_key": TASK_KEY,
+                "run_id": 10,
+                "start_time": 100,
+                "state": {
+                    "life_cycle_state": "TERMINATED",
+                    "result_state": "FAILED",
+                    "state_message": "old failure",
+                },
+            },
+            {
+                "task_key": TASK_KEY,
+                "run_id": 20,
+                "state": {
+                    "life_cycle_state": "TERMINATED",
+                    "result_state": "SUCCESS",
+                    "state_message": "done",
+                },
+            },
+        ]
+        db_mock.get_run_page_url.return_value = "https://example.com/run/20"
+
+        assert sensor.poke(None) is True
+
+        db_mock.get_run_tasks.assert_called_once_with(RUN_ID)
+        db_mock.get_run_page_url.assert_called_once_with(20)
+
+    @mock.patch("airflow.providers.databricks.sensors.databricks.DatabricksHook")
     def test_poke_task_failure(self, db_mock_class):
         sensor = DatabricksJobRunSensor(task_id=TASK_ID, run_id=RUN_ID, task_key=TASK_KEY)
         db_mock = db_mock_class.return_value
