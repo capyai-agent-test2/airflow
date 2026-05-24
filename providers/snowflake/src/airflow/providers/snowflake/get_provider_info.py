@@ -107,7 +107,7 @@ def get_provider_info():
                     "hidden-fields": ["port", "host"],
                     "relabeling": {},
                     "placeholders": {
-                        "extra": '{\n  "authenticator": "snowflake oauth",\n  "private_key_file": "private key",\n  "session_parameters": "session parameters",\n  "client_request_mfa_token": "client request mfa token",\n  "client_store_temporary_credential": "client store temporary credential",\n  "grant_type": "refresh_token client_credentials",\n  "token_endpoint": "token endpoint",\n  "refresh_token": "refresh token",\n  "scope": "scope",\n  "proxy_host": "proxy.example.com",\n  "proxy_port": "8080",\n  "proxy_user": "proxy_username",\n  "proxy_password": "proxy_password"\n}\n',
+                        "extra": '{\n  "authenticator": "snowflake oauth",\n  "private_key_file": "private key",\n  "session_parameters": "session parameters",\n  "client_request_mfa_token": "client request mfa token",\n  "client_store_temporary_credential": "client store temporary credential",\n  "grant_type": "refresh_token client_credentials",\n  "token_endpoint": "token endpoint",\n  "refresh_token": "refresh token",\n  "scope": "scope",\n  "proxy_host": "proxy.example.com",\n  "proxy_port": "8080",\n  "proxy_user": "proxy_username",\n  "proxy_password": "proxy_password",\n  "workload_identity_provider": "AWS",\n  "workload_identity_entra_resource": "api://snowflake_oauth_server"\n}\n',
                         "schema": "snowflake schema",
                         "login": "snowflake username",
                         "password": "snowflake password",
@@ -150,6 +150,14 @@ def get_provider_info():
                     "proxy_password": {
                         "label": "Proxy Password",
                         "schema": {"type": ["string", "null"], "format": "password"},
+                    },
+                    "workload_identity_provider": {
+                        "label": "Workload Identity Provider",
+                        "schema": {"type": ["string", "null"]},
+                    },
+                    "workload_identity_entra_resource": {
+                        "label": "Workload Identity Entra Resource",
+                        "schema": {"type": ["string", "null"]},
                     },
                 },
             }

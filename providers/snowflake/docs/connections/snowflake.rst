@@ -58,14 +58,20 @@ Extra (optional)
     * ``region``: Warehouse region.
     * ``warehouse``: Snowflake warehouse name.
     * ``role``: Snowflake role.
-    * ``authenticator``: To connect using OAuth set this parameter ``oauth``. For Programmatic Access
-      Token (PAT) authentication, no special authenticator is required — simply set the PAT token as
-      the Password field. See `Snowflake PAT documentation <https://docs.snowflake.com/en/user-guide/programmatic-access-tokens>`_.
+    * ``authenticator``: To connect using OAuth set this parameter ``oauth``. To connect using
+      Snowflake Workload Identity Federation, set it to ``WORKLOAD_IDENTITY``. For Programmatic
+      Access Token (PAT) authentication, no special authenticator is required — simply set the PAT
+      token as the Password field. See `Snowflake PAT documentation <https://docs.snowflake.com/en/user-guide/programmatic-access-tokens>`_.
     * ``token_endpoint``: Specify token endpoint for external OAuth provider.
     * ``grant_type``: Specify grant type for OAuth authentication. Currently supported: ``refresh_token`` (default), ``client_credentials``.
     * ``scope``: Specify OAuth scope to include in the access token request for any OAuth grant type.
     * ``refresh_token``: Specify refresh_token for OAuth connection.
     * ``azure_conn_id``: Azure Connection ID to be used for retrieving the OAuth token using Azure Entra authentication. Login and Password fields aren't required when using this method. Scope for the Azure OAuth token can be set in the config option ``azure_oauth_scope`` under the section ``[snowflake]``. Requires `apache-airflow-providers-microsoft-azure>=12.8.0`.
+    * ``workload_identity_provider``: Specify the workload identity provider to use with
+      ``authenticator="WORKLOAD_IDENTITY"``. Supported values depend on the Snowflake connector and
+      include ``AWS``, ``AZURE``, ``GCP``, and ``OIDC``.
+    * ``workload_identity_entra_resource``: Specify a custom Azure Entra resource to use with
+      ``authenticator="WORKLOAD_IDENTITY"`` for Azure sovereign or custom resource scenarios.
     * ``private_key_file``: Specify the path to the private key file.
     * ``private_key_content``: Specify the content of the private key file, either in plain text or base64 encoded. When using the Airflow UI to manage the Snowflake connection, you should base64 encode the ``private_key_content``. You can use the following Python code to encode the private key:
 
@@ -85,6 +91,23 @@ Extra (optional)
     * ``proxy_port``: Proxy port to use for connecting to Snowflake.
     * ``proxy_user``: Proxy username for authentication with the proxy server.
     * ``proxy_password``: Proxy password for authentication with the proxy server.
+
+JSON format example with Workload Identity Federation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To authenticate using Snowflake Workload Identity Federation, make sure the Snowflake connector
+version is at least 3.17.0 and configure the connection like this:
+
+.. code-block:: bash
+
+    export AIRFLOW_CONN_SNOWFLAKE_DEFAULT='{
+        "conn_type": "snowflake",
+        "extra": {
+            "account": "account",
+            "authenticator": "WORKLOAD_IDENTITY",
+            "workload_identity_provider": "AWS"
+        }
+    }'
 
 URI format example
 ^^^^^^^^^^^^^^^^^^

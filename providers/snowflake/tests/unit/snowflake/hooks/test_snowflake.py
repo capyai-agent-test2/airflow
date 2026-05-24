@@ -849,6 +849,64 @@ class TestPytestSnowflakeHook:
             mock_connect.assert_called_once_with(**hook._get_conn_params())
             assert mock_connect.return_value == conn
 
+    def test_get_conn_params_should_support_workload_identity_federation(self):
+        connection_kwargs = {
+            "conn_type": "snowflake",
+            "extra": {
+                "account": "airflow",
+                "authenticator": "WORKLOAD_IDENTITY",
+                "workload_identity_provider": "AWS",
+                "workload_identity_entra_resource": "api://snowflake_oauth_server",
+            },
+        }
+
+        with mock.patch.dict("os.environ", AIRFLOW_CONN_TEST_CONN=Connection(**connection_kwargs).get_uri()):
+            hook = SnowflakeHook(snowflake_conn_id="test_conn")
+            conn_params = hook._get_conn_params()
+
+        assert conn_params["account"] == "airflow"
+        assert conn_params["authenticator"] == "WORKLOAD_IDENTITY"
+        assert conn_params["workload_identity_provider"] == "AWS"
+        assert conn_params["workload_identity_entra_resource"] == "api://snowflake_oauth_server"
+
+    def test_hook_workload_identity_parameters_should_take_precedence(self):
+        connection_kwargs = deepcopy(BASE_CONNECTION_KWARGS)
+        connection_kwargs["extra"]["authenticator"] = "WORKLOAD_IDENTITY"
+        connection_kwargs["extra"]["workload_identity_provider"] = "AWS"
+        connection_kwargs["extra"]["workload_identity_entra_resource"] = "api://default"
+
+        with mock.patch.dict("os.environ", AIRFLOW_CONN_TEST_CONN=Connection(**connection_kwargs).get_uri()):
+            hook = SnowflakeHook(
+                snowflake_conn_id="test_conn",
+                workload_identity_provider="AZURE",
+                workload_identity_entra_resource="api://custom",
+            )
+
+            assert hook._get_conn_params()["workload_identity_provider"] == "AZURE"
+            assert hook._get_conn_params()["workload_identity_entra_resource"] == "api://custom"
+
+    def test_get_conn_should_pass_workload_identity_parameters_to_connector(self):
+        connection_kwargs = {
+            "conn_type": "snowflake",
+            "extra": {
+                "account": "airflow",
+                "authenticator": "WORKLOAD_IDENTITY",
+                "workload_identity_provider": "AWS",
+                "workload_identity_entra_resource": "api://snowflake_oauth_server",
+            },
+        }
+
+        with (
+            mock.patch.dict("os.environ", AIRFLOW_CONN_TEST_CONN=Connection(**connection_kwargs).get_uri()),
+            mock.patch("snowflake.connector.connect") as mock_connect,
+        ):
+            SnowflakeHook(snowflake_conn_id="test_conn").get_conn()
+
+        call_args = mock_connect.call_args.kwargs
+        assert call_args["authenticator"] == "WORKLOAD_IDENTITY"
+        assert call_args["workload_identity_provider"] == "AWS"
+        assert call_args["workload_identity_entra_resource"] == "api://snowflake_oauth_server"
+
     def test_get_sqlalchemy_engine_should_support_pass_auth(self):
         with (
             mock.patch.dict(
@@ -1821,3 +1879,12 @@ class TestPytestSnowflakeHook:
         invalid_form = form_cls(MultiDict([("proxy_port", "not-an-int")]))
         assert invalid_form.validate() is False
         assert "proxy_port" in invalid_form.errors
+
+    def test_get_connection_form_widgets_include_workload_identity_fields(self):
+        pytest.importorskip("flask_appbuilder")
+        pytest.importorskip("flask_babel")
+
+        widgets = SnowflakeHook.get_connection_form_widgets()
+
+        assert "workload_identity_provider" in widgets
+        assert "workload_identity_entra_resource" in widgets
