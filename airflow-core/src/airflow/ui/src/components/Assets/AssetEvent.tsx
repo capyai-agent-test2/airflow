@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, Text, HStack } from "@chakra-ui/react";
+import { Box, Button, Text, HStack } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
 import { FiDatabase } from "react-icons/fi";
 import { Link } from "react-router-dom";
@@ -53,24 +53,35 @@ export const AssetEvent = ({
 
   return (
     <Box
-      aria-pressed={onSelect === undefined ? undefined : isSelected}
-      as={onSelect === undefined ? "div" : "button"}
       borderBottomWidth={1}
       borderColor={isSelected ? "border.inverted" : "transparent"}
       borderLeftRadius="md"
       borderLeftWidth={isSelected ? 4 : 0}
-      cursor={onSelect === undefined ? "default" : "pointer"}
       fontSize={13}
-      onClick={onSelect}
       pb={2}
       pt={1}
       textAlign="left"
       transition="border-color 0.2s ease"
       width="100%"
     >
-      <Text fontWeight="bold">
-        <Time datetime={event.timestamp} />
-      </Text>
+      {onSelect === undefined ? (
+        <Text fontWeight="bold">
+          <Time datetime={event.timestamp} />
+        </Text>
+      ) : (
+        <Button
+          aria-pressed={isSelected}
+          justifyContent="flex-start"
+          onClick={onSelect}
+          p={0}
+          size="sm"
+          variant="ghost"
+        >
+          <Text fontWeight="bold">
+            <Time datetime={event.timestamp} />
+          </Text>
+        </Button>
+      )}
       {Boolean(assetId) ? undefined : (
         <HStack>
           <Box>

@@ -88,4 +88,81 @@ describe("AssetEventDetails", () => {
     expect(screen.getByRole("link", { name: "consumer_dag" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Consumer Dag" })).toBeInTheDocument();
   });
+
+  it("filters out queued events older than the selected event", () => {
+    render(
+      <Wrapper>
+        <AssetEventDetails
+          event={{
+            asset_id: 42,
+            created_dagruns: [],
+            extra: null,
+            group: "analytics",
+            id: 8,
+            name: "warehouse",
+            partition_key: null,
+            source_dag_id: "producer_dag",
+            source_map_index: -1,
+            source_run_id: "producer_run",
+            source_task_id: "produce",
+            timestamp: "2025-01-01T00:00:10Z",
+            uri: "s3://warehouse",
+          }}
+          queuedEvents={{
+            queued_events: [
+              {
+                asset_id: 42,
+                created_at: "2025-01-01T00:00:05Z",
+                dag_display_name: "Old Consumer Dag",
+                dag_id: "old_consumer_dag",
+              },
+            ],
+            total_entries: 1,
+          }}
+        />
+      </Wrapper>,
+    );
+
+    expect(screen.queryByRole("link", { name: "Old Consumer Dag" })).not.toBeInTheDocument();
+    expect(screen.queryByText("common:pendingDagRun_other")).not.toBeInTheDocument();
+  });
+
+  it("does not show the active badge when there are no pending Dag runs", () => {
+    render(
+      <Wrapper>
+        <AssetEventDetails
+          event={{
+            asset_id: 42,
+            created_dagruns: [
+              {
+                dag_id: "consumer_dag",
+                data_interval_end: null,
+                data_interval_start: null,
+                end_date: "2025-01-01T00:00:03Z",
+                logical_date: null,
+                partition_key: null,
+                run_id: "finished_asset_run",
+                start_date: "2025-01-01T00:00:01Z",
+                state: "success",
+              },
+            ],
+            extra: null,
+            group: "analytics",
+            id: 9,
+            name: "warehouse",
+            partition_key: null,
+            source_dag_id: "producer_dag",
+            source_map_index: -1,
+            source_run_id: "producer_run",
+            source_task_id: "produce",
+            timestamp: "2025-01-01T00:00:00Z",
+            uri: "s3://warehouse",
+          }}
+          queuedEvents={{ queued_events: [], total_entries: 0 }}
+        />
+      </Wrapper>,
+    );
+
+    expect(screen.queryByText("common:states.running")).not.toBeInTheDocument();
+  });
 });
