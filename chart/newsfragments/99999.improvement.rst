@@ -1,0 +1,1 @@
+Add Kubernetes-recommended labels to Helm chart resources.
