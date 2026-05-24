@@ -561,8 +561,12 @@ class SqlToGCSOperator(BaseSQLToGCSOperator):
         return cursor
 
     def field_to_bigquery(self, field) -> dict[str, str]:
-        """Fall back to STRING columns when a provider-specific type map is unavailable."""
-        return {"name": field[0], "type": "STRING", "mode": "NULLABLE"}
+        """Use provided schema types when available, otherwise fall back to STRING."""
+        return {
+            "name": field[0],
+            "type": self._get_col_type_dict().get(field[0], "STRING"),
+            "mode": "NULLABLE",
+        }
 
     def convert_type(self, value, schema_type, stringify_dict=False, **kwargs):
         """Convert common DB-API values to JSON/CSV-friendly representations."""
@@ -577,7 +581,7 @@ class SqlToGCSOperator(BaseSQLToGCSOperator):
         if isinstance(value, time):
             return value.isoformat()
         if isinstance(value, timedelta):
-            return str((datetime.min + value).time())
+            return str(value)
         if isinstance(value, Decimal):
             return float(value)
         if isinstance(value, bytes):

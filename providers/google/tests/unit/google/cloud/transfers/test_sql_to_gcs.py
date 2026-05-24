@@ -24,6 +24,7 @@ from unittest import mock
 from unittest.mock import MagicMock, Mock
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
@@ -683,7 +684,7 @@ class TestSqlToGCSOperator:
                 {
                     "blob_value": base64.standard_b64encode(b"\x01\x02").decode("ascii"),
                     "created_at": "2024-01-02T03:04:05",
-                    "duration": "01:02:03",
+                    "duration": "1:02:03",
                     "just_date": "2024-01-02T00:00:00",
                     "just_time": "03:04:05",
                     "payload": json.dumps({"hello": "world"}),
@@ -697,3 +698,39 @@ class TestSqlToGCSOperator:
         mock_upload.assert_called_once_with(
             BUCKET, FILENAME.format(0), TMP_FILE_NAME, mime_type=APP_JSON, gzip=False, metadata=None
         )
+
+    def test_uses_declared_schema_for_parquet_types(self):
+        operator = SqlToGCSOperator(
+            task_id=TASK_ID,
+            sql=SQL,
+            sql_conn_id="sql_default",
+            bucket=BUCKET,
+            filename=FILENAME,
+            export_format="parquet",
+            schema=[
+                {"name": "id", "type": "INTEGER"},
+                {"name": "score", "type": "FLOAT"},
+                {"name": "payload", "type": "STRING"},
+            ],
+        )
+        cursor = Mock()
+        cursor.description = [
+            ("id", "ignored", 0, 0, 0, 0, False),
+            ("score", "ignored", 0, 0, 0, 0, False),
+            ("payload", "ignored", 0, 0, 0, 0, False),
+        ]
+
+        assert operator._convert_parquet_schema(cursor) == pa.schema(
+            [("id", pa.int64()), ("score", pa.float64()), ("payload", pa.string())]
+        )
+
+    def test_preserves_multi_day_timedelta(self):
+        operator = SqlToGCSOperator(
+            task_id=TASK_ID,
+            sql=SQL,
+            sql_conn_id="sql_default",
+            bucket=BUCKET,
+            filename=FILENAME,
+        )
+
+        assert operator.convert_type(timedelta(days=2, hours=3), schema_type="STRING") == "2 days, 3:00:00"
