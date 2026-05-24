@@ -115,8 +115,34 @@ class TestDatabricksJobRunSensor:
         db_mock.get_run_tasks.assert_called_once_with(RUN_ID)
         db_mock.get_run_page_url.assert_called_once_with(20)
 
+    @pytest.mark.parametrize(
+        "latest_task_run",
+        [
+            {
+                    "task_key": TASK_KEY,
+                    "run_id": 20,
+                    "state": {
+                        "life_cycle_state": "TERMINATED",
+                        "result_state": "SUCCESS",
+                        "state_message": "done",
+                    },
+                },
+            {
+                    "task_key": TASK_KEY,
+                    "run_id": 20,
+                    "start_time": 0,
+                    "state": {
+                        "life_cycle_state": "TERMINATED",
+                        "result_state": "SUCCESS",
+                        "state_message": "done",
+                    },
+                },
+        ],
+    )
     @mock.patch("airflow.providers.databricks.sensors.databricks.DatabricksHook")
-    def test_poke_task_success_prefers_latest_run_id_when_start_time_missing(self, db_mock_class):
+    def test_poke_task_success_prefers_latest_run_id_without_usable_start_time(
+        self, db_mock_class, latest_task_run
+    ):
         sensor = DatabricksJobRunSensor(task_id=TASK_ID, run_id=RUN_ID, task_key=TASK_KEY)
         db_mock = db_mock_class.return_value
         db_mock.get_run_tasks.return_value = [
@@ -130,15 +156,7 @@ class TestDatabricksJobRunSensor:
                     "state_message": "old failure",
                 },
             },
-            {
-                "task_key": TASK_KEY,
-                "run_id": 20,
-                "state": {
-                    "life_cycle_state": "TERMINATED",
-                    "result_state": "SUCCESS",
-                    "state_message": "done",
-                },
-            },
+            latest_task_run,
         ]
         db_mock.get_run_page_url.return_value = "https://example.com/run/20"
 
