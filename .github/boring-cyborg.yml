@@ -234,9 +234,6 @@ labelPRBasedOnFilePath:
   provider:pagerduty:
     - providers/pagerduty/**
 
-  provider:papermill:
-    - providers/papermill/**
-
   provider:pgvector:
     - providers/pgvector/**
 

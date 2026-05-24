@@ -111,7 +111,6 @@ services:
       - ../../../providers/opsgenie/tests:/opt/airflow/providers/opsgenie/tests
       - ../../../providers/oracle/tests:/opt/airflow/providers/oracle/tests
       - ../../../providers/pagerduty/tests:/opt/airflow/providers/pagerduty/tests
-      - ../../../providers/papermill/tests:/opt/airflow/providers/papermill/tests
       - ../../../providers/pgvector/tests:/opt/airflow/providers/pgvector/tests
       - ../../../providers/pinecone/tests:/opt/airflow/providers/pinecone/tests
       - ../../../providers/postgres/tests:/opt/airflow/providers/postgres/tests

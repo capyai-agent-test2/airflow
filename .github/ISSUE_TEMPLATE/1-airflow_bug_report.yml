@@ -183,7 +183,6 @@ body:
         - opsgenie
         - oracle
         - pagerduty
-        - papermill
         - pgvector
         - pinecone
         - postgres

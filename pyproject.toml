@@ -311,9 +311,6 @@ apache-airflow = "airflow.__main__:main"
 "pagerduty" = [
     "apache-airflow-providers-pagerduty>=3.8.1"
 ]
-"papermill" = [
-    "apache-airflow-providers-papermill>=3.8.2"
-]
 "pgvector" = [
     "apache-airflow-providers-pgvector>=1.4.0"
 ]
@@ -472,7 +469,6 @@ apache-airflow = "airflow.__main__:main"
     "apache-airflow-providers-opsgenie>=5.8.0",
     "apache-airflow-providers-oracle>=3.12.0",
     "apache-airflow-providers-pagerduty>=3.8.1",
-    "apache-airflow-providers-papermill>=3.8.2",
     "apache-airflow-providers-pgvector>=1.4.0",
     "apache-airflow-providers-pinecone>=2.1.1",
     "apache-airflow-providers-postgres>=5.13.1",
@@ -1216,8 +1212,6 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/providers/oracle/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/pagerduty/src",
     "$MYPY_CONFIG_FILE_DIR/providers/pagerduty/tests",
-    "$MYPY_CONFIG_FILE_DIR/providers/papermill/src",
-    "$MYPY_CONFIG_FILE_DIR/providers/papermill/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/pgvector/src",
     "$MYPY_CONFIG_FILE_DIR/providers/pgvector/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/pinecone/src",
@@ -1481,7 +1475,6 @@ apache-airflow-providers-opensearch = false
 apache-airflow-providers-opsgenie = false
 apache-airflow-providers-oracle = false
 apache-airflow-providers-pagerduty = false
-apache-airflow-providers-papermill = false
 apache-airflow-providers-pgvector = false
 apache-airflow-providers-pinecone = false
 apache-airflow-providers-postgres = false
@@ -1632,7 +1625,6 @@ apache-airflow-providers-opensearch = false
 apache-airflow-providers-opsgenie = false
 apache-airflow-providers-oracle = false
 apache-airflow-providers-pagerduty = false
-apache-airflow-providers-papermill = false
 apache-airflow-providers-pgvector = false
 apache-airflow-providers-pinecone = false
 apache-airflow-providers-postgres = false
@@ -1793,7 +1785,6 @@ apache-airflow-providers-opensearch = { workspace = true }
 apache-airflow-providers-opsgenie = { workspace = true }
 apache-airflow-providers-oracle = { workspace = true }
 apache-airflow-providers-pagerduty = { workspace = true }
-apache-airflow-providers-papermill = { workspace = true }
 apache-airflow-providers-pgvector = { workspace = true }
 apache-airflow-providers-pinecone = { workspace = true }
 apache-airflow-providers-postgres = { workspace = true }
@@ -1930,7 +1921,6 @@ members = [
     "providers/opsgenie",
     "providers/oracle",
     "providers/pagerduty",
-    "providers/papermill",
     "providers/pgvector",
     "providers/pinecone",
     "providers/postgres",
