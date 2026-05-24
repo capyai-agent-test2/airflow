@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import inspect
+import json
 from copy import deepcopy
 from unittest import mock
 from unittest.mock import ANY, MagicMock, Mock, call
@@ -964,6 +965,58 @@ class TestDataprocCreateClusterOperator(DataprocClusterTestBase):
         )
         with pytest.raises(AlreadyExists):
             op.execute(context=self.mock_context)
+
+    def test_prepare_template_with_yaml_cluster_config(self, tmp_path):
+        config_path = tmp_path / "cluster_config.yaml"
+        config_path.write_text(
+            "gce_cluster_config:\n  zone_uri: zone\nworker_config:\n  num_instances: 2\n",
+            encoding="utf-8",
+        )
+
+        op = DataprocCreateClusterOperator(
+            task_id=TASK_ID,
+            region=GCP_REGION,
+            project_id=GCP_PROJECT,
+            cluster_name=CLUSTER_NAME,
+            cluster_config=str(config_path),
+        )
+
+        op.prepare_template()
+
+        assert op.cluster_config == {
+            "gce_cluster_config": {"zone_uri": "zone"},
+            "worker_config": {"num_instances": 2},
+        }
+
+    def test_prepare_template_with_json_cluster_config(self, tmp_path):
+        config_path = tmp_path / "cluster_config.json"
+        config_path.write_text(json.dumps(CONFIG), encoding="utf-8")
+
+        op = DataprocCreateClusterOperator(
+            task_id=TASK_ID,
+            region=GCP_REGION,
+            project_id=GCP_PROJECT,
+            cluster_name=CLUSTER_NAME,
+            cluster_config=str(config_path),
+        )
+
+        op.prepare_template()
+
+        assert op.cluster_config == CONFIG
+
+    def test_prepare_template_ignores_non_file_string_cluster_config(self):
+        cluster_config = "{{ var.value.dataproc_cluster_config }}"
+        op = DataprocCreateClusterOperator(
+            task_id=TASK_ID,
+            region=GCP_REGION,
+            project_id=GCP_PROJECT,
+            cluster_name=CLUSTER_NAME,
+            cluster_config=cluster_config,
+        )
+
+        op.prepare_template()
+
+        assert op.cluster_config == cluster_config
 
     @mock.patch(DATAPROC_PATH.format("DataprocCreateClusterOperator._wait_for_cluster_in_deleting_state"))
     @mock.patch(DATAPROC_PATH.format("DataprocHook"))
