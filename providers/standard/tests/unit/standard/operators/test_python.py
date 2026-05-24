@@ -1454,7 +1454,7 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
             pip_install_options=["--no-deps"],
         )
 
-    @mock.patch("airflow.providers.standard.operators.python.subprocess.check_output")
+    @mock.patch("airflow.providers.standard.operators.python.subprocess.check_output", autospec=True)
     def test_get_installed_requirements_list(self, mocked_check_output):
         mocked_check_output.return_value = "zipp==3.20.0\npip==24.2\napache-airflow==3.0.0\n"
 
