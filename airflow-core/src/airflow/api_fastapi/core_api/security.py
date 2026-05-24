@@ -114,6 +114,13 @@ MAP_BULK_ACTION_TO_AUTH_METHOD: dict[BulkAction, ResourceMethod] = {
     BulkAction.UPDATE: "PUT",
 }
 
+OPENAPI_AUTH_REQUIREMENTS_ATTR = "__airflow_openapi_auth_requirements__"
+
+
+def _set_openapi_auth_requirements(dependency: Callable, *requirements: str) -> Callable:
+    setattr(dependency, OPENAPI_AUTH_REQUIREMENTS_ATTR, tuple(requirements))
+    return dependency
+
 
 async def resolve_user_from_token(token_str: str | None) -> BaseUser:
     if not token_str:
@@ -195,7 +202,11 @@ def requires_access_dag(
             )
         )
 
-    return inner
+    requirement = f"Dag access (`method={method}`"
+    if access_entity is not None:
+        requirement += f", `access_entity={access_entity.value}`"
+    requirement += ")"
+    return _set_openapi_auth_requirements(inner, requirement)
 
 
 class PermittedDagFilter(OrmClause[set[str]]):
@@ -355,7 +366,9 @@ def requires_access_backfill(
             user,
         )
 
-    return inner
+    return _set_openapi_auth_requirements(
+        inner, f"Dag access (`method={method}`, `access_entity={DagAccessEntity.RUN.value}`)"
+    )
 
 
 def requires_access_event_log(
@@ -386,7 +399,9 @@ def requires_access_event_log(
             user,
         )
 
-    return inner
+    return _set_openapi_auth_requirements(
+        inner, f"Dag access (`method={method}`, `access_entity={DagAccessEntity.AUDIT_LOG.value}`)"
+    )
 
 
 class PermittedPoolFilter(OrmClause[set[str]]):
@@ -433,7 +448,7 @@ def requires_access_pool(method: ResourceMethod) -> Callable[[Request, BaseUser]
 
             _requires_access(is_authorized_callback=_callback)
 
-    return inner
+    return _set_openapi_auth_requirements(inner, f"Pool access (`method={method}`)")
 
 
 def requires_access_pool_bulk() -> Callable[[BulkBody[PoolBody], BaseUser], None]:
@@ -479,7 +494,7 @@ def requires_access_pool_bulk() -> Callable[[BulkBody[PoolBody], BaseUser], None
             )
         )
 
-    return inner
+    return _set_openapi_auth_requirements(inner, "Pool access (derived from each bulk action)")
 
 
 class PermittedConnectionFilter(OrmClause[set[str]]):
@@ -534,7 +549,7 @@ def requires_access_connection(
 
             _requires_access(is_authorized_callback=_callback)
 
-    return inner
+    return _set_openapi_auth_requirements(inner, f"Connection access (`method={method}`)")
 
 
 def requires_access_connection_bulk() -> Callable[[BulkBody[ConnectionBody], BaseUser], None]:
@@ -584,7 +599,7 @@ def requires_access_connection_bulk() -> Callable[[BulkBody[ConnectionBody], Bas
             )
         )
 
-    return inner
+    return _set_openapi_auth_requirements(inner, "Connection access (derived from each bulk action)")
 
 
 def requires_access_configuration(method: ResourceMethod) -> Callable[[Request, BaseUser], None]:
@@ -602,7 +617,7 @@ def requires_access_configuration(method: ResourceMethod) -> Callable[[Request, 
             )
         )
 
-    return inner
+    return _set_openapi_auth_requirements(inner, f"Configuration access (`method={method}`)")
 
 
 class PermittedTeamFilter(OrmClause[set[str]]):
@@ -676,7 +691,7 @@ def requires_access_variable(
 
             _requires_access(is_authorized_callback=_callback)
 
-    return inner
+    return _set_openapi_auth_requirements(inner, f"Variable access (`method={method}`)")
 
 
 def requires_access_variable_bulk() -> Callable[[BulkBody[VariableBody], BaseUser], None]:
@@ -724,7 +739,7 @@ def requires_access_variable_bulk() -> Callable[[BulkBody[VariableBody], BaseUse
             )
         )
 
-    return inner
+    return _set_openapi_auth_requirements(inner, "Variable access (derived from each bulk action)")
 
 
 def requires_access_dag_run_bulk() -> Callable[[BulkBody[BulkDAGRunBody], BaseUser, str], None]:
@@ -774,7 +789,7 @@ def requires_access_dag_run_bulk() -> Callable[[BulkBody[BulkDAGRunBody], BaseUs
             )
         )
 
-    return inner
+    return _set_openapi_auth_requirements(inner, "Dag run access (derived from each bulk action)")
 
 
 def requires_access_asset(method: ResourceMethod) -> Callable[[Request, BaseUser], None]:
@@ -790,7 +805,7 @@ def requires_access_asset(method: ResourceMethod) -> Callable[[Request, BaseUser
             ),
         )
 
-    return inner
+    return _set_openapi_auth_requirements(inner, f"Asset access (`method={method}`)")
 
 
 def requires_access_view(access_view: AccessView) -> Callable[[Request, BaseUser], None]:
@@ -804,7 +819,7 @@ def requires_access_view(access_view: AccessView) -> Callable[[Request, BaseUser
             ),
         )
 
-    return inner
+    return _set_openapi_auth_requirements(inner, f"View access (`access_view={access_view.value}`)")
 
 
 def requires_access_asset_alias(method: ResourceMethod) -> Callable[[Request, BaseUser], None]:
@@ -820,7 +835,7 @@ def requires_access_asset_alias(method: ResourceMethod) -> Callable[[Request, Ba
             ),
         )
 
-    return inner
+    return _set_openapi_auth_requirements(inner, f"Asset alias access (`method={method}`)")
 
 
 def requires_authenticated() -> Callable:
@@ -832,7 +847,7 @@ def requires_authenticated() -> Callable:
     ) -> None:
         pass
 
-    return inner
+    return _set_openapi_auth_requirements(inner, "Authentication required")
 
 
 async def _collect_teams_to_check(
