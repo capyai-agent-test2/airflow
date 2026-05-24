@@ -23,6 +23,7 @@ import {
   UseDagRunServiceGetDagRunsKeyFn,
   UseDagServiceGetDagDetailsKeyFn,
   UseDagServiceGetDagKeyFn,
+  UseDagServiceGetLatestRunInfoKeyFn,
   useDagServicePatchDag,
   useDagServiceGetDagsUiKey,
   UseTaskInstanceServiceGetTaskInstancesKeyFn,
@@ -38,6 +39,7 @@ export const useTogglePause = ({ dagId }: { dagId: string }) => {
       [useDagServiceGetDagsUiKey],
       UseDagServiceGetDagKeyFn({ dagId }, [{ dagId }]),
       UseDagServiceGetDagDetailsKeyFn({ dagId }, [{ dagId }]),
+      UseDagServiceGetLatestRunInfoKeyFn({ dagId }, [{ dagId }]),
       UseDagRunServiceGetDagRunsKeyFn({ dagId }, [{ dagId }]),
       UseTaskInstanceServiceGetTaskInstancesKeyFn({ dagId, dagRunId: "~" }, [{ dagId, dagRunId: "~" }]),
     ];
