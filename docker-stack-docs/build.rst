@@ -356,6 +356,11 @@ You should be aware, about a few things
   Note also that using ``--no-cache-dir`` in ``pip`` or ``--no-cache`` in ``uv`` is a good idea that can
   help to make your image smaller.
 
+* If you want to build a dedicated virtualenv in the image for
+  ``ExternalPythonOperator`` or ``@task.external_python``, set ``PIP_USER`` to ``false`` before
+  installing into that virtualenv. Otherwise ``pip`` will keep targeting ``~/.local`` in the base image
+  instead of the virtualenv you created.
+
 * If your apt, or PyPI dependencies require some of the ``build-essential`` or other packages that need
   to compile your python dependencies, then your best choice is to follow the "Customize the image" route,
   because you can build a highly-optimized (for size) image this way. However, it requires you to use
@@ -474,6 +479,26 @@ Note that similarly when adding individual packages, you need to use the ``airfl
     :end-before: [END Dockerfile]
 
 .. exampleinclude:: docker-examples/extending/add-requirement-packages/requirements.txt
+    :language: text
+
+
+Example of creating a virtualenv for ``ExternalPythonOperator``
+...............................................................
+
+The following example creates a dedicated virtualenv for
+``ExternalPythonOperator`` or ``@task.external_python`` tasks. It disables the default
+``PIP_USER`` behavior from the base image so package installation goes to the new virtualenv
+instead of ``~/.local``.
+
+If your external task needs Airflow context variables or provider imports, install the matching
+``apache-airflow`` version and any provider packages it uses into the virtualenv as well.
+
+.. exampleinclude:: docker-examples/extending/external-python-virtualenv/Dockerfile
+    :language: Dockerfile
+    :start-after: [START Dockerfile]
+    :end-before: [END Dockerfile]
+
+.. exampleinclude:: docker-examples/extending/external-python-virtualenv/requirements.txt
     :language: text
 
 
