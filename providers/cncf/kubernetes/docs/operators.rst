@@ -653,6 +653,40 @@ spark_job_template.json
 An alternative method, apart from using YAML or JSON files, is to directly pass the ``template_spec`` field instead of application_file
 if you prefer not to employ a file for configuration.
 
+If you want to supply the SparkApplication payload from the **Trigger Dag** form, define a Dag param with
+JSON schema type ``object`` and render it into ``application_file`` with ``tojson``. This keeps the Trigger Dag
+form validation in the UI while still letting the operator parse the payload as JSON.
+
+.. code-block:: python
+
+    from airflow.sdk import DAG, Param
+
+    spark_job_default = {
+        "spark": {
+            "apiVersion": "sparkoperator.k8s.io/v1beta2",
+            "kind": "SparkApplication",
+            "spec": {
+                "type": "Python",
+                "mode": "cluster",
+                "driver": {"cores": 1},
+                "executor": {"instances": 1},
+            },
+        }
+    }
+
+    with DAG(
+        dag_id="spark_pi",
+        schedule=None,
+        params={"spark_job": Param(spark_job_default, type="object")},
+    ):
+        SparkKubernetesOperator(
+            task_id="spark_task",
+            application_file="{{ params.spark_job | tojson }}",
+        )
+
+When the Dag is triggered manually, the ``spark_job`` object can be edited in the UI and the submitted JSON will
+be used as the SparkApplication body for that run.
+
 
 Reference
 ^^^^^^^^^
