@@ -74,9 +74,12 @@ class AzureBatchHook(BaseHook):
             },
         }
 
-    def __init__(self, azure_batch_conn_id: str = default_conn_name) -> None:
+    def __init__(
+        self, azure_batch_conn_id: str = default_conn_name, *, retry_total: int | None = None
+    ) -> None:
         super().__init__()
         self.conn_id = azure_batch_conn_id
+        self.retry_total = retry_total
 
     def _get_field(self, extras, name):
         return get_field(
@@ -112,7 +115,11 @@ class AzureBatchHook(BaseHook):
                 workload_identity_tenant_id=conn.extra_dejson.get("workload_identity_tenant_id"),
             )
 
-        return BatchClient(endpoint=batch_account_url, credential=credential)
+        client_kwargs: dict[str, Any] = {}
+        if self.retry_total is not None:
+            client_kwargs["retry_total"] = self.retry_total
+
+        return BatchClient(endpoint=batch_account_url, credential=credential, **client_kwargs)
 
     def configure_pool(
         self,

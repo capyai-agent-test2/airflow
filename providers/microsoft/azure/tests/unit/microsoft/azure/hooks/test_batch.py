@@ -72,7 +72,7 @@ class TestAzureBatchHook:
     def test_uses_shared_key_auth_when_name_and_key_provided(
         self, mock_named_key_credential, mock_batch_client
     ):
-        hook = AzureBatchHook(azure_batch_conn_id=self.test_shared_key_conn_id)
+        hook = AzureBatchHook(azure_batch_conn_id=self.test_shared_key_conn_id, retry_total=7)
 
         hook.get_conn()
 
@@ -80,6 +80,7 @@ class TestAzureBatchHook:
         mock_batch_client.assert_called_once_with(
             endpoint=self.test_account_url,
             credential=mock_named_key_credential.return_value,
+            retry_total=7,
         )
 
     @mock.patch(f"{MODULE}.BatchClient")

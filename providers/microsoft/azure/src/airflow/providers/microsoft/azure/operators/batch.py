@@ -174,7 +174,7 @@ class AzureBatchOperator(BaseOperator):
     @cached_property
     def hook(self) -> AzureBatchHook:
         """Create and return an AzureBatchHook (cached)."""
-        return AzureBatchHook(self.azure_batch_conn_id)
+        return AzureBatchHook(self.azure_batch_conn_id, retry_total=self.batch_max_retries)
 
     def _check_inputs(self) -> Any:
         if not self.vm_publisher:

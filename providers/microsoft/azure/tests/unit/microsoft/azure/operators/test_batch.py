@@ -222,3 +222,6 @@ class TestAzureBatchOperator:
         self.operator.clean_up("mypool", "myjob")
         assert self.batch_client.begin_delete_job.call_count == 2
         assert self.batch_client.begin_delete_pool.call_count == 2
+
+    def test_hook_passes_batch_max_retries(self):
+        assert self.operator.hook.retry_total == self.operator.batch_max_retries
