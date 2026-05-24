@@ -1490,10 +1490,11 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
         expected_hash_data = '{"installed_requirements_list": ["example-package==1.2.3"]}'
 
         with (
-            mock.patch.object(operator, "_prepare_venv") as mocked_prepare_venv,
+            mock.patch.object(operator, "_prepare_venv", autospec=True) as mocked_prepare_venv,
             mock.patch.object(
                 operator,
                 "_calculate_cache_hash_from_installed_packages",
+                autospec=True,
                 return_value=("deadbeef", expected_hash_data),
             ) as mocked_installed_hash,
         ):
@@ -1521,10 +1522,11 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
         (existing_venv_path / "install_complete_marker.json").write_text(expected_hash_data, encoding="utf8")
 
         with (
-            mock.patch.object(operator, "_prepare_venv") as mocked_prepare_venv,
+            mock.patch.object(operator, "_prepare_venv", autospec=True) as mocked_prepare_venv,
             mock.patch.object(
                 operator,
                 "_calculate_cache_hash_from_installed_packages",
+                autospec=True,
                 return_value=("deadbeef", expected_hash_data),
             ) as mocked_installed_hash,
         ):
