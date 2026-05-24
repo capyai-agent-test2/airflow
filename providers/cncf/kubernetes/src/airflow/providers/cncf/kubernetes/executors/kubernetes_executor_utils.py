@@ -226,6 +226,7 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
             # Most likely this happens due to Kubernetes setup (virtual kubelet, virtual nodes, etc.)
             key = annotations_to_key(annotations=annotations)
             task_key_str = f"{key.dag_id}.{key.task_id}.{key.try_number}" if key else "unknown"
+            failure_details = collect_pod_failure_details(pod, self.log)
             self.log.warning(
                 "Event: %s failed to start with reason ProviderFailed, task: %s, annotations: %s",
                 pod_name,
@@ -239,7 +240,7 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
                     TaskInstanceState.FAILED,
                     annotations,
                     resource_version,
-                    None,
+                    failure_details,
                 )
             )
         elif status == "Pending":
@@ -279,6 +280,21 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
                                 waiting_reason,
                                 task_key_str,
                             )
+                            failure_details: FailureDetails = {
+                                "pod_status": status,
+                                "pod_reason": getattr(pod.status, "reason", None),
+                                "pod_message": getattr(pod.status, "message", None),
+                                "container_state": "waiting",
+                                "container_reason": waiting_reason,
+                                "container_message": waiting_message,
+                                "container_type": (
+                                    "init"
+                                    if container_status
+                                    in event["raw_object"]["status"].get("initContainerStatuses", [])
+                                    else "main"
+                                ),
+                                "container_name": container_status["name"],
+                            }
                             self.watcher_queue.put(
                                 KubernetesWatch(
                                     pod_name,
@@ -286,7 +302,7 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
                                     TaskInstanceState.FAILED,
                                     annotations,
                                     resource_version,
-                                    None,
+                                    failure_details,
                                 )
                             )
                             break
@@ -358,19 +374,20 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
 
 def collect_pod_failure_details(pod: k8s.V1Pod, logger) -> FailureDetails | None:
     """
-    Collect detailed failure information from a failed pod.
+    Collect detailed failure information from a pod.
 
     Analyzes both init containers and main containers to determine the root cause
-    of pod failure, prioritizing terminated containers with non-zero exit codes.
+    of pod startup or execution failure, prioritizing terminated containers with
+    non-zero exit codes.
 
     Args:
         pod: The Kubernetes V1Pod object to analyze
         logger: Logger instance to use for error logging
 
     Returns:
-        FailureDetails dict with failure information, or None if no failure details found
+        FailureDetails dict with failure information, or None if pod status is unavailable
     """
-    if not pod.status or pod.status.phase != "Failed":
+    if not pod.status:
         return None
 
     try:
