@@ -173,6 +173,7 @@ const createColumns = (
 
 const {
   FAVORITE,
+  HAS_IMPORT_ERRORS,
   LAST_DAG_RUN_STATE,
   NAME_PATTERN,
   NEEDS_REVIEW,
@@ -199,6 +200,7 @@ export const DagsList = () => {
 
   const showPaused = searchParams.get(PAUSED);
   const showFavorites = searchParams.get(FAVORITE);
+  const showImportErrors = searchParams.get(HAS_IMPORT_ERRORS);
 
   const lastDagRunState = searchParams.get(LAST_DAG_RUN_STATE) as DagRunState;
   const { selectedTags, tagFilterMode: selectedMatchMode } = useTagFilter();
@@ -232,6 +234,7 @@ export const DagsList = () => {
 
   let paused = defaultShowPaused;
   let isFavorite = undefined;
+  let hasImportErrors = undefined;
   let pendingHitl = undefined;
 
   if (showPaused === "all") {
@@ -248,6 +251,12 @@ export const DagsList = () => {
     isFavorite = false;
   }
 
+  if (showImportErrors === "true") {
+    hasImportErrors = true;
+  } else if (showImportErrors === "false") {
+    hasImportErrors = false;
+  }
+
   if (pendingReviews === "true") {
     pendingHitl = true;
   } else if (pendingReviews === "false") {
@@ -259,6 +268,7 @@ export const DagsList = () => {
     dagDisplayNamePattern: Boolean(dagDisplayNamePattern) ? dagDisplayNamePattern : undefined,
     dagRunsLimit,
     isFavorite,
+    hasImportErrors,
     lastDagRunState,
     limit: pagination.pageSize,
     offset: pagination.pageIndex * pagination.pageSize,

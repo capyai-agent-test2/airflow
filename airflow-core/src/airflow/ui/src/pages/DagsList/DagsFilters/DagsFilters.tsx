@@ -28,6 +28,8 @@ import { useDagTagsInfinite } from "src/queries/useDagTagsInfinite";
 
 import { useTagFilter } from "../useTagFilter";
 import { FavoriteFilter } from "./FavoriteFilter";
+import { ImportErrorsFilter } from "./ImportErrorsFilter";
+import { OwnerFilter } from "./OwnerFilter";
 import { PausedFilter } from "./PausedFilter";
 import { RequiredActionFilter } from "./RequiredActionFilter";
 import { StateFilters } from "./StateFilters";
@@ -35,9 +37,11 @@ import { TagFilter } from "./TagFilter";
 
 const {
   FAVORITE: FAVORITE_PARAM,
+  HAS_IMPORT_ERRORS: HAS_IMPORT_ERRORS_PARAM,
   LAST_DAG_RUN_STATE: LAST_DAG_RUN_STATE_PARAM,
   NEEDS_REVIEW: NEEDS_REVIEW_PARAM,
   OFFSET: OFFSET_PARAM,
+  OWNERS: OWNERS_PARAM,
   PAUSED: PAUSED_PARAM,
 }: SearchParamsKeysType = SearchParamsKeys;
 
@@ -62,7 +66,9 @@ export const DagsFilters = () => {
 
   const showPaused = searchParams.get(PAUSED_PARAM);
   const showFavorites = searchParams.get(FAVORITE_PARAM);
+  const showImportErrors = searchParams.get(HAS_IMPORT_ERRORS_PARAM);
   const needsReview = searchParams.get(NEEDS_REVIEW_PARAM);
+  const owners = searchParams.getAll(OWNERS_PARAM);
   const state = searchParams.get(LAST_DAG_RUN_STATE_PARAM);
 
   const [pattern, setPattern] = useState("");
@@ -117,6 +123,16 @@ export const DagsFilters = () => {
     setSearchParams(searchParams);
   };
 
+  const handleImportErrorsChange = (value: BooleanFilterValue) => {
+    if (value === "all") {
+      searchParams.delete(HAS_IMPORT_ERRORS_PARAM);
+    } else {
+      searchParams.set(HAS_IMPORT_ERRORS_PARAM, value);
+    }
+    resetPagination();
+    setSearchParams(searchParams);
+  };
+
   const handleNeedsReviewToggle = () => {
     if (needsReview === "true") {
       searchParams.delete(NEEDS_REVIEW_PARAM);
@@ -136,6 +152,18 @@ export const DagsFilters = () => {
     setSelectedTags(tags.map(({ value }) => value));
   };
 
+  const handleSelectOwnersChange = (
+    selectedOwners: MultiValue<{
+      label: string;
+      value: string;
+    }>,
+  ) => {
+    searchParams.delete(OWNERS_PARAM);
+    selectedOwners.forEach(({ value }) => searchParams.append(OWNERS_PARAM, value));
+    resetPagination();
+    setSearchParams(searchParams);
+  };
+
   const handleTagModeChange = ({ checked }: { checked: boolean }) => {
     setTagFilterMode(checked ? "all" : "any");
   };
@@ -143,6 +171,7 @@ export const DagsFilters = () => {
   const stateValue = toStateValue(state);
   const pausedValue = toBooleanFilterValue(showPaused, defaultShowPaused);
   const favoriteValue = toBooleanFilterValue(showFavorites);
+  const importErrorsValue = toBooleanFilterValue(showImportErrors);
 
   return (
     <HStack flexWrap="wrap" gap={2} justifyContent="space-between">
@@ -151,6 +180,8 @@ export const DagsFilters = () => {
       </Box>
       <RequiredActionFilter needsReview={needsReview === "true"} onToggle={handleNeedsReviewToggle} />
       <PausedFilter onChange={handlePausedChange} value={pausedValue} />
+      <ImportErrorsFilter onChange={handleImportErrorsChange} value={importErrorsValue} />
+      <OwnerFilter onSelectOwnersChange={handleSelectOwnersChange} selectedOwners={owners} />
       <TagFilter
         onMenuScrollToBottom={() => {
           void fetchNextPage();

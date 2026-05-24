@@ -34,4 +34,18 @@ describe("Dag Filters", () => {
     await waitFor(() => screen.getByText("states.failed").click());
     await waitFor(() => expect(screen.getByText("tutorial_taskflow_api_failed")).toBeInTheDocument());
   });
+
+  it("filters dags by owner from query params", async () => {
+    render(<AppWrapper initialEntries={["/dags?owners=alice"]} />);
+
+    await waitFor(() => expect(screen.getByText("import_error_dag")).toBeInTheDocument());
+    expect(screen.queryByText("tutorial_taskflow_api_success")).not.toBeInTheDocument();
+  });
+
+  it("filters dags with import errors from query params", async () => {
+    render(<AppWrapper initialEntries={["/dags?has_import_errors=true"]} />);
+
+    await waitFor(() => expect(screen.getByText("import_error_dag")).toBeInTheDocument());
+    expect(screen.queryByText("tutorial_taskflow_api_success")).not.toBeInTheDocument();
+  });
 });
