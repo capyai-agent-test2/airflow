@@ -23,6 +23,7 @@ import os
 import re
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Sequence
+from copy import copy
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar, cast, overload
 from uuid import UUID
@@ -2123,6 +2124,7 @@ class DagRun(Base, LoggingMixin):
     def _prepare_start_from_trigger_task(self, ti: TI) -> bool:
         if ti.task is None or not getattr(ti.task, "start_from_trigger", False):
             return False
+        ti.task = copy(ti.task)
 
         from airflow.api_fastapi.execution_api.datamodels.taskinstance import (
             DagRun as DagRunDataModel,
@@ -2144,9 +2146,11 @@ class DagRun(Base, LoggingMixin):
         )
         context = runtime_ti.get_template_context()
 
-        if ti.task.template_fields:
-            ti.task.render_template_fields(context)
         ti.task.start_from_trigger = ti.task.expand_start_from_trigger(context=context)
+        if not ti.task.start_from_trigger:
+            return False
+        if ti.task.template_fields and hasattr(ti.task, "render_template_fields"):
+            ti.task.render_template_fields(context)
         ti.task.start_trigger_args = ti.task.expand_start_trigger_args(context=context)
         return ti.task.start_from_trigger and ti.task.start_trigger_args is not None
 

@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 import methodtools
 
-from airflow.sdk.definitions._internal.templater import Templater
+from airflow.sdk.definitions._internal.templater import Templater, create_template_env
 from airflow.serialization.definitions.node import DAGNode
 from airflow.serialization.definitions.param import SerializedParamsDict
 from airflow.serialization.enums import DagAttributeTypes
@@ -328,7 +328,19 @@ class SerializedBaseOperator(DAGNode, Templater):
         return replace(self.start_trigger_args, trigger_kwargs=trigger_kwargs)
 
     def render_template_fields(self, context: Context) -> None:
-        self._do_render_template_fields(self, self.template_fields, context, self.get_template_env(), set())
+        if self.dag is not None:
+            jinja_env = create_template_env(
+                native=getattr(self.dag, "render_template_as_native_obj", False),
+                searchpath=list(self.dag.template_searchpath)
+                if getattr(self.dag, "template_searchpath", None)
+                else None,
+                jinja_environment_kwargs=getattr(self.dag, "jinja_environment_kwargs", None),
+                user_defined_macros=getattr(self.dag, "user_defined_macros", None),
+                user_defined_filters=getattr(self.dag, "user_defined_filters", None),
+            )
+        else:
+            jinja_env = self.get_template_env()
+        self._do_render_template_fields(self, self.template_fields, context, jinja_env, set())
 
     @property
     def weight_rule(self) -> PriorityWeightStrategy:
