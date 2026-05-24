@@ -39,6 +39,7 @@ from airflow.providers.cncf.kubernetes.pod_generator import MAX_LABEL_LEN
 from airflow.providers.cncf.kubernetes.triggers.pod import KubernetesPodTrigger
 from airflow.providers.cncf.kubernetes.utils.pod_manager import PodPhase
 from airflow.providers.common.compat.sdk import TaskDeferred
+from airflow.sdk import Param
 from airflow.utils import timezone
 from airflow.utils.types import DagRunType
 
@@ -1381,6 +1382,27 @@ def test_resolve_application_file_template_file(create_task_instance_of_operator
             "spam": "egg",
         }
     }
+
+
+@pytest.mark.db_test
+def test_resolve_application_file_from_object_param(create_task_instance_of_operator, session):
+    default_body = {"spark": {"spec": {"driver": {"cores": 1}}}}
+    triggered_body = {"spark": {"spec": {"driver": {"cores": 2}, "executor": {"instances": 3}}}}
+
+    ti = create_task_instance_of_operator(
+        SparkKubernetesOperator,
+        dag_id="test_resolve_application_file_from_object_param",
+        task_id="spark_task",
+        application_file="{{ params.spark_job | tojson }}",
+        kubernetes_conn_id="kubernetes_default_kube_config",
+        session=session,
+        params={"spark_job": Param(default_body, type="object")},
+    )
+    ti.dag_run.conf = {"spark_job": triggered_body}
+
+    task = ti.render_templates()
+
+    assert task.template_body == triggered_body
 
 
 @pytest.mark.db_test
