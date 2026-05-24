@@ -1533,7 +1533,7 @@ If you need to exclude some providers from the documentation you need to add `--
 with space separated list of excluded providers.
 
 ```shell script
-  breeze workflow-run publish-docs --ref providers/${RELEASE_DATE} --site-env live all-providers --exclude-docs "apprise slack"
+  breeze workflow-run publish-docs --ref providers/${RELEASE_DATE} --site-env live all-providers --exclude-docs "slack"
 ```
 
 Or if you just want to publish a few selected providers, you can run:

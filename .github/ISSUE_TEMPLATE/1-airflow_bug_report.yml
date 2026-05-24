@@ -131,7 +131,6 @@ body:
         - apache-pinot
         - apache-spark
         - apache-tinkerpop
-        - apprise
         - arangodb
         - asana
         - atlassian-jira

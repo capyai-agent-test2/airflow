@@ -98,7 +98,6 @@ repos:
             ^apache/flink/.*\.py$|
             ^apache/iceberg/.*\.py$|
             ^apache/kafka/.*\.py$|
-            ^apprise/.*\.py$|
             ^arangodb/.*\.py$|
             ^asana/.*\.py$|
             ^atlassian/jira/.*\.py$|

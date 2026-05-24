@@ -155,9 +155,6 @@ apache-airflow = "airflow.__main__:main"
 "apache.tinkerpop" = [
     "apache-airflow-providers-apache-tinkerpop>=1.0.0"
 ]
-"apprise" = [
-    "apache-airflow-providers-apprise>=1.4.1"
-]
 "arangodb" = [
     "apache-airflow-providers-arangodb>=2.7.0"
 ]
@@ -420,7 +417,6 @@ apache-airflow = "airflow.__main__:main"
     "apache-airflow-providers-apache-pinot>=4.5.1",
     "apache-airflow-providers-apache-spark>=4.11.1",
     "apache-airflow-providers-apache-tinkerpop>=1.0.0",
-    "apache-airflow-providers-apprise>=1.4.1",
     "apache-airflow-providers-arangodb>=2.7.0",
     "apache-airflow-providers-asana>=2.7.0",
     "apache-airflow-providers-atlassian-jira>=2.7.1",
@@ -1112,8 +1108,6 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/providers/apache/spark/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/apache/tinkerpop/src",
     "$MYPY_CONFIG_FILE_DIR/providers/apache/tinkerpop/tests",
-    "$MYPY_CONFIG_FILE_DIR/providers/apprise/src",
-    "$MYPY_CONFIG_FILE_DIR/providers/apprise/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/arangodb/src",
     "$MYPY_CONFIG_FILE_DIR/providers/arangodb/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/asana/src",
@@ -1429,7 +1423,6 @@ apache-airflow-providers-apache-pig = false
 apache-airflow-providers-apache-pinot = false
 apache-airflow-providers-apache-spark = false
 apache-airflow-providers-apache-tinkerpop = false
-apache-airflow-providers-apprise = false
 apache-airflow-providers-arangodb = false
 apache-airflow-providers-asana = false
 apache-airflow-providers-atlassian-jira = false
@@ -1580,7 +1573,6 @@ apache-airflow-providers-apache-pig = false
 apache-airflow-providers-apache-pinot = false
 apache-airflow-providers-apache-spark = false
 apache-airflow-providers-apache-tinkerpop = false
-apache-airflow-providers-apprise = false
 apache-airflow-providers-arangodb = false
 apache-airflow-providers-asana = false
 apache-airflow-providers-atlassian-jira = false
@@ -1741,7 +1733,6 @@ apache-airflow-providers-apache-pig = { workspace = true }
 apache-airflow-providers-apache-pinot = { workspace = true }
 apache-airflow-providers-apache-spark = { workspace = true }
 apache-airflow-providers-apache-tinkerpop = { workspace = true }
-apache-airflow-providers-apprise = { workspace = true }
 apache-airflow-providers-arangodb = { workspace = true }
 apache-airflow-providers-asana = { workspace = true }
 apache-airflow-providers-atlassian-jira = { workspace = true }
@@ -1878,7 +1869,6 @@ members = [
     "providers/apache/pinot",
     "providers/apache/spark",
     "providers/apache/tinkerpop",
-    "providers/apprise",
     "providers/arangodb",
     "providers/asana",
     "providers/atlassian/jira",
