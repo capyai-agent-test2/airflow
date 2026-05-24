@@ -23,7 +23,10 @@ import pytest
 
 from airflow.providers.common.compat.sdk import AirflowException, TaskDeferred
 from airflow.providers.databricks.hooks.databricks import SQLStatementState
-from airflow.providers.databricks.sensors.databricks import DatabricksSQLStatementsSensor
+from airflow.providers.databricks.sensors.databricks import (
+    DatabricksJobRunSensor,
+    DatabricksSQLStatementsSensor,
+)
 from airflow.providers.databricks.triggers.databricks import DatabricksSQLStatementExecutionTrigger
 
 DEFAULT_CONN_ID = "databricks_default"
@@ -31,6 +34,127 @@ STATEMENT = "select * from test.test;"
 STATEMENT_ID = "statement_id"
 TASK_ID = "task_id"
 WAREHOUSE_ID = "warehouse_id"
+RUN_ID = 123
+TASK_KEY = "extract"
+
+
+class TestDatabricksJobRunSensor:
+    @mock.patch("airflow.providers.databricks.sensors.databricks.DatabricksHook")
+    def test_poke_run_success(self, db_mock_class):
+        sensor = DatabricksJobRunSensor(task_id=TASK_ID, run_id=RUN_ID)
+        db_mock = db_mock_class.return_value
+        db_mock.get_run.return_value = {
+            "state": {
+                "life_cycle_state": "TERMINATED",
+                "result_state": "SUCCESS",
+                "state_message": "done",
+            }
+        }
+        db_mock.get_run_page_url.return_value = "https://example.com/run"
+
+        assert sensor.poke(None) is True
+
+        db_mock.get_run.assert_called_once_with(RUN_ID)
+        db_mock.get_run_page_url.assert_called_once_with(RUN_ID)
+
+    @mock.patch("airflow.providers.databricks.sensors.databricks.DatabricksHook")
+    def test_poke_run_failure(self, db_mock_class):
+        sensor = DatabricksJobRunSensor(task_id=TASK_ID, run_id=RUN_ID)
+        db_mock = db_mock_class.return_value
+        db_mock.get_run.return_value = {
+            "state": {
+                "life_cycle_state": "TERMINATED",
+                "result_state": "FAILED",
+                "state_message": "top-level failure",
+            },
+            "tasks": [{"task_key": TASK_KEY, "run_id": 321, "state": {"result_state": "FAILED"}}],
+        }
+        db_mock.get_run_output.return_value = {"error": "notebook exploded"}
+        db_mock.get_run_page_url.return_value = "https://example.com/run"
+
+        with pytest.raises(
+            AirflowException,
+            match="Databricks run 123 failed with terminal state: .*notebook exploded",
+        ):
+            sensor.poke(None)
+
+        db_mock.get_run.assert_called_once_with(RUN_ID)
+        db_mock.get_run_output.assert_called_once_with(321)
+        db_mock.get_run_page_url.assert_called_once_with(RUN_ID)
+
+    @mock.patch("airflow.providers.databricks.sensors.databricks.DatabricksHook")
+    def test_poke_task_success_uses_latest_attempt(self, db_mock_class):
+        sensor = DatabricksJobRunSensor(task_id=TASK_ID, run_id=RUN_ID, task_key=TASK_KEY)
+        db_mock = db_mock_class.return_value
+        db_mock.get_run_tasks.return_value = [
+            {
+                "task_key": TASK_KEY,
+                "run_id": 10,
+                "start_time": 1,
+                "state": {
+                    "life_cycle_state": "TERMINATED",
+                    "result_state": "FAILED",
+                    "state_message": "old failure",
+                },
+            },
+            {
+                "task_key": TASK_KEY,
+                "run_id": 20,
+                "start_time": 2,
+                "state": {
+                    "life_cycle_state": "TERMINATED",
+                    "result_state": "SUCCESS",
+                    "state_message": "done",
+                },
+            },
+        ]
+        db_mock.get_run_page_url.return_value = "https://example.com/run/20"
+
+        assert sensor.poke(None) is True
+
+        db_mock.get_run_tasks.assert_called_once_with(RUN_ID)
+        db_mock.get_run_page_url.assert_called_once_with(20)
+
+    @mock.patch("airflow.providers.databricks.sensors.databricks.DatabricksHook")
+    def test_poke_task_failure(self, db_mock_class):
+        sensor = DatabricksJobRunSensor(task_id=TASK_ID, run_id=RUN_ID, task_key=TASK_KEY)
+        db_mock = db_mock_class.return_value
+        db_mock.get_run_tasks.return_value = [
+            {
+                "task_key": TASK_KEY,
+                "run_id": 20,
+                "start_time": 2,
+                "state": {
+                    "life_cycle_state": "TERMINATED",
+                    "result_state": "FAILED",
+                    "state_message": "cell failed",
+                },
+            }
+        ]
+        db_mock.get_run_page_url.return_value = "https://example.com/run/20"
+
+        with pytest.raises(
+            AirflowException,
+            match="Databricks task 'extract' in run 123 failed with terminal state: .*cell failed",
+        ):
+            sensor.poke(None)
+
+        db_mock.get_run_tasks.assert_called_once_with(RUN_ID)
+        db_mock.get_run_page_url.assert_called_once_with(20)
+
+    @mock.patch("airflow.providers.databricks.sensors.databricks.DatabricksHook")
+    def test_poke_task_missing(self, db_mock_class):
+        sensor = DatabricksJobRunSensor(task_id=TASK_ID, run_id=RUN_ID, task_key=TASK_KEY)
+        db_mock = db_mock_class.return_value
+        db_mock.get_run_tasks.return_value = []
+
+        with pytest.raises(
+            AirflowException,
+            match="Could not find task_key 'extract' in Databricks run 123.",
+        ):
+            sensor.poke(None)
+
+        db_mock.get_run_tasks.assert_called_once_with(RUN_ID)
 
 
 class TestDatabricksSQLStatementsSensor:
