@@ -97,7 +97,7 @@ class DAGRunResponse(BaseModel):
     data_interval_end: datetime | None
     run_after: datetime
     last_scheduling_decision: datetime | None
-    updated_at: datetime
+    updated_at: datetime | None
     run_type: DagRunType
     state: DagRunState
     triggered_by: DagRunTriggeredByType | None
