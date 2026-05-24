@@ -125,7 +125,6 @@ repos:
             ^odbc/.*\.py$|
             ^openai/.*\.py$|
             ^openfaas/.*\.py$|
-            ^opsgenie/.*\.py$|
             ^oracle/.*\.py$|
             ^pagerduty/.*\.py$|
             ^pgvector/.*\.py$|

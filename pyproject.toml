@@ -302,9 +302,6 @@ apache-airflow = "airflow.__main__:main"
 "opensearch" = [
     "apache-airflow-providers-opensearch>=1.9.0" # Set from MIN_VERSION_OVERRIDE in update_airflow_pyproject_toml.py
 ]
-"opsgenie" = [
-    "apache-airflow-providers-opsgenie>=5.8.0"
-]
 "oracle" = [
     "apache-airflow-providers-oracle>=3.12.0"
 ]
@@ -469,7 +466,6 @@ apache-airflow = "airflow.__main__:main"
     "apache-airflow-providers-openfaas>=3.7.0",
     "apache-airflow-providers-openlineage>=2.3.0", # Set from MIN_VERSION_OVERRIDE in update_airflow_pyproject_toml.py
     "apache-airflow-providers-opensearch>=1.9.0", # Set from MIN_VERSION_OVERRIDE in update_airflow_pyproject_toml.py
-    "apache-airflow-providers-opsgenie>=5.8.0",
     "apache-airflow-providers-oracle>=3.12.0",
     "apache-airflow-providers-pagerduty>=3.8.1",
     "apache-airflow-providers-papermill>=3.8.2",
@@ -1210,8 +1206,6 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/providers/openlineage/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/opensearch/src",
     "$MYPY_CONFIG_FILE_DIR/providers/opensearch/tests",
-    "$MYPY_CONFIG_FILE_DIR/providers/opsgenie/src",
-    "$MYPY_CONFIG_FILE_DIR/providers/opsgenie/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/oracle/src",
     "$MYPY_CONFIG_FILE_DIR/providers/oracle/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/pagerduty/src",
@@ -1478,7 +1472,6 @@ apache-airflow-providers-openai = false
 apache-airflow-providers-openfaas = false
 apache-airflow-providers-openlineage = false
 apache-airflow-providers-opensearch = false
-apache-airflow-providers-opsgenie = false
 apache-airflow-providers-oracle = false
 apache-airflow-providers-pagerduty = false
 apache-airflow-providers-papermill = false
@@ -1629,7 +1622,6 @@ apache-airflow-providers-openai = false
 apache-airflow-providers-openfaas = false
 apache-airflow-providers-openlineage = false
 apache-airflow-providers-opensearch = false
-apache-airflow-providers-opsgenie = false
 apache-airflow-providers-oracle = false
 apache-airflow-providers-pagerduty = false
 apache-airflow-providers-papermill = false
@@ -1790,7 +1782,6 @@ apache-airflow-providers-openai = { workspace = true }
 apache-airflow-providers-openfaas = { workspace = true }
 apache-airflow-providers-openlineage = { workspace = true }
 apache-airflow-providers-opensearch = { workspace = true }
-apache-airflow-providers-opsgenie = { workspace = true }
 apache-airflow-providers-oracle = { workspace = true }
 apache-airflow-providers-pagerduty = { workspace = true }
 apache-airflow-providers-papermill = { workspace = true }
@@ -1927,7 +1918,6 @@ members = [
     "providers/openfaas",
     "providers/openlineage",
     "providers/opensearch",
-    "providers/opsgenie",
     "providers/oracle",
     "providers/pagerduty",
     "providers/papermill",

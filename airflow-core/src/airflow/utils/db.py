@@ -469,12 +469,6 @@ def get_default_connections():
             port=9200,
         ),
         Connection(
-            conn_id="opsgenie_default",
-            conn_type="http",
-            host="",
-            password="",
-        ),
-        Connection(
             conn_id="oracle_default",
             conn_type="oracle",
             host="localhost",
