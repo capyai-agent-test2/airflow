@@ -221,8 +221,8 @@ def test_check_docker_compose_version_ok(mock_console_print, mock_run_command):
     mock_console_print.assert_called_with("[success]Good version of docker-compose: 2.20.2[/]")
 
 
-@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
-@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command", autospec=True)
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print", autospec=True)
 def test_check_docker_is_running_in_codespaces(mock_console_print, mock_run_command):
     mock_run_command.return_value.returncode = 1
     mock_run_command.return_value.args = ["docker", "info"]
