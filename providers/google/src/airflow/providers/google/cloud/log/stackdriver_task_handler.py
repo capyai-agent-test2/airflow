@@ -27,7 +27,7 @@ from urllib.parse import urlencode
 
 from google.cloud import logging as gcp_logging
 from google.cloud.logging import Resource
-from google.cloud.logging.handlers.transports import BackgroundThreadTransport, Transport
+from google.cloud.logging.handlers.transports import SyncTransport, Transport
 from google.cloud.logging_v2.services.logging_service_v2 import LoggingServiceV2Client
 from google.cloud.logging_v2.types import ListLogEntriesRequest, ListLogEntriesResponse
 
@@ -81,8 +81,7 @@ class StackdriverTaskHandler(logging.Handler):
     :param transport: Class for creating new transport objects. It should
         extend from the base :class:`google.cloud.logging.handlers.Transport` type and
         implement :meth`google.cloud.logging.handlers.Transport.send`. Defaults to
-        :class:`google.cloud.logging.handlers.BackgroundThreadTransport`. The other
-        option is :class:`google.cloud.logging.handlers.SyncTransport`.
+        :class:`google.cloud.logging.handlers.SyncTransport`.
     :param resource: (Optional) Monitored resource of the entry, defaults
                      to the global resource type.
     :param labels: (Optional) Mapping of labels for the entry.
@@ -105,7 +104,7 @@ class StackdriverTaskHandler(logging.Handler):
         gcp_key_path: str | None = None,
         scopes: Collection[str] | None = _DEFAULT_SCOPESS,
         name: str | ArgNotSet = NOTSET,
-        transport: type[Transport] = BackgroundThreadTransport,
+        transport: type[Transport] = SyncTransport,
         resource: Resource = _GLOBAL_RESOURCE,
         labels: dict[str, str] | None = None,
         gcp_log_name: str = DEFAULT_LOGGER_NAME,
