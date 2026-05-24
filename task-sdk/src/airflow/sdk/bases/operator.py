@@ -388,12 +388,11 @@ else:
             if dag:
                 dag_str = f" in dag {dag.dag_id}"
             raise ValueError(f"pool slots for {task_id}{dag_str} cannot be less than 1")
-        if partial_kwargs["depends_on_previous_tasks"] and (
-            partial_kwargs["depends_on_past"] or partial_kwargs["wait_for_downstream"]
-        ):
-            raise ValueError(
-                "depends_on_previous_tasks cannot be used with depends_on_past or wait_for_downstream."
-            )
+        partial_kwargs["depends_on_previous_tasks"] = _validate_depends_on_previous_tasks(
+            partial_kwargs["depends_on_previous_tasks"],
+            depends_on_past=partial_kwargs["depends_on_past"],
+            wait_for_downstream=partial_kwargs["wait_for_downstream"],
+        )
         if retries := partial_kwargs.get("retries"):
             partial_kwargs["retries"] = BaseOperator._convert_retries(retries)
         partial_kwargs["retry_delay"] = BaseOperator._convert_retry_delay(partial_kwargs["retry_delay"])
@@ -468,6 +467,21 @@ def _collect_from_input(value_or_values: None | C | Collection[C]) -> list[C]:
     if isinstance(value_or_values, Collection):
         return list(value_or_values)
     return [value_or_values]
+
+
+def _validate_depends_on_previous_tasks(
+    value: Collection[str], *, depends_on_past: bool, wait_for_downstream: bool
+) -> list[str]:
+    if isinstance(value, str):
+        raise TypeError("depends_on_previous_tasks must be a collection of task IDs, not a string.")
+    converted = list(value)
+    if any(not isinstance(task_id, str) for task_id in converted):
+        raise TypeError("depends_on_previous_tasks must contain only task IDs.")
+    if converted and (depends_on_past or wait_for_downstream):
+        raise ValueError(
+            "depends_on_previous_tasks cannot be used with depends_on_past or wait_for_downstream."
+        )
+    return converted
 
 
 class BaseOperatorMeta(abc.ABCMeta):
@@ -1410,18 +1424,11 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         return value
 
     def _convert_depends_on_previous_tasks(self, value: Collection[str]) -> list[str]:
-        if isinstance(value, str):
-            raise TypeError("depends_on_previous_tasks must be a collection of task IDs, not a string.")
-        converted = list(value)
-        if any(not isinstance(task_id, str) for task_id in converted):
-            raise TypeError("depends_on_previous_tasks must contain only task IDs.")
-        if converted and (
-            getattr(self, "depends_on_past", False) or getattr(self, "wait_for_downstream", False)
-        ):
-            raise ValueError(
-                "depends_on_previous_tasks cannot be used with depends_on_past or wait_for_downstream."
-            )
-        return converted
+        return _validate_depends_on_previous_tasks(
+            value,
+            depends_on_past=getattr(self, "depends_on_past", False),
+            wait_for_downstream=getattr(self, "wait_for_downstream", False),
+        )
 
     def _convert_wait_for_downstream(self, value: bool) -> bool:
         if value and getattr(self, "depends_on_previous_tasks", []):

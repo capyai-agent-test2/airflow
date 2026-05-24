@@ -182,6 +182,18 @@ def test_partial_on_depends_on_previous_tasks_conflict_raises() -> None:
         ).expand(arg2=["b"])
 
 
+def test_partial_on_depends_on_previous_tasks_string_raises() -> None:
+    with pytest.raises(
+        TypeError,
+        match="depends_on_previous_tasks must be a collection of task IDs, not a string",
+    ):
+        MockOperator.partial(
+            task_id="mapped",
+            arg1="a",
+            depends_on_previous_tasks="upstream",
+        ).expand(arg2=["b"])
+
+
 def test_mapped_task_applies_default_args_classic():
     with DAG(
         dag_id="test",
