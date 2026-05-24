@@ -631,11 +631,6 @@ def get_default_connections():
             port=50070,
         ),
         Connection(
-            conn_id="yandexcloud_default",
-            conn_type="yandexcloud",
-            schema="default",
-        ),
-        Connection(
             conn_id="ydb_default",
             conn_type="ydb",
             host="grpc://localhost",

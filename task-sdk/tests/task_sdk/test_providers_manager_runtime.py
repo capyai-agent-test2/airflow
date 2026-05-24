@@ -194,14 +194,14 @@ class TestProvidersManagerRuntime:
                 real_warning_count += 1
             if real_warning_count:
                 if PY313:
-                    only_ydb_and_yandexcloud_warnings = True
+                    only_ydb_warnings = True
                     for record in warning_records:
-                        if "ydb" in str(record.message) or "yandexcloud" in str(record.message):
+                        if "ydb" in str(record.message):
                             continue
-                        only_ydb_and_yandexcloud_warnings = False
-                    if only_ydb_and_yandexcloud_warnings:
+                        only_ydb_warnings = False
+                    if only_ydb_warnings:
                         print(
-                            "Only warnings from ydb and yandexcloud providers are generated, "
+                            "Only warnings from ydb providers are generated, "
                             "which is expected in Python 3.13+",
                             file=sys.stderr,
                         )

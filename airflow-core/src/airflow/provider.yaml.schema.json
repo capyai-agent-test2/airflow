@@ -108,8 +108,7 @@
                                 "protocol",
                                 "service",
                                 "software",
-                                "text-generation",
-                                "yandex"
+                                "text-generation"
                             ]
                         },
                         "minItems": 1

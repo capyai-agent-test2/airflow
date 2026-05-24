@@ -447,9 +447,7 @@ def get_excluded_patterns() -> Generator[str, None, None]:
     current_python_version = sys.version_info[:2]
     if current_python_version >= (3, 13):
         # We should remove google when ray is fixed to work with Python 3.13
-        # and yandex when it is fixed to work with Python 3.13
         yield "providers/google/tests/system/google/"
-        yield "providers/yandex/tests/system/yandex/"
 
 
 def collect_dags(dag_folder=None):

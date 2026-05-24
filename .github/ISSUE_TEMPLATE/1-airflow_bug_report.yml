@@ -209,7 +209,6 @@ body:
         - vertica
         - vespa
         - weaviate
-        - yandex
         - ydb
         - zendesk
   - type: textarea

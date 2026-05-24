@@ -46,8 +46,6 @@ OPTIONAL_PROVIDERS_DEPENDENCIES: dict[str, dict[str, str | None]] = {
     # The format of the dictionary is as follows:
     # key: the regexp matching the file to be excluded,
     # value: a dictionary containing package distributions with an optional version specifier, e.g., >=2.3.4
-    # yandexcloud is automatically removed in case botocore is upgraded to latest
-    r".*example_yandexcloud.*\.py": {"yandexcloud": None},
 }
 IGNORE_AIRFLOW_PROVIDER_DEPRECATION_WARNING: tuple[str, ...] = (
     # Certain examples or system tests may trigger AirflowProviderDeprecationWarnings.

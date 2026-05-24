@@ -312,9 +312,6 @@ labelPRBasedOnFilePath:
   provider:weaviate:
     - providers/weaviate/**
 
-  provider:yandex:
-    - providers/yandex/**
-
   provider:ydb:
     - providers/ydb/**
 
