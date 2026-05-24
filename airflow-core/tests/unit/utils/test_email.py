@@ -313,6 +313,29 @@ class TestEmailSmtp:
         assert mock_smtp.return_value.starttls.called
         assert not mock_smtp_ssl.called
 
+    @mock.patch("smtplib.SMTP")
+    def test_send_mime_conn_id_ignores_empty_connection_host(self, mock_smtp, monkeypatch):
+        monkeypatch.setenv(
+            "AIRFLOW_CONN_SMTP_TEST_CONN",
+            json.dumps(
+                {
+                    "conn_type": "smtp",
+                    "host": "",
+                    "port": 2525,
+                    "login": "test-user",
+                    "password": "test-p@$$word",
+                }
+            ),
+        )
+
+        email.send_mime_email("from", "to", MIMEMultipart(), dryrun=False, conn_id="smtp_test_conn")
+
+        mock_smtp.assert_called_once_with(
+            host=conf.get("smtp", "SMTP_HOST"),
+            port=2525,
+            timeout=conf.getint("smtp", "SMTP_TIMEOUT"),
+        )
+
     @mock.patch("smtplib.SMTP_SSL")
     @mock.patch("smtplib.SMTP")
     def test_send_mime_ssl_none_context(self, mock_smtp, mock_smtp_ssl):

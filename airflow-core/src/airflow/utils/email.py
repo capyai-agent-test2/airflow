@@ -270,7 +270,7 @@ def send_mime_email(
     if airflow_conn is not None:
         smtp_user = airflow_conn.login
         smtp_password = airflow_conn.password
-        if airflow_conn.host is not None:
+        if airflow_conn.host:
             smtp_host = airflow_conn.host
         if airflow_conn.port is not None:
             smtp_port = airflow_conn.port
