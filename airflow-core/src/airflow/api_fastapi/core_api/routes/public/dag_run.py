@@ -758,6 +758,15 @@ def get_list_dag_runs_batch(
         ),
         attribute=DagRun.end_date,  # type: ignore[arg-type]
     )
+    updated_at = RangeFilter(
+        Range(
+            lower_bound_gte=body.updated_at_gte,
+            lower_bound_gt=body.updated_at_gt,
+            upper_bound_lte=body.updated_at_lte,
+            upper_bound_lt=body.updated_at_lt,
+        ),
+        attribute=DagRun.updated_at,  # type: ignore[arg-type]
+    )
     duration = RangeFilter(
         Range(
             lower_bound_gte=body.duration_gte,
@@ -800,6 +809,7 @@ def get_list_dag_runs_batch(
             run_after,
             start_date,
             end_date,
+            updated_at,
             duration,
             conf_contains,
             state,

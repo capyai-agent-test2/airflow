@@ -97,6 +97,7 @@ class DAGRunResponse(BaseModel):
     data_interval_end: datetime | None
     run_after: datetime
     last_scheduling_decision: datetime | None
+    updated_at: datetime
     run_type: DagRunType
     state: DagRunState
     triggered_by: DagRunTriggeredByType | None
@@ -217,6 +218,11 @@ class DAGRunsBatchBody(StrictBaseModel):
     end_date_gt: AwareDatetime | None = None
     end_date_lte: AwareDatetime | None = None
     end_date_lt: AwareDatetime | None = None
+
+    updated_at_gte: AwareDatetime | None = None
+    updated_at_gt: AwareDatetime | None = None
+    updated_at_lte: AwareDatetime | None = None
+    updated_at_lt: AwareDatetime | None = None
 
     duration_gte: float | None = None
     duration_gt: float | None = None
