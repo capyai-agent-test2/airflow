@@ -782,7 +782,7 @@ class VariablesOperations(BaseOperations):
 class TasksOperations(BaseOperations):
     """Task operations."""
 
-    def states_for_dag_run(self, dag_id: str, dag_run_id: str) -> list[dict[str, str]]:
+    def states_for_dag_run(self, dag_id: str, dag_run_id: str) -> dict[str, list[dict[str, str]]]:
         """Get task instance states for a Dag run."""
         response = super().execute_list(
             path=f"dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances",
@@ -807,7 +807,11 @@ class TasksOperations(BaseOperations):
                 )
             return data
 
-        return [format_task_instance(task_instance) for task_instance in response.task_instances]
+        return {
+            "task_instances": [
+                format_task_instance(task_instance) for task_instance in response.task_instances
+            ]
+        }
 
 
 class VersionOperations(BaseOperations):

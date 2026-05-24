@@ -1611,16 +1611,18 @@ class TestTasksOperations:
         client = make_api_client(transport=httpx.MockTransport(handle_request))
         response = client.tasks.states_for_dag_run(dag_id=self.dag_id, dag_run_id=self.dag_run_id)
 
-        assert response == [
-            {
-                "dag_id": self.dag_id,
-                "logical_date": "2025-01-24T00:00:00",
-                "task_id": "test_task",
-                "state": "success",
-                "start_date": "2025-01-24T00:05:00",
-                "end_date": "2025-01-24T00:10:00",
-            }
-        ]
+        assert response == {
+            "task_instances": [
+                {
+                    "dag_id": self.dag_id,
+                    "logical_date": "2025-01-24T00:00:00",
+                    "task_id": "test_task",
+                    "state": "success",
+                    "start_date": "2025-01-24T00:05:00",
+                    "end_date": "2025-01-24T00:10:00",
+                }
+            ]
+        }
 
     def test_states_for_dag_run_includes_map_index_for_mapped_tasks(self):
         mapped_task = self.task_instance_response.model_copy(
@@ -1640,17 +1642,19 @@ class TestTasksOperations:
         client = make_api_client(transport=httpx.MockTransport(handle_request))
         response = client.tasks.states_for_dag_run(dag_id=self.dag_id, dag_run_id=self.dag_run_id)
 
-        assert response == [
-            {
-                "dag_id": self.dag_id,
-                "logical_date": "2025-01-24T00:00:00",
-                "task_id": "mapped_task",
-                "state": "running",
-                "start_date": "2025-01-24T00:05:00",
-                "end_date": "2025-01-24T00:10:00",
-                "map_index": "3",
-            }
-        ]
+        assert response == {
+            "task_instances": [
+                {
+                    "dag_id": self.dag_id,
+                    "logical_date": "2025-01-24T00:00:00",
+                    "task_id": "mapped_task",
+                    "state": "running",
+                    "start_date": "2025-01-24T00:05:00",
+                    "end_date": "2025-01-24T00:10:00",
+                    "map_index": "3",
+                }
+            ]
+        }
 
 
 class TestXComOperations:
