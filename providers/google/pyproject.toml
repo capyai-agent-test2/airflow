@@ -74,7 +74,8 @@ dependencies = [
     # Google-api-core 2.16.0 back-compat issue:
     # - https://github.com/googleapis/python-api-core/issues/576
     # - https://github.com/apache/airflow/issues/39394
-    "google-api-core>=2.11.0,!=2.16.0,!=2.18.0",
+    # Google-api-core < 2.30.3 can also trigger very slow imports in Google client libraries.
+    "google-api-core>=2.30.3,!=2.16.0,!=2.18.0",
     "google-api-python-client>=2.0.2",
     "google-auth>=2.29.0",
     "google-auth-httplib2>=0.0.1",
