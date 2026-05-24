@@ -235,7 +235,6 @@ export const DagRuns = () => {
 
   const { setTableURLState, tableURLState } = useTableURLState({
     columnVisibility: {
-      conf: false,
       dag_version: false,
       end_date: false,
       partition_key: false,
