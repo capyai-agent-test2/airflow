@@ -34,12 +34,12 @@ dayjs.extend(timezone);
 
 type ChangeHandler = (event: ChangeEvent<HTMLInputElement>) => void;
 
-const renderWithTimezone = (selectedTimezone: string) => {
+const renderWithTimezone = (selectedTimezone: string, value: string = "") => {
   const onChange: Mock<ChangeHandler> = vi.fn();
 
   render(
     <TimezoneContext.Provider value={{ selectedTimezone, setSelectedTimezone: vi.fn() }}>
-      <DateTimeInput onChange={onChange} value="" />
+      <DateTimeInput onChange={onChange} value={value} />
     </TimezoneContext.Provider>,
     { wrapper: Wrapper },
   );
@@ -53,7 +53,13 @@ const paste = (input: HTMLInputElement, text: string) =>
 const lastEmittedValue = (onChange: Mock<ChangeHandler>): string | undefined =>
   onChange.mock.calls.at(-1)?.[0].target.value;
 
-describe("DateTimeInput onPaste timezone handling", () => {
+describe("DateTimeInput", () => {
+  it("normalizes an incoming datetime string for the datetime-local input", () => {
+    const { input } = renderWithTimezone("UTC", "2026-01-15 10:30:00");
+
+    expect(input.value).toBe("2026-01-15T10:30");
+  });
+
   it("renders pasted UTC instant in the selected UTC timezone", () => {
     const { input, onChange } = renderWithTimezone("UTC");
 
@@ -125,5 +131,11 @@ describe("DateTimeInput onPaste timezone handling", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("normalizes a date-only value to midnight for the datetime-local input", () => {
+    const { input } = renderWithTimezone("UTC", "2026-01-15");
+
+    expect(input.value).toBe("2026-01-15T00:00");
   });
 });

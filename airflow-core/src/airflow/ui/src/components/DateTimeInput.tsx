@@ -23,20 +23,35 @@ import { forwardRef, type ChangeEvent, type ClipboardEvent, useState } from "rea
 import { useDebouncedCallback } from "use-debounce";
 
 import { useTimezone } from "src/context/timezone";
-import { DEFAULT_DATETIME_FORMAT } from "src/utils/datetimeUtils";
 
 dayjs.extend(tz);
 
 const debounceDelay = 1000;
+const INPUT_DATETIME_FORMAT = "YYYY-MM-DDTHH:mm";
 
 // Strings with an explicit timezone (`Z` or `+09:00`) are parsed as their
 // absolute instant. Strings without one are treated as being in the selected
 // Airflow UI timezone — consistent between manual input and paste.
 const parseInput = (raw: string, timezone: string) => {
-  const hasExplicitTz = /(?:[Zz]|[+-]\d{2}:?\d{2})$/u.test(raw);
-  const parsed = hasExplicitTz ? dayjs(raw) : dayjs.tz(raw, timezone);
+  if (raw.trim() === "") {
+    return undefined;
+  }
 
-  return parsed.isValid() ? parsed : undefined;
+  const hasExplicitTz = /(?:[Zz]|[+-]\d{2}:?\d{2})$/u.test(raw);
+
+  try {
+    const parsed = hasExplicitTz ? dayjs(raw) : dayjs.tz(raw, timezone);
+
+    return parsed.isValid() ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const formatDisplayDate = (raw: string, timezone: string) => {
+  const parsed = parseInput(raw, timezone);
+
+  return parsed ? parsed.tz(timezone).format(INPUT_DATETIME_FORMAT) : "";
 };
 
 type Props = {
@@ -45,7 +60,7 @@ type Props = {
 
 export const DateTimeInput = forwardRef<HTMLInputElement, Props>(({ onChange, value, ...rest }, ref) => {
   const { selectedTimezone } = useTimezone();
-  const [displayDate, setDisplayDate] = useState(value);
+  const [displayDate, setDisplayDate] = useState(() => formatDisplayDate(value, selectedTimezone));
 
   const emit = (event: ChangeEvent<HTMLInputElement> | ClipboardEvent<HTMLInputElement>, utc: string) => {
     onChange?.({
@@ -59,7 +74,7 @@ export const DateTimeInput = forwardRef<HTMLInputElement, Props>(({ onChange, va
 
     // Set display value via UTC -> local to avoid year mismatch for years
     // before 1000 (dayjs/issues/1237).
-    setDisplayDate(parsed ? parsed.tz(selectedTimezone).format(DEFAULT_DATETIME_FORMAT) : "");
+    setDisplayDate(parsed ? parsed.tz(selectedTimezone).format(INPUT_DATETIME_FORMAT) : "");
     emit(event, parsed ? parsed.toISOString() : "");
   };
 
@@ -81,7 +96,7 @@ export const DateTimeInput = forwardRef<HTMLInputElement, Props>(({ onChange, va
     debouncedOnDateChange.cancel();
     // datetime-local input requires YYYY-MM-DDTHH:mm format in the selected
     // Airflow UI timezone (not the browser's local timezone).
-    setDisplayDate(parsed.tz(selectedTimezone).format("YYYY-MM-DDTHH:mm"));
+    setDisplayDate(parsed.tz(selectedTimezone).format(INPUT_DATETIME_FORMAT));
     emit(event, parsed.toISOString());
   };
 
