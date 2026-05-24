@@ -22,7 +22,7 @@ import re
 from contextlib import contextmanager, nullcontext
 from typing import TYPE_CHECKING
 from unittest import mock
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, PropertyMock, mock_open, patch
 
 import pendulum
 import pytest
@@ -457,6 +457,21 @@ class TestKubernetesPodOperator:
             "map_index": "10",
             "airflow_kpo_in_cluster": str(k.hook.is_in_cluster),
         }
+
+    def test_dry_run_skips_in_cluster_label(self, capsys):
+        k = KubernetesPodOperator(
+            task_id="task",
+            name="test",
+            namespace="default",
+            do_xcom_push=False,
+        )
+        with patch.object(
+            KubernetesPodOperator, "hook", new_callable=PropertyMock, side_effect=AssertionError
+        ):
+            k.dry_run()
+
+        captured = capsys.readouterr()
+        assert "airflow_kpo_in_cluster" not in captured.out
 
     def test_find_custom_pod_labels(self):
         k = KubernetesPodOperator(
