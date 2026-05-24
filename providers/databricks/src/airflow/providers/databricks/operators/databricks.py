@@ -641,7 +641,8 @@ class DatabricksSubmitRunOperator(BaseOperator):
         self.new_cluster = new_cluster
         self.existing_cluster_id = existing_cluster_id
         self.libraries = libraries
-        self.run_name = run_name or kwargs["task_id"]
+        self.run_name = run_name
+        self.task_id = kwargs["task_id"]
         self.timeout_seconds = timeout_seconds
         self.idempotency_token = idempotency_token
         self.access_control_list = access_control_list
@@ -683,7 +684,7 @@ class DatabricksSubmitRunOperator(BaseOperator):
         )
 
     def _get_merged_json(self) -> dict[str, Any]:
-        return _merge_json_with_named_parameters(
+        json = _merge_json_with_named_parameters(
             self.json,
             {
                 key: value
@@ -707,6 +708,9 @@ class DatabricksSubmitRunOperator(BaseOperator):
                 if value is not None
             },
         )
+        if "run_name" not in json:
+            json["run_name"] = self.task_id
+        return json
 
     def execute(self, context: Context):
         self.json = self._get_merged_json()
