@@ -28,6 +28,7 @@ import { useParams } from "react-router-dom";
 import { useDagServiceGetDagDetails, useDagServiceGetLatestRunInfo } from "openapi/queries";
 import { ApiError } from "openapi/requests/core/ApiError";
 import { TaskIcon } from "src/assets/TaskIcon";
+import { TriggerDagRouteModal } from "src/components/TriggerDag/TriggerDagRouteModal";
 import { usePluginTabs } from "src/hooks/usePluginTabs";
 import { useRequiredActionTabs } from "src/hooks/useRequiredActionTabs";
 import { DetailsLayout } from "src/layouts/Details/DetailsLayout";
@@ -145,9 +146,16 @@ export const Dag = () => {
 
   return (
     <ReactFlowProvider>
-      <DetailsLayout error={error ?? runsError} isLoading={isLoading || isLoadingRuns} tabs={displayTabs}>
-        <Header dag={dag} latestRunInfo={latestRun ?? undefined} />
-      </DetailsLayout>
+      <>
+        <DetailsLayout error={error ?? runsError} isLoading={isLoading || isLoadingRuns} tabs={displayTabs}>
+          <Header dag={dag} latestRunInfo={latestRun ?? undefined} />
+        </DetailsLayout>
+        <TriggerDagRouteModal
+          dagDisplayName={dag?.dag_display_name ?? dagId}
+          dagId={dagId}
+          isPaused={dag?.is_paused ?? false}
+        />
+      </>
     </ReactFlowProvider>
   );
 };

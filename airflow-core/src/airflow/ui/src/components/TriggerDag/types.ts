@@ -30,6 +30,17 @@ export type DagRunTriggerParams = {
   partitionKey: string | undefined;
 };
 
+export type TriggerDagPrefillConfig = {
+  conf?: Record<string, unknown>;
+  dagRunId?: string;
+  dataIntervalEnd?: string;
+  dataIntervalMode?: DataIntervalMode;
+  dataIntervalStart?: string;
+  logicalDate?: string;
+  note?: string;
+  partitionKey?: string;
+};
+
 export const dataIntervalModeOptions = [
   { label: "components:triggerDag.dataIntervalAuto", value: "auto" },
   { label: "components:triggerDag.dataIntervalManual", value: "manual" },

@@ -27,6 +27,7 @@ import { useTrigger } from "src/queries/useTrigger";
 
 import RunBackfillForm from "../DagActions/RunBackfillForm";
 import TriggerDAGForm from "./TriggerDAGForm";
+import type { TriggerDagPrefillConfig } from "./types";
 
 enum RunMode {
   BACKFILL = "backfill",
@@ -39,13 +40,7 @@ type TriggerDAGModalProps = {
   readonly isPaused: boolean;
   readonly onClose: () => void;
   readonly open: boolean;
-  readonly prefillConfig?:
-    | {
-        conf: Record<string, unknown> | undefined;
-        logicalDate: string | undefined;
-        runId: string;
-      }
-    | undefined;
+  readonly prefillConfig?: TriggerDagPrefillConfig | undefined;
 };
 
 const TriggerDAGModal: React.FC<TriggerDAGModalProps> = ({

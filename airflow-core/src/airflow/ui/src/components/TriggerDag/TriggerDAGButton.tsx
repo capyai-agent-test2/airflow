@@ -27,6 +27,7 @@ import { useDagRunServiceGetDagRun } from "openapi/queries";
 import { IconButton, Menu, Tooltip } from "src/components/ui";
 
 import TriggerDAGModal from "./TriggerDAGModal";
+import type { TriggerDagPrefillConfig } from "./types";
 
 type TriggerDAGButtonProps = {
   readonly allowedRunTypes?: Array<DagRunType> | null;
@@ -50,14 +51,7 @@ export const TriggerDAGButton = ({
   const { onClose, onOpen, open } = useDisclosure();
   const { t: translate } = useTranslation("components");
   const { runId } = useParams();
-  const [prefillConfig, setPrefillConfig] = useState<
-    | {
-        conf: Record<string, unknown> | undefined;
-        logicalDate: string | undefined;
-        runId: string;
-      }
-    | undefined
-  >(undefined);
+  const [prefillConfig, setPrefillConfig] = useState<TriggerDagPrefillConfig | undefined>(undefined);
 
   // Check if there's a selected DAG Run
   const { data: selectedDagRun } = useDagRunServiceGetDagRun(
@@ -73,8 +67,6 @@ export const TriggerDAGButton = ({
     if (selectedDagRun) {
       setPrefillConfig({
         conf: selectedDagRun.conf ?? undefined,
-        logicalDate: selectedDagRun.logical_date ?? undefined,
-        runId: selectedDagRun.dag_run_id,
       });
       onOpen();
     }
