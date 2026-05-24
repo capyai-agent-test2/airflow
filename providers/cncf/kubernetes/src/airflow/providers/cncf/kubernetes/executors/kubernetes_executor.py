@@ -137,6 +137,32 @@ class KubernetesExecutor(BaseExecutor):
 
         return pods
 
+    @staticmethod
+    def _build_failed_pod_task_event(
+        *, key, pod_name: str, namespace: str, failure_details: dict[str, Any] | None
+    ) -> str:
+        task_key_str = f"{key.dag_id}.{key.task_id}.{key.try_number}"
+        if not failure_details:
+            return f"Task {task_key_str} failed in pod {namespace}/{pod_name} with no additional details."
+
+        pod_status = failure_details.get("pod_status")
+        pod_reason = failure_details.get("pod_reason")
+        pod_message = failure_details.get("pod_message")
+        container_state = failure_details.get("container_state")
+        container_reason = failure_details.get("container_reason")
+        container_message = failure_details.get("container_message")
+        exit_code = failure_details.get("exit_code")
+        container_type = failure_details.get("container_type")
+        container_name = failure_details.get("container_name")
+
+        return (
+            f"Task {task_key_str} failed in pod {namespace}/{pod_name}. "
+            f"Pod phase: {pod_status}, reason: {pod_reason}, message: {pod_message}, "
+            f"container_type: {container_type}, container_name: {container_name}, "
+            f"container_state: {container_state}, container_reason: {container_reason}, "
+            f"container_message: {container_message}, exit_code: {exit_code}"
+        )
+
     def _make_safe_label_value(self, input_value: str | datetime) -> str:
         """
         Normalize a provided label to be of valid length and characters.
@@ -332,6 +358,14 @@ class KubernetesExecutor(BaseExecutor):
                         "Pod reconciliation failed, likely due to kubernetes library upgrade. "
                         "Try clearing the task to re-run.",
                     )
+                    self.log_task_event(
+                        event="kubernetes executor pod reconciliation failure",
+                        extra=(
+                            "Pod reconciliation failed before the task pod could start. "
+                            "Try clearing the task instance to re-run it."
+                        ),
+                        ti_key=task.key,
+                    )
                     self.fail(task[0], e)
                 except ApiException as e:
                     try:
@@ -385,6 +419,14 @@ class KubernetesExecutor(BaseExecutor):
                     else:
                         self.log.error("Pod creation failed with reason %r. Failing task", e.reason)
                         key = task.key
+                        self.log_task_event(
+                            event="kubernetes executor pod creation failure",
+                            extra=(
+                                f"Pod creation failed before the task pod could start. "
+                                f"Status: {e.status}, reason: {e.reason}, message: {message}"
+                            ),
+                            ti_key=key,
+                        )
                         self.fail(key, e)
                         self.task_publish_retries.pop(key, None)
                 except PodMutationHookException as e:
@@ -393,6 +435,14 @@ class KubernetesExecutor(BaseExecutor):
                         "Pod Mutation Hook failed for the task %s. Failing task. Details: %s",
                         key,
                         e.__cause__,
+                    )
+                    self.log_task_event(
+                        event="kubernetes executor pod mutation hook failure",
+                        extra=(
+                            "Pod mutation hook failed before the task pod could start. "
+                            f"Details: {e.__cause__}"
+                        ),
+                        ti_key=key,
                     )
                     self.fail(key, e)
                 finally:
@@ -415,6 +465,7 @@ class KubernetesExecutor(BaseExecutor):
         failure_details = results.failure_details
 
         termination_reason: str | None = None
+        task_event_extra: str | None = None
 
         if state == TaskInstanceState.FAILED:
             # Use pre-collected failure details from the watcher to avoid additional API calls
@@ -430,13 +481,14 @@ class KubernetesExecutor(BaseExecutor):
                 container_name = failure_details.get("container_name")
 
                 termination_reason = f"Pod failed because of {pod_reason}"
-
-                task_key_str = f"{key.dag_id}.{key.task_id}.{key.try_number}"
+                task_event_extra = self._build_failed_pod_task_event(
+                    key=key, pod_name=pod_name, namespace=namespace, failure_details=failure_details
+                )
                 self.log.warning(
                     "Task %s failed in pod %s/%s. Pod phase: %s, reason: %s, message: %s, "
                     "container_type: %s, container_name: %s, container_state: %s, container_reason: %s, "
                     "container_message: %s, exit_code: %s",
-                    task_key_str,
+                    f"{key.dag_id}.{key.task_id}.{key.try_number}",
                     namespace,
                     pod_name,
                     pod_status,
@@ -450,9 +502,14 @@ class KubernetesExecutor(BaseExecutor):
                     exit_code,
                 )
             else:
-                task_key_str = f"{key.dag_id}.{key.task_id}.{key.try_number}"
+                task_event_extra = self._build_failed_pod_task_event(
+                    key=key, pod_name=pod_name, namespace=namespace, failure_details=None
+                )
                 self.log.warning(
-                    "Task %s failed in pod %s/%s (no details available)", task_key_str, namespace, pod_name
+                    "Task %s failed in pod %s/%s (no details available)",
+                    f"{key.dag_id}.{key.task_id}.{key.try_number}",
+                    namespace,
+                    pod_name,
                 )
 
         if state == ADOPTED:
@@ -486,6 +543,13 @@ class KubernetesExecutor(BaseExecutor):
         except KeyError:
             self.log.debug("TI key not in running, not adding to event_buffer: %s", key)
             return
+
+        if task_event_extra:
+            self.log_task_event(
+                event="kubernetes executor task failure",
+                extra=task_event_extra,
+                ti_key=key,
+            )
 
         # If we don't have a TI state, look it up from the db. event_buffer expects the TI state
         if state is None:

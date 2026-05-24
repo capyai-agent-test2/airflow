@@ -1128,6 +1128,88 @@ class TestKubernetesExecutor:
         finally:
             executor.end()
 
+    @pytest.mark.db_test
+    @mock.patch("airflow.providers.cncf.kubernetes.executors.kubernetes_executor_utils.KubernetesJobWatcher")
+    @mock.patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
+    @mock.patch(
+        "airflow.providers.cncf.kubernetes.executors.kubernetes_executor_utils.AirflowKubernetesScheduler.delete_pod"
+    )
+    def test_change_state_failed_records_task_event_log(
+        self, mock_delete_pod, mock_get_kube_client, mock_kubernetes_job_watcher
+    ):
+        executor = self.kubernetes_executor
+        executor.kube_config.delete_worker_pods_on_failure = True
+        executor.start()
+        try:
+            key = TaskInstanceKey(dag_id="dag_id", task_id="task_id", run_id="run_id", try_number=2)
+            executor.running = {key}
+            results = KubernetesResults(
+                key,
+                State.FAILED,
+                "pod_name",
+                "test-namespace",
+                "resource_version",
+                {
+                    "pod_status": "Pending",
+                    "pod_reason": "ProviderFailed",
+                    "pod_message": "Pod startup failed",
+                    "container_state": "waiting",
+                    "container_reason": "ErrImagePull",
+                    "container_message": "Image does not exist",
+                    "container_type": "main",
+                    "container_name": "base",
+                },
+            )
+            executor._change_state(results)
+
+            assert executor.event_buffer[key] == (State.FAILED, "Pod failed because of ProviderFailed")
+            assert len(executor._task_event_logs) == 1
+            assert executor._task_event_logs[0].event == "kubernetes executor task failure"
+            assert "ProviderFailed" in executor._task_event_logs[0].extra
+            assert "ErrImagePull" in executor._task_event_logs[0].extra
+            mock_delete_pod.assert_called_once_with(pod_name="pod_name", namespace="test-namespace")
+        finally:
+            executor.end()
+
+    @pytest.mark.skipif(
+        AirflowKubernetesScheduler is None, reason="kubernetes python package is not installed"
+    )
+    @mock.patch("airflow.providers.cncf.kubernetes.executors.kubernetes_executor_utils.KubernetesJobWatcher")
+    @mock.patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
+    def test_run_next_pod_creation_failure_records_task_event_log(
+        self, mock_get_kube_client, mock_kubernetes_job_watcher, data_file
+    ):
+        template_file = data_file("pods/generator_base_with_secrets.yaml").as_posix()
+        mock_kube_client = mock.patch("kubernetes.client.CoreV1Api", autospec=True)
+        mock_kube_client.create_namespaced_pod = mock.MagicMock(  # type: ignore[attr-defined]
+            side_effect=ApiException(http_resp=HTTPResponse(body='{"message": "any message"}', status=400))
+        )
+        mock_get_kube_client.return_value = mock_kube_client
+        mock_api_client = mock.MagicMock()
+        mock_api_client.sanitize_for_serialization.return_value = {}
+        mock_kube_client.api_client = mock_api_client  # type: ignore[attr-defined]
+
+        with conf_vars({("kubernetes_executor", "pod_template_file"): template_file}):
+            executor = self.kubernetes_executor
+            executor.start()
+            try:
+                task_instance_key = TaskInstanceKey("dag", "task", "run_id", 1)
+                executor.execute_async(
+                    key=task_instance_key,
+                    queue=None,
+                    command=["airflow", "tasks", "run", "true", "some_parameter"],
+                )
+
+                executor.sync()
+
+                assert executor.event_buffer[task_instance_key][0] == State.FAILED
+                assert len(executor._task_event_logs) == 1
+                assert executor._task_event_logs[0].event == "kubernetes executor pod creation failure"
+                assert "Status: 400" in executor._task_event_logs[0].extra
+                assert "any message" in executor._task_event_logs[0].extra
+            finally:
+                executor.end()
+
     @mock.patch("airflow.providers.cncf.kubernetes.executors.kubernetes_executor.DynamicClient")
     @mock.patch(
         "airflow.providers.cncf.kubernetes.executors.kubernetes_executor.KubernetesExecutor.adopt_launched_task"
@@ -2024,6 +2106,48 @@ class TestKubernetesJobWatcher:
             self.assert_watcher_queue_called_once_with_state(State.FAILED)
         else:
             self.watcher.watcher_queue.put.assert_not_called()
+
+    def test_process_status_pending_includes_failure_details(self):
+        self.events.append(
+            {
+                "type": "MODIFIED",
+                "object": self.pod,
+                "raw_object": {
+                    "status": {
+                        "containerStatuses": [
+                            {
+                                "name": "base",
+                                "state": {
+                                    "waiting": {
+                                        "reason": "CreateContainerConfigError",
+                                        "message": 'secret "my-secret" not found',
+                                    }
+                                },
+                                "lastState": {},
+                                "ready": False,
+                                "restartCount": 0,
+                                "image": "dockerhub.com/apache/airflow:latest",
+                                "imageID": "",
+                            }
+                        ]
+                    }
+                },
+            }
+        )
+
+        self._run()
+
+        failure_details = self.watcher.watcher_queue.put.call_args.args[0].failure_details
+        assert failure_details == {
+            "pod_status": "Pending",
+            "pod_reason": None,
+            "pod_message": None,
+            "container_state": "waiting",
+            "container_reason": "CreateContainerConfigError",
+            "container_message": 'secret "my-secret" not found',
+            "container_type": "main",
+            "container_name": "base",
+        }
 
     def test_process_status_pending_deleted(self):
         self.events.append({"type": "DELETED", "object": self.pod})
