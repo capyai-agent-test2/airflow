@@ -34,6 +34,8 @@ class TestDagProcessorDeployment:
             show_only=[self.TEMPLATE_FILE],
         )
 
+        assert "test_global_label" in jmespath.search("metadata.labels", docs[0])
+        assert jmespath.search("metadata.labels", docs[0])["test_global_label"] == "test_global_label_value"
         assert "test_global_label" in jmespath.search("spec.template.metadata.labels", docs[0])
         assert (
             jmespath.search("spec.template.metadata.labels", docs[0])["test_global_label"]
@@ -51,6 +53,11 @@ class TestDagProcessorDeployment:
             show_only=[self.TEMPLATE_FILE],
         )
 
+        assert "test_component_label" in jmespath.search("metadata.labels", docs[0])
+        assert (
+            jmespath.search("metadata.labels", docs[0])["test_component_label"]
+            == "test_component_label_value"
+        )
         assert "test_component_label" in jmespath.search("spec.template.metadata.labels", docs[0])
         assert (
             jmespath.search("spec.template.metadata.labels", docs[0])["test_component_label"]
@@ -69,6 +76,13 @@ class TestDagProcessorDeployment:
             show_only=[self.TEMPLATE_FILE],
         )
 
+        assert "test_global_label" in jmespath.search("metadata.labels", docs[0])
+        assert jmespath.search("metadata.labels", docs[0])["test_global_label"] == "test_global_label_value"
+        assert "test_component_label" in jmespath.search("metadata.labels", docs[0])
+        assert (
+            jmespath.search("metadata.labels", docs[0])["test_component_label"]
+            == "test_component_label_value"
+        )
         assert "test_global_label" in jmespath.search("spec.template.metadata.labels", docs[0])
         assert (
             jmespath.search("spec.template.metadata.labels", docs[0])["test_global_label"]
@@ -92,5 +106,7 @@ class TestDagProcessorDeployment:
             show_only=[self.TEMPLATE_FILE],
         )
 
+        assert "common_label" in jmespath.search("metadata.labels", docs[0])
+        assert jmespath.search("metadata.labels", docs[0])["common_label"] == "component_value"
         assert "common_label" in jmespath.search("spec.template.metadata.labels", docs[0])
         assert jmespath.search("spec.template.metadata.labels", docs[0])["common_label"] == "component_value"
