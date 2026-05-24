@@ -148,49 +148,33 @@ Option B – One-Click GitHub Codespaces
 
 1. On **your fork**, click *Code → Codespaces → New codespace*.
 2. Wait for the VS Code web IDE to appear.  A terminal opens automatically.
-3. Install Docker Buildx and Docker Compose (required for Breeze)
+3. Confirm the Codespace is ready
 
 .. code-block:: bash
 
-    mkdir -p ~/.docker/cli-plugins
+    breeze version
+    docker info
 
-    # Install Docker Buildx
-    BUILDX_VERSION=v0.16.2
-    curl -SL "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-amd64" -o ~/.docker/cli-plugins/docker-buildx
-    chmod +x ~/.docker/cli-plugins/docker-buildx
-    docker buildx version
-
-    # Install Docker Compose v2
-    curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)" -o ~/.docker/cli-plugins/docker-compose
-    chmod +x ~/.docker/cli-plugins/docker-compose
-    docker compose version
-
-4. Verify Docker is accessible
-
-.. code-block:: bash
-
-      docker info
+   The Codespace already opens inside the prebuilt Breeze development container, so you do not need
+   to install ``uv``, install ``prek``, run ``./scripts/tools/setup_breeze``, or run
+   ``breeze start-airflow`` from that terminal.
 
    If ``docker info`` fails, try rebuilding the Codespace container
    (Command Palette → *Codespaces: Rebuild Container*) or restarting
    the Codespace from the GitHub Codespaces dashboard.
 
-5. Install Breeze and start the development container
+4. Set up the editor and hooks
 
 .. code-block:: bash
 
-      curl -LsSf https://astral.sh/uv/install.sh | sh
-      uv tool install prek
-      prek install -f
-      prek install -f --hook-type pre-push # for running mypy checks when pushing to repo
-      ./scripts/tools/setup_breeze
       uv run dev/ide_setup/setup_vscode.py
-      breeze start-airflow
+      prek install -f
+      prek install -f --hook-type pre-push
 
-6. Edit a file in the editor, save, and commit via the Source Control sidebar.
+5. Edit a file in the editor, save, and commit via the Source Control sidebar.
    Push when prompted.
 
-7. Press **Create pull request** when GitHub offers.
+6. Press **Create pull request** when GitHub offers.
 
 
 

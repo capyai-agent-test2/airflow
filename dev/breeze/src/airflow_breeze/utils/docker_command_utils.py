@@ -194,6 +194,8 @@ def check_docker_is_running():
         if os.environ.get("CODESPACES", "").lower() == "true":
             console_print(
                 "\n[info]It looks like you are running in a GitHub Codespace.[/]\n"
+                "[info]Codespaces already starts you inside the prebuilt Breeze development container.[/]\n"
+                "[info]Do not run `breeze start-airflow` from that terminal.[/]\n"
                 "[info]Try the following troubleshooting steps:[/]\n"
                 "  1. Check if the Docker socket exists: ls -la /var/run/docker.sock\n"
                 "  2. Check Docker socket permissions: groups $USER\n"

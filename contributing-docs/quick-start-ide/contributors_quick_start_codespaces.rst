@@ -49,7 +49,11 @@ Setup and develop using GitHub Codespaces
 Troubleshooting Docker in Codespaces
 -------------------------------------
 
-If you see a "Docker is not running" error when running Breeze commands, try these steps:
+The Codespace already opens inside the prebuilt Breeze development container. Do not run
+``breeze start-airflow`` from that terminal, because it tries to start another set of containers
+from inside the devcontainer and can fail with misleading Docker errors.
+
+If ``docker info`` fails in the Codespace, try these steps:
 
 1. Verify that Docker is accessible by running:
 

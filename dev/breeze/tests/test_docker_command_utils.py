@@ -26,6 +26,7 @@ from airflow_breeze.utils.docker_command_utils import (
     autodetect_docker_context,
     bring_all_compose_projects_down,
     check_docker_compose_version,
+    check_docker_is_running,
     check_docker_version,
     discover_running_compose_projects,
     is_known_breeze_compose_project,
@@ -218,6 +219,36 @@ def test_check_docker_compose_version_ok(mock_console_print, mock_run_command):
         dry_run_override=False,
     )
     mock_console_print.assert_called_with("[success]Good version of docker-compose: 2.20.2[/]")
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_docker_is_running_in_codespaces(mock_console_print, mock_run_command):
+    mock_run_command.return_value.returncode = 1
+    mock_run_command.return_value.args = ["docker", "info"]
+    mock_run_command.return_value.stderr = "boom"
+    with mock.patch.dict("os.environ", {"CODESPACES": "true"}):
+        with pytest.raises(SystemExit) as e:
+            check_docker_is_running()
+    assert e.value.code == 1
+    assert mock_console_print.call_args_list == [
+        call(
+            "[error]Docker is not running.[/]\n[warning]Please make sure Docker is installed and running.[/]"
+        ),
+        call("\n[warning]Command attempted:[/]\ndocker info"),
+        call("\n[warning]Docker error output:[/]\nboom"),
+        call(
+            "\n[info]It looks like you are running in a GitHub Codespace.[/]\n"
+            "[info]Codespaces already starts you inside the prebuilt Breeze development container.[/]\n"
+            "[info]Do not run `breeze start-airflow` from that terminal.[/]\n"
+            "[info]Try the following troubleshooting steps:[/]\n"
+            "  1. Check if the Docker socket exists: ls -la /var/run/docker.sock\n"
+            "  2. Check Docker socket permissions: groups $USER\n"
+            "  3. Try restarting the Codespace from the GitHub Codespaces dashboard\n"
+            "  4. If the issue persists, rebuild the devcontainer "
+            "(Command Palette -> 'Codespaces: Rebuild Container')\n"
+        ),
+    ]
 
 
 def _fake_ctx_output(*names: str) -> str:
