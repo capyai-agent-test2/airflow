@@ -1358,6 +1358,26 @@ class TestGetDag(TestDagEndpoint):
         response = unauthenticated_test_client.get(f"/dags/{DAG1_ID}")
         assert response.status_code == 401
 
+    def test_get_dag_with_selected_fields(self, test_client):
+        response = test_client.get(f"/dags/{DAG2_ID}", params={"fields": ["dag_id", "is_paused"]})
+        assert response.status_code == 200
+        assert response.json() == {"dag_id": DAG2_ID, "is_paused": False}
+
+    def test_get_dag_with_invalid_selected_fields(self, test_client):
+        response = test_client.get(f"/dags/{DAG2_ID}", params={"fields": ["dag_id", "not_a_field"]})
+        assert response.status_code == 400
+        assert response.json()["detail"].startswith("Unknown field selector(s): not_a_field.")
+
+
+class TestGetDagsSelectedFields(TestDagEndpoint):
+    def test_get_dags_with_selected_fields(self, test_client):
+        response = test_client.get("/dags", params={"fields": ["dag_id", "is_paused"]})
+        assert response.status_code == 200
+        body = response.json()
+        assert set(body) == {"dags", "total_entries"}
+        assert body["total_entries"] >= 2
+        assert all(set(dag) == {"dag_id", "is_paused"} for dag in body["dags"])
+
     def test_get_dag_should_response_403(self, unauthorized_test_client):
         response = unauthorized_test_client.get(f"/dags/{DAG1_ID}")
         assert response.status_code == 403

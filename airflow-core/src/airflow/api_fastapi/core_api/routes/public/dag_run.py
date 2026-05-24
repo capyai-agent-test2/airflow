@@ -74,7 +74,11 @@ from airflow.api_fastapi.common.parameters import (
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.common.types import Mimetype
-from airflow.api_fastapi.core_api.base import OrmClause
+from airflow.api_fastapi.core_api.base import (
+    OrmClause,
+    build_selective_collection_response,
+    build_selective_json_response,
+)
 from airflow.api_fastapi.core_api.datamodels.assets import AssetEventCollectionResponse
 from airflow.api_fastapi.core_api.datamodels.common import BulkBody, BulkResponse
 from airflow.api_fastapi.core_api.datamodels.dag_run import (
@@ -126,7 +130,12 @@ dag_run_router = AirflowRouter(tags=["DagRun"], prefix="/dags/{dag_id}/dagRuns")
     ),
     dependencies=[Depends(requires_access_dag(method="GET", access_entity=DagAccessEntity.RUN))],
 )
-def get_dag_run(dag_id: str, dag_run_id: str, session: SessionDep) -> DAGRunResponse:
+def get_dag_run(
+    dag_id: str,
+    dag_run_id: str,
+    session: SessionDep,
+    fields: Annotated[list[str] | None, Query()] = None,
+) -> DAGRunResponse:
     dag_run = session.scalar(
         select(DagRun).filter_by(dag_id=dag_id, run_id=dag_run_id).options(joinedload(DagRun.dag_model))
     )
@@ -135,6 +144,8 @@ def get_dag_run(dag_id: str, dag_run_id: str, session: SessionDep) -> DAGRunResp
             status.HTTP_404_NOT_FOUND,
             f"The DagRun with dag_id: `{dag_id}` and run_id: `{dag_run_id}` was not found",
         )
+    if selective_response := build_selective_json_response(dag_run, DAGRunResponse, fields):
+        return selective_response
     return dag_run
 
 
@@ -470,6 +481,7 @@ def get_dag_runs(
         "Pass an empty string for the first page, then use ``next_cursor`` from the response. "
         "When ``cursor`` is provided, ``offset`` is ignored.",
     ),
+    fields: Annotated[list[str] | None, Query()] = None,
 ) -> DAGRunCollectionResponse:
     """
     Get all Dag Runs.
@@ -548,13 +560,26 @@ def get_dag_runs(
             has_next = has_more
 
         attach_dag_versions_to_runs(dag_runs, session=session)
+        next_cursor = encode_cursor(dag_runs[-1], order_by) if has_next and dag_runs else None
+        previous_cursor = (
+            make_backward_cursor(encode_cursor(dag_runs[0], order_by)) if has_prev and dag_runs else None
+        )
+        if selective_response := build_selective_collection_response(
+            dag_runs,
+            DAGRunResponse,
+            {
+                "dag_runs": dag_runs,
+                "next_cursor": next_cursor,
+                "previous_cursor": previous_cursor,
+            },
+            fields,
+        ):
+            return selective_response
 
         return DAGRunCollectionResponse(
             dag_runs=dag_runs,
-            next_cursor=(encode_cursor(dag_runs[-1], order_by) if has_next and dag_runs else None),
-            previous_cursor=(
-                make_backward_cursor(encode_cursor(dag_runs[0], order_by)) if has_prev and dag_runs else None
-            ),
+            next_cursor=next_cursor,
+            previous_cursor=previous_cursor,
         )
 
     dag_run_select, total_entries = paginated_select(
@@ -567,6 +592,13 @@ def get_dag_runs(
     )
     dag_runs = list(session.scalars(dag_run_select).unique())
     attach_dag_versions_to_runs(dag_runs, session=session)
+    if selective_response := build_selective_collection_response(
+        dag_runs,
+        DAGRunResponse,
+        {"dag_runs": dag_runs, "total_entries": total_entries},
+        fields,
+    ):
+        return selective_response
 
     return DAGRunCollectionResponse(
         dag_runs=dag_runs,

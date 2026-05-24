@@ -362,6 +362,15 @@ class TestGetDagRun:
         response = unauthorized_test_client.get(f"/dags/{DAG1_ID}/dagRuns/invalid")
         assert response.status_code == 403
 
+    @pytest.mark.usefixtures("configure_git_connection_for_dag_bundle")
+    def test_get_dag_run_with_selected_fields(self, test_client):
+        response = test_client.get(
+            f"/dags/{DAG1_ID}/dagRuns/{DAG1_RUN1_ID}",
+            params={"fields": ["dag_run_id", "state"]},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"dag_run_id": DAG1_RUN1_ID, "state": DAG1_RUN1_STATE}
+
 
 class TestGetDagRuns:
     @pytest.mark.parametrize(
@@ -403,6 +412,15 @@ class TestGetDagRuns:
     def test_should_respond_403(self, unauthorized_test_client):
         response = unauthorized_test_client.get("/dags/test_dag1/dagRuns?order_by=invalid")
         assert response.status_code == 403
+
+    @pytest.mark.usefixtures("configure_git_connection_for_dag_bundle")
+    def test_get_dag_runs_with_selected_fields(self, test_client):
+        response = test_client.get(f"/dags/{DAG1_ID}/dagRuns", params={"fields": ["dag_run_id", "state"]})
+        assert response.status_code == 200
+        body = response.json()
+        assert set(body) == {"dag_runs", "total_entries"}
+        assert body["total_entries"] == 2
+        assert all(set(dag_run) == {"dag_run_id", "state"} for dag_run in body["dag_runs"])
 
     @pytest.mark.parametrize(
         ("order_by", "expected_order"),
