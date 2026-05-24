@@ -385,6 +385,12 @@ class TestConnectionFromUri:
         with pytest.raises(AirflowException, match="Invalid connection string"):
             Connection.from_uri(uri, conn_id="test_conn")
 
+    def test_from_uri_preserves_invalid_port_error_for_non_azure(self):
+        """Test non-Azure invalid host:port authorities still fail fast."""
+        uri = "postgres://db.internal:notaport/db"
+        with pytest.raises(ValueError, match="Port could not be cast to integer value as 'notaport'"):
+            Connection.from_uri(uri, conn_id="test_conn")
+
     def test_from_uri_invalid_protocol_host_error(self):
         """Test that invalid protocol host raises an error."""
         uri = "http://user@host://example.com"
