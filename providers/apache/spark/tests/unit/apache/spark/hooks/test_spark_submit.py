@@ -21,7 +21,7 @@ import base64
 import os
 from io import StringIO
 from pathlib import Path
-from unittest.mock import call, mock_open, patch
+from unittest.mock import MagicMock, call, mock_open, patch
 
 import pytest
 
@@ -285,14 +285,11 @@ class TestSparkSubmitHook:
             hook._build_spark_submit_command(self._spark_job_file)
 
     def test_build_track_driver_status_command(self):
-        # note this function is only relevant for spark setup matching below condition
-        # 'spark://' in self._connection['master'] and self._connection['deploy_mode'] == 'cluster'
-
         # Given
         hook_spark_standalone_cluster = SparkSubmitHook(conn_id="spark_standalone_cluster")
         hook_spark_standalone_cluster._driver_id = "driver-20171128111416-0001"
         hook_spark_yarn_cluster = SparkSubmitHook(conn_id="spark_yarn_cluster")
-        hook_spark_yarn_cluster._driver_id = "driver-20171128111417-0001"
+        hook_spark_yarn_cluster._yarn_application_id = "application_1486558679801_1820"
 
         # When
         build_track_driver_status_spark_standalone_cluster = (
@@ -310,11 +307,10 @@ class TestSparkSubmitHook:
             "http://spark-standalone-master:6066/v1/submissions/status/driver-20171128111416-0001",
         ]
         expected_spark_yarn_cluster = [
-            "spark-submit",
-            "--master",
-            "yarn://yarn-master",
-            "--status",
-            "driver-20171128111417-0001",
+            "yarn",
+            "application",
+            "-status",
+            "application_1486558679801_1820",
         ]
 
         assert expected_spark_standalone_cluster == build_track_driver_status_spark_standalone_cluster
@@ -372,7 +368,7 @@ class TestSparkSubmitHook:
 
         # Then
         assert should_track_driver_status_default is False
-        assert should_track_driver_status_spark_yarn_cluster is False
+        assert should_track_driver_status_spark_yarn_cluster is True
         assert should_track_driver_status_spark_k8s_cluster is False
         assert should_track_driver_status_spark_default_mesos is False
         assert should_track_driver_status_spark_binary_set is False
@@ -826,6 +822,25 @@ class TestSparkSubmitHook:
 
         assert hook._yarn_application_id == "application_1486558679801_1820"
 
+    def test_process_spark_submit_log_yarn_terminates_submit_process_for_tracking(self):
+        # Given
+        hook = SparkSubmitHook(conn_id="spark_yarn_cluster")
+        hook._submit_sp = MagicMock()
+        hook._submit_sp.poll.return_value = None
+        log_lines = [
+            "INFO Client: Requesting a new application from cluster with 10 NodeManagers",
+            "INFO Client: Submitting application application_1486558679801_1820 to ResourceManager",
+            "INFO Client: This line should not be consumed after the process gets killed",
+        ]
+
+        # When
+        hook._process_spark_submit_log(log_lines)
+
+        # Then
+        assert hook._yarn_application_id == "application_1486558679801_1820"
+        hook._submit_sp.kill.assert_called_once_with()
+        assert hook._submit_sp_terminated_for_status_tracking is True
+
     @pytest.mark.parametrize(
         "pod_name",
         [
@@ -932,6 +947,75 @@ class TestSparkSubmitHook:
 
         assert hook._driver_status == "RUNNING"
 
+    @pytest.mark.parametrize(
+        ("log_lines", "expected_status"),
+        [
+            (
+                [
+                    "Application Report :",
+                    "State : RUNNING",
+                    "Final-State : UNDEFINED",
+                ],
+                "RUNNING",
+            ),
+            (
+                [
+                    "Application Report :",
+                    "State : FINISHED",
+                    "Final-State : SUCCEEDED",
+                ],
+                "FINISHED",
+            ),
+            (
+                [
+                    "Application Report :",
+                    "State : FINISHED",
+                    "Final-State : FAILED",
+                ],
+                "FAILED",
+            ),
+        ],
+    )
+    def test_process_spark_driver_status_log_yarn(self, log_lines, expected_status):
+        # Given
+        hook = SparkSubmitHook(conn_id="spark_yarn_cluster")
+
+        # When
+        hook._process_spark_status_log(log_lines)
+
+        # Then
+        assert hook._driver_status == expected_status
+
+    @patch.object(SparkSubmitHook, "_run_post_submit_commands")
+    @patch.object(SparkSubmitHook, "_start_driver_status_tracking")
+    @patch("airflow.providers.apache.spark.hooks.spark_submit.subprocess.Popen")
+    def test_submit_yarn_cluster_tracks_with_yarn_cli(
+        self, mock_popen, mock_start_driver_status_tracking, mock_run_post_submit_commands
+    ):
+        # Given
+        submit_process = mock_popen.return_value
+        submit_process.stdout = StringIO(
+            "\n".join(
+                [
+                    "INFO Client: Requesting a new application from cluster with 10 NodeManagers",
+                    "INFO Client: Submitting application application_1486558679801_1820 to ResourceManager",
+                ]
+            )
+        )
+        submit_process.poll.return_value = None
+        submit_process.wait.return_value = 143
+        hook = SparkSubmitHook(conn_id="spark_yarn_cluster")
+        mock_start_driver_status_tracking.side_effect = lambda: setattr(hook, "_driver_status", "FINISHED")
+
+        # When
+        hook.submit("test_application.py")
+
+        # Then
+        submit_process.kill.assert_called_once_with()
+        mock_start_driver_status_tracking.assert_called_once_with()
+        assert hook._yarn_application_id == "application_1486558679801_1820"
+        mock_run_post_submit_commands.assert_called_once_with()
+
     def test_process_spark_driver_status_log_bad_response(self):
         # Given
         hook = SparkSubmitHook(conn_id="spark_standalone_cluster")
@@ -966,8 +1050,9 @@ class TestSparkSubmitHook:
         ]
         env = {"PATH": "hadoop/bin"}
         hook = SparkSubmitHook(conn_id="spark_yarn_cluster", env_vars=env)
+        hook._env = env
         hook._process_spark_submit_log(log_lines)
-        hook.submit()
+        hook._submit_sp = mock_popen.return_value
 
         # When
         hook.on_kill()
@@ -989,7 +1074,7 @@ class TestSparkSubmitHook:
             conn_id="spark_yarn_cluster", keytab="privileged_user.keytab", principal="user/spark@airflow.org"
         )
         hook._process_spark_submit_log(log_lines)
-        hook.submit()
+        hook._submit_sp = mock_popen.return_value
 
         # When
         hook.on_kill()
@@ -1000,6 +1085,31 @@ class TestSparkSubmitHook:
             call(
                 ["yarn", "application", "-kill", "application_1486558679801_1820"],
                 env=expected_env,
+                stderr=-1,
+                stdout=-1,
+            )
+            in mock_popen.mock_calls
+        )
+
+    @patch("airflow.providers.apache.spark.hooks.spark_submit.subprocess.Popen")
+    def test_yarn_process_on_kill_after_submit_process_exits(self, mock_popen):
+        # Given
+        mock_popen.return_value.stdout = StringIO("stdout")
+        mock_popen.return_value.stderr = StringIO("stderr")
+        mock_popen.return_value.poll.return_value = 0
+        mock_popen.return_value.wait.return_value = 0
+        hook = SparkSubmitHook(conn_id="spark_yarn_cluster")
+        hook._yarn_application_id = "application_1486558679801_1820"
+        hook._submit_sp = mock_popen.return_value
+
+        # When
+        hook.on_kill()
+
+        # Then
+        assert (
+            call(
+                ["yarn", "application", "-kill", "application_1486558679801_1820"],
+                env=os.environ.copy(),
                 stderr=-1,
                 stdout=-1,
             )
