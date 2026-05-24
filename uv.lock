@@ -117,7 +117,6 @@ apache-airflow-providers-apache-tinkerpop = false
 apache-airflow-shared-timezones = false
 apache-airflow-providers-apache-iceberg = false
 apache-airflow-breeze = false
-apache-airflow-providers-opsgenie = false
 apache-airflow-providers-apache-livy = false
 apache-airflow-core = false
 apache-airflow-providers-hashicorp = false
@@ -237,7 +236,6 @@ members = [
     "apache-airflow-providers-openfaas",
     "apache-airflow-providers-openlineage",
     "apache-airflow-providers-opensearch",
-    "apache-airflow-providers-opsgenie",
     "apache-airflow-providers-oracle",
     "apache-airflow-providers-pagerduty",
     "apache-airflow-providers-papermill",
@@ -1052,7 +1050,6 @@ all = [
     { name = "apache-airflow-providers-openfaas" },
     { name = "apache-airflow-providers-openlineage" },
     { name = "apache-airflow-providers-opensearch" },
-    { name = "apache-airflow-providers-opsgenie" },
     { name = "apache-airflow-providers-oracle" },
     { name = "apache-airflow-providers-pagerduty" },
     { name = "apache-airflow-providers-papermill" },
@@ -1331,9 +1328,6 @@ openlineage = [
 ]
 opensearch = [
     { name = "apache-airflow-providers-opensearch" },
-]
-opsgenie = [
-    { name = "apache-airflow-providers-opsgenie" },
 ]
 oracle = [
     { name = "apache-airflow-providers-oracle" },
@@ -1679,8 +1673,6 @@ requires-dist = [
     { name = "apache-airflow-providers-openlineage", marker = "extra == 'openlineage'", editable = "providers/openlineage" },
     { name = "apache-airflow-providers-opensearch", marker = "extra == 'all'", editable = "providers/opensearch" },
     { name = "apache-airflow-providers-opensearch", marker = "extra == 'opensearch'", editable = "providers/opensearch" },
-    { name = "apache-airflow-providers-opsgenie", marker = "extra == 'all'", editable = "providers/opsgenie" },
-    { name = "apache-airflow-providers-opsgenie", marker = "extra == 'opsgenie'", editable = "providers/opsgenie" },
     { name = "apache-airflow-providers-oracle", marker = "extra == 'all'", editable = "providers/oracle" },
     { name = "apache-airflow-providers-oracle", marker = "extra == 'oracle'", editable = "providers/oracle" },
     { name = "apache-airflow-providers-pagerduty", marker = "extra == 'all'", editable = "providers/pagerduty" },
@@ -1753,7 +1745,7 @@ requires-dist = [
     { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.30.0" },
     { name = "uv", marker = "extra == 'uv'", specifier = ">=0.11.14" },
 ]
-provides-extras = ["all-core", "async", "graphviz", "gunicorn", "kerberos", "memray", "otel", "statsd", "all-task-sdk", "airbyte", "akeyless", "alibaba", "amazon", "apache-cassandra", "apache-drill", "apache-druid", "apache-flink", "apache-hdfs", "apache-hive", "apache-iceberg", "apache-impala", "apache-kafka", "apache-kylin", "apache-livy", "apache-pig", "apache-pinot", "apache-spark", "apache-tinkerpop", "apprise", "arangodb", "asana", "atlassian-jira", "celery", "cloudant", "cncf-kubernetes", "cohere", "common-ai", "common-compat", "common-io", "common-messaging", "common-sql", "databricks", "datadog", "dbt-cloud", "dingding", "discord", "docker", "edge3", "elasticsearch", "exasol", "fab", "facebook", "ftp", "git", "github", "google", "grpc", "hashicorp", "http", "imap", "influxdb", "informatica", "jdbc", "jenkins", "keycloak", "microsoft-azure", "microsoft-mssql", "microsoft-psrp", "microsoft-winrm", "mongo", "mysql", "neo4j", "odbc", "openai", "openfaas", "openlineage", "opensearch", "opsgenie", "oracle", "pagerduty", "papermill", "pgvector", "pinecone", "postgres", "presto", "qdrant", "redis", "salesforce", "samba", "segment", "sendgrid", "sftp", "singularity", "slack", "smtp", "snowflake", "sqlite", "ssh", "standard", "tableau", "telegram", "teradata", "trino", "vertica", "vespa", "weaviate", "yandex", "ydb", "zendesk", "all", "aiobotocore", "apache-atlas", "apache-webhdfs", "amazon-aws-auth", "cloudpickle", "github-enterprise", "google-auth", "ldap", "pandas", "polars", "rabbitmq", "sentry", "s3fs", "uv"]
+provides-extras = ["all-core", "async", "graphviz", "gunicorn", "kerberos", "memray", "otel", "statsd", "all-task-sdk", "airbyte", "akeyless", "alibaba", "amazon", "apache-cassandra", "apache-drill", "apache-druid", "apache-flink", "apache-hdfs", "apache-hive", "apache-iceberg", "apache-impala", "apache-kafka", "apache-kylin", "apache-livy", "apache-pig", "apache-pinot", "apache-spark", "apache-tinkerpop", "apprise", "arangodb", "asana", "atlassian-jira", "celery", "cloudant", "cncf-kubernetes", "cohere", "common-ai", "common-compat", "common-io", "common-messaging", "common-sql", "databricks", "datadog", "dbt-cloud", "dingding", "discord", "docker", "edge3", "elasticsearch", "exasol", "fab", "facebook", "ftp", "git", "github", "google", "grpc", "hashicorp", "http", "imap", "influxdb", "informatica", "jdbc", "jenkins", "keycloak", "microsoft-azure", "microsoft-mssql", "microsoft-psrp", "microsoft-winrm", "mongo", "mysql", "neo4j", "odbc", "openai", "openfaas", "openlineage", "opensearch", "oracle", "pagerduty", "papermill", "pgvector", "pinecone", "postgres", "presto", "qdrant", "redis", "salesforce", "samba", "segment", "sendgrid", "sftp", "singularity", "slack", "smtp", "snowflake", "sqlite", "ssh", "standard", "tableau", "telegram", "teradata", "trino", "vertica", "vespa", "weaviate", "yandex", "ydb", "zendesk", "all", "aiobotocore", "apache-atlas", "apache-webhdfs", "amazon-aws-auth", "cloudpickle", "github-enterprise", "google-auth", "ldap", "pandas", "polars", "rabbitmq", "sentry", "s3fs", "uv"]
 
 [package.metadata.requires-dev]
 ci-image = [
@@ -6579,44 +6571,6 @@ dev = [
     { name = "apache-airflow-task-sdk", editable = "task-sdk" },
 ]
 docs = [{ name = "apache-airflow-devel-common", extras = ["docs"], editable = "devel-common" }]
-
-[[package]]
-name = "apache-airflow-providers-opsgenie"
-version = "5.10.3"
-source = { editable = "providers/opsgenie" }
-dependencies = [
-    { name = "apache-airflow" },
-    { name = "apache-airflow-providers-common-compat" },
-    { name = "opsgenie-sdk" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "apache-airflow" },
-    { name = "apache-airflow-devel-common" },
-    { name = "apache-airflow-providers-common-compat" },
-    { name = "apache-airflow-task-sdk" },
-]
-docs = [
-    { name = "apache-airflow-devel-common", extra = ["docs"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "apache-airflow", editable = "." },
-    { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
-    { name = "opsgenie-sdk", specifier = ">=2.1.5" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "apache-airflow", editable = "." },
-    { name = "apache-airflow-devel-common", editable = "devel-common" },
-    { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
-    { name = "apache-airflow-task-sdk", editable = "task-sdk" },
-]
-docs = [{ name = "apache-airflow-devel-common", extras = ["docs"], editable = "devel-common" }]
-
 [[package]]
 name = "apache-airflow-providers-oracle"
 version = "4.6.0"
@@ -17105,24 +17059,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/9e/de/911ac9e309052aca1
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/a6/83dc2ab6fa397ee66fba04fe2e74bdf7be3b3870005359ceb7689103c058/opentelemetry_semantic_conventions-0.62b1-py3-none-any.whl", hash = "sha256:cf506938103d331fbb78eded0d9788095f7fd59016f2bda813c3324e5a74a93c", size = 231620, upload-time = "2026-04-24T13:15:35.454Z" },
 ]
-
-[[package]]
-name = "opsgenie-sdk"
-version = "2.1.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "certifi" },
-    { name = "python-dateutil" },
-    { name = "setuptools" },
-    { name = "six" },
-    { name = "tenacity" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/13/ddaa92608384f64e8d0d22097e74c24e341f2b41096c52c872abfa35b63f/opsgenie-sdk-2.1.5.tar.gz", hash = "sha256:c38a2f0c7acbcbeb9202ced80ec857b5eda2d99919392fed4083bdfa7be32669", size = 86050, upload-time = "2021-08-02T13:58:35.147Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/dc/b9/4c0479fba19fabb00850e11dcb69d82471ed6b29fee1736594b4bedad2d3/opsgenie_sdk-2.1.5-py3-none-any.whl", hash = "sha256:fe0af399030a91ec5755ecfb899965bf18fcb46e17fd2d3a4d71fa68999947e9", size = 247843, upload-time = "2021-08-02T13:58:33.559Z" },
-]
-
 [[package]]
 name = "oracledb"
 version = "4.0.0"

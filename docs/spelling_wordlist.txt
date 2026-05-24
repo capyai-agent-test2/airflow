@@ -1135,8 +1135,6 @@ OpenSearch
 opensearch
 oper
 OperatorLineage
-Opsgenie
-opsgenie
 Optimise
 optimise
 optimizationObjective

@@ -732,7 +732,6 @@ repos:
           ^providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/cosmos\.py$|
           ^providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/hooks/winrm\.py$|
           ^providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/operators/winrm\.py$|
-          ^providers/opsgenie/src/airflow/providers/opsgenie/hooks/opsgenie\.py$|
           ^providers/redis/src/airflow/providers/redis/provider\.yaml$|
           ^providers/.*/tests/|
           .rat-excludes|

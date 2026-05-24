@@ -225,9 +225,6 @@ labelPRBasedOnFilePath:
   provider:opensearch:
     - providers/opensearch/**
 
-  provider:opsgenie:
-    - providers/opsgenie/**
-
   provider:oracle:
     - providers/oracle/**
 

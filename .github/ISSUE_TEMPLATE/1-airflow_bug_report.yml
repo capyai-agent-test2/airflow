@@ -180,7 +180,6 @@ body:
         - openfaas
         - openlineage
         - opensearch
-        - opsgenie
         - oracle
         - pagerduty
         - papermill
