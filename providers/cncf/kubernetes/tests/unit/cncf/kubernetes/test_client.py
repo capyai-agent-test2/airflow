@@ -93,6 +93,20 @@ class TestClient:
         assert HTTPConnection.default_socket_options == expected_http_connection_options
         assert HTTPSConnection.default_socket_options == expected_https_connection_options
 
+    @mock.patch("urllib3.connection.HTTPSConnection")
+    @mock.patch("urllib3.connection.HTTPConnection")
+    def test_enable_tcp_keepalive_uses_custom_conf_source(self, mock_http_connection, mock_https_connection):
+        conf_source = mock.MagicMock()
+        conf_source.getint.side_effect = [111, 222, 333]
+        mock_http_connection.default_socket_options = []
+        mock_https_connection.default_socket_options = []
+
+        _enable_tcp_keepalive(conf_source=conf_source)
+
+        conf_source.getint.assert_any_call("kubernetes_executor", "tcp_keep_idle")
+        conf_source.getint.assert_any_call("kubernetes_executor", "tcp_keep_intvl")
+        conf_source.getint.assert_any_call("kubernetes_executor", "tcp_keep_cnt")
+
     def test_disable_verify_ssl(self):
         configuration = Configuration()
         assert configuration.verify_ssl
