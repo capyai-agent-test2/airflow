@@ -38,7 +38,7 @@ from airflow.providers.cncf.kubernetes.operators.pod import (
     PodEventType,
     _optionally_suppress,
 )
-from airflow.providers.cncf.kubernetes.secret import Secret
+from airflow.providers.cncf.kubernetes.secret import KubernetesConnectionSecret, Secret
 from airflow.providers.cncf.kubernetes.triggers.pod import KubernetesPodTrigger
 from airflow.providers.cncf.kubernetes.utils.pod_manager import (
     OnFinishAction,
@@ -411,6 +411,72 @@ class TestKubernetesPodOperator:
         assert pod.spec.containers[0].env_from == [
             k8s.V1EnvFromSource(secret_ref=k8s.V1SecretEnvSource(name=secret_ref))
         ]
+
+    @patch(HOOK_CLASS)
+    @patch(f"{KPO_MODULE}.KubernetesPodOperator.find_pod")
+    @patch(f"{KPO_MODULE}.BaseHook.get_connection")
+    def test_connection_secrets_created_and_cleaned(self, mock_get_connection, mock_find_pod, hook_mock):
+        hook_mock.return_value.is_in_cluster = False
+        mock_client = MagicMock()
+        hook_mock.return_value.core_v1_client = mock_client
+        mock_get_connection.return_value = MagicMock(
+            conn_type="postgres",
+            host="db.example",
+            login="user",
+            password="secret",
+            schema="analytics",
+            port=5432,
+            extra='{"sslmode": "require"}',
+        )
+        remote_pod = MagicMock()
+        remote_pod.metadata.name = "test-pod"
+        remote_pod.metadata.namespace = TEST_NAMESPACE
+        remote_pod.metadata.uid = "pod-uid"
+        remote_pod.api_version = "v1"
+        remote_pod.kind = "Pod"
+        remote_pod.status.phase = "Succeeded"
+        base_container_status = MagicMock()
+        base_container_status.name = "base"
+        base_container_status.state.terminated.exit_code = 0
+        remote_pod.status.container_statuses = [base_container_status]
+        remote_pod.status.init_container_statuses = None
+        mock_find_pod.side_effect = [None, remote_pod, remote_pod]
+        self.await_pod_mock.return_value = remote_pod
+
+        secret = KubernetesConnectionSecret("env", "airflow_conn", "my_conn", key="password")
+        k = KubernetesPodOperator(
+            connection_secrets=[secret],
+            task_id="test",
+            namespace=TEST_NAMESPACE,
+        )
+        pod, _ = self.run_pod(k)
+
+        assert pod.spec.containers[0].env == [
+            k8s.V1EnvVar(
+                name="AIRFLOW_CONN",
+                value_from=k8s.V1EnvVarSource(
+                    secret_key_ref=k8s.V1SecretKeySelector(name=secret.secret, key="password")
+                ),
+            )
+        ]
+        mock_client.create_namespaced_secret.assert_called_once()
+        created_secret = mock_client.create_namespaced_secret.call_args.kwargs["body"]
+        assert created_secret.metadata.name == secret.secret
+        assert created_secret.metadata.namespace == TEST_NAMESPACE
+        assert created_secret.string_data == {
+            "conn_type": "postgres",
+            "host": "db.example",
+            "login": "user",
+            "password": "secret",
+            "schema": "analytics",
+            "port": "5432",
+            "extra": '{"sslmode": "require"}',
+        }
+        mock_client.patch_namespaced_secret.assert_called_once()
+        patch_body = mock_client.patch_namespaced_secret.call_args.kwargs["body"]
+        assert patch_body.metadata.owner_references[0].uid == "pod-uid"
+        mock_client.delete_namespaced_secret.assert_called_once()
+        assert mock_client.delete_namespaced_secret.call_args.kwargs["name"] == secret.secret
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("in_cluster", (True, False))

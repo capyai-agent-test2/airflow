@@ -23,7 +23,7 @@ from kubernetes.client import ApiClient, models as k8s
 
 from airflow.providers.cncf.kubernetes.k8s_model import append_to_pod
 from airflow.providers.cncf.kubernetes.pod_generator import PodGenerator
-from airflow.providers.cncf.kubernetes.secret import Secret
+from airflow.providers.cncf.kubernetes.secret import KubernetesConnectionSecret, Secret
 
 
 class TestSecret:
@@ -123,3 +123,7 @@ class TestSecret:
                 ],
             },
         }
+
+    def test_connection_secret_repr(self):
+        secret = KubernetesConnectionSecret("env", "target", "my_conn", key="password")
+        assert repr(secret) == "KubernetesConnectionSecret(env, TARGET, my_conn, None, password)"
