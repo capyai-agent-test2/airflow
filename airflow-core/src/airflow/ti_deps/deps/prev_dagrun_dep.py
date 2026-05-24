@@ -193,6 +193,13 @@ class PrevDagrunDep(BaseTIDep):
             if not self._has_tis(last_dagrun, previous_task_id, session=session):
                 if previous_task_id == ti.task_id and ti.task.ignore_first_depends_on_past:
                     if not self._has_any_prior_tis(ti, session=session):
+                        if len(previous_task_ids) == 1:
+                            self._push_past_deps_met_xcom_if_needed(ti, dep_context)
+                            yield self._passing_status(
+                                reason="ignore_first_depends_on_past is true for this task "
+                                "and it is the first task instance for its task."
+                            )
+                            return
                         continue
 
                 if previous_task_id == ti.task_id:

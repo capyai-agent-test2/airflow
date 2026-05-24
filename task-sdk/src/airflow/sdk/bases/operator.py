@@ -388,6 +388,12 @@ else:
             if dag:
                 dag_str = f" in dag {dag.dag_id}"
             raise ValueError(f"pool slots for {task_id}{dag_str} cannot be less than 1")
+        if partial_kwargs["depends_on_previous_tasks"] and (
+            partial_kwargs["depends_on_past"] or partial_kwargs["wait_for_downstream"]
+        ):
+            raise ValueError(
+                "depends_on_previous_tasks cannot be used with depends_on_past or wait_for_downstream."
+            )
         if retries := partial_kwargs.get("retries"):
             partial_kwargs["retries"] = BaseOperator._convert_retries(retries)
         partial_kwargs["retry_delay"] = BaseOperator._convert_retry_delay(partial_kwargs["retry_delay"])

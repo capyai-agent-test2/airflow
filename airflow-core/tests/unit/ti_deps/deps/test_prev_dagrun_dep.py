@@ -378,6 +378,51 @@ def test_dagrun_dep_with_depends_on_previous_tasks(
     assert "depends_on_previous_tasks requires task 'upstream_b'" in statuses[0].reason
 
 
+@patch("airflow.models.dagrun.DagRun.get_previous_scheduled_dagrun")
+@patch("airflow.models.dagrun.DagRun.get_previous_dagrun")
+def test_ignore_first_depends_on_past_skips_wait_for_downstream_on_first_instance(
+    mock_get_previous_dagrun, mock_get_previous_scheduled_dagrun
+):
+    task = BaseOperator(
+        task_id="test_task",
+        dag=DAG("test_dag", schedule=timedelta(days=1), start_date=datetime(2016, 1, 1)),
+        depends_on_past=True,
+        ignore_first_depends_on_past=True,
+        wait_for_downstream=True,
+        start_date=datetime(2016, 1, 1),
+    )
+    prev_dagrun = Mock(logical_date=datetime(2016, 1, 2))
+    mock_get_previous_scheduled_dagrun.return_value = prev_dagrun
+    mock_get_previous_dagrun.return_value = prev_dagrun
+    dagrun = Mock(
+        **{
+            "backfill_id": None,
+            "logical_date": datetime(2016, 1, 3),
+            "dag_id": "test_dag",
+        },
+    )
+    ti = Mock(
+        task=task,
+        task_id=task.task_id,
+        **{"get_dagrun.return_value": dagrun, "xcom_push.return_value": None},
+    )
+
+    dep = PrevDagrunDep()
+    mock_has_unsuccessful_dependants = Mock(return_value=True)
+    with patch.multiple(
+        dep,
+        _has_tis=Mock(return_value=False),
+        _has_any_prior_tis=Mock(return_value=False),
+        _has_unsuccessful_dependants=mock_has_unsuccessful_dependants,
+    ):
+        statuses = tuple(dep.get_dep_statuses(ti=ti, dep_context=DepContext()))
+
+    assert len(statuses) == 1
+    assert statuses[0].passed
+    assert "ignore_first_depends_on_past is true for this task" in statuses[0].reason
+    mock_has_unsuccessful_dependants.assert_not_called()
+
+
 def test_depends_on_previous_tasks_conflicts_with_depends_on_past():
     with pytest.raises(
         ValueError,
