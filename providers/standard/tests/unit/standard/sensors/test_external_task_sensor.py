@@ -668,10 +668,12 @@ exit 0
 
     def test_external_task_sensor_error_delta_and_fn(self):
         self.add_time_sensor()
-        # Test that providing execution_delta and a function raises an error
         with pytest.raises(
             ValueError,
-            match="Only one of `execution_delta` or `execution_date_fn` may be provided to ExternalTaskSensor; not both.",
+            match=(
+                "Only one of `logical_date`, `execution_delta`, or `execution_date_fn` may be "
+                "provided to ExternalTaskSensor."
+            ),
         ):
             ExternalTaskSensor(
                 task_id="test_external_task_sensor_check_delta",
@@ -679,6 +681,25 @@ exit 0
                 external_task_id=TEST_TASK_ID,
                 execution_delta=timedelta(0),
                 execution_date_fn=lambda dt: dt,
+                allowed_states=["success"],
+                dag=self.dag,
+            )
+
+    def test_external_task_sensor_error_logical_date_and_delta(self):
+        self.add_time_sensor()
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Only one of `logical_date`, `execution_delta`, or `execution_date_fn` may be "
+                "provided to ExternalTaskSensor."
+            ),
+        ):
+            ExternalTaskSensor(
+                task_id="test_external_task_sensor_check_logical_date",
+                external_dag_id=TEST_DAG_ID,
+                external_task_id=TEST_TASK_ID,
+                logical_date=DEFAULT_DATE.isoformat(),
+                execution_delta=timedelta(0),
                 allowed_states=["success"],
                 dag=self.dag,
             )
@@ -1388,6 +1409,49 @@ class TestExternalTaskSensorV3:
 
         expected_date = DEFAULT_DATE - timedelta(hours=1)
         self.context["ti"].get_ti_count.assert_called_once_with(
+            dag_id="test_dag_parent",
+            logical_dates=[expected_date],
+            states=["success"],
+            task_ids=["test_task"],
+        )
+        assert op.external_dates_filter == expected_date.isoformat()
+
+    def test_external_task_sensor_error_logical_date_and_delta(self, dag_maker):
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Only one of `logical_date`, `execution_delta`, or `execution_date_fn` may be "
+                "provided to ExternalTaskSensor."
+            ),
+        ):
+            with dag_maker("test_dag_child"):
+                ExternalTaskSensor(
+                    task_id="test_external_task_sensor_check",
+                    external_dag_id="test_dag_parent",
+                    external_task_id="test_task",
+                    logical_date=DEFAULT_DATE.isoformat(),
+                    execution_delta=timedelta(hours=1),
+                    allowed_states=["success"],
+                )
+
+    @pytest.mark.execution_timeout(10)
+    def test_external_task_sensor_logical_date_template(self, dag_maker):
+        expected_date = DEFAULT_DATE + timedelta(hours=2)
+        with dag_maker("test_dag_child"):
+            op = ExternalTaskSensor(
+                task_id="test_external_task_sensor_check",
+                external_dag_id="test_dag_parent",
+                external_task_id="test_task",
+                logical_date="{{ params.target_logical_date }}",
+                allowed_states=["success"],
+            )
+
+        context = {**self.context, "params": {"target_logical_date": expected_date.isoformat()}}
+        op.render_template_fields(context=context)
+        context["ti"].get_ti_count.return_value = 1
+        op.execute(context=context)
+
+        context["ti"].get_ti_count.assert_called_once_with(
             dag_id="test_dag_parent",
             logical_dates=[expected_date],
             states=["success"],

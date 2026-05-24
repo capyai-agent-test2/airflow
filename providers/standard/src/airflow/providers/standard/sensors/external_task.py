@@ -29,6 +29,7 @@ from airflow.providers.common.compat.sdk import (
     BaseOperatorLink,
     BaseSensorOperator,
     conf,
+    timezone,
 )
 from airflow.providers.standard.exceptions import (
     DuplicateStateError,
@@ -156,6 +157,10 @@ class ExternalTaskSensor(BaseSensorOperator):
     :param allowed_states: Iterable of allowed states, default is ``['success']``
     :param skipped_states: Iterable of states to make this task mark as skipped, default is ``None``
     :param failed_states: Iterable of failed or dis-allowed states, default is ``None``
+    :param logical_date: Logical date of the external Dag or task to wait for. This value is templated
+        and overrides the current task's logical date when provided. Either logical_date,
+        execution_delta, or execution_date_fn can be passed to ExternalTaskSensor, but not
+        more than one.
     :param execution_delta: time difference with the previous execution to
         look at, the default is the same logical date as the current task or DAG.
         For yesterday, use [positive!] datetime.timedelta(days=1). Either
@@ -174,7 +179,15 @@ class ExternalTaskSensor(BaseSensorOperator):
     :param deferrable: Run sensor in deferrable mode
     """
 
-    template_fields = ["external_dag_id", "external_task_id", "external_task_ids", "external_task_group_id"]
+    template_fields = [
+        "external_dag_id",
+        "external_task_id",
+        "external_task_ids",
+        "external_task_group_id",
+        "logical_date",
+    ]
+    if not AIRFLOW_V_3_0_PLUS:
+        template_fields.append("execution_date")
     ui_color = "#4db7db"
     operator_extra_links = [ExternalDagLink()]
 
@@ -188,6 +201,7 @@ class ExternalTaskSensor(BaseSensorOperator):
         allowed_states: Iterable[str] | None = None,
         skipped_states: Iterable[str] | None = None,
         failed_states: Iterable[str] | None = None,
+        logical_date: str | datetime.datetime | None = None,
         execution_delta: datetime.timedelta | None = None,
         execution_date_fn: Callable | None = None,
         check_existence: bool = False,
@@ -248,12 +262,20 @@ class ExternalTaskSensor(BaseSensorOperator):
                 f"when `external_task_id` and `external_task_group_id` is `None`: {State.dag_states}"
             )
 
-        if execution_delta is not None and execution_date_fn is not None:
-            raise ValueError(
-                "Only one of `execution_delta` or `execution_date_fn` may "
-                "be provided to ExternalTaskSensor; not both."
+        if logical_date is not None and not isinstance(logical_date, (str, datetime.datetime)):
+            raise TypeError(
+                f"Expected str, datetime.datetime, or None for parameter 'logical_date'. Got {type(logical_date).__name__}"
             )
 
+        if sum(value is not None for value in (logical_date, execution_delta, execution_date_fn)) > 1:
+            raise ValueError(
+                "Only one of `logical_date`, `execution_delta`, or `execution_date_fn` may "
+                "be provided to ExternalTaskSensor."
+            )
+
+        self.logical_date = logical_date
+        if not AIRFLOW_V_3_0_PLUS:
+            self.execution_date = logical_date
         self.execution_delta = execution_delta
         self.execution_date_fn = execution_date_fn
         self.external_dag_id = external_dag_id
@@ -267,6 +289,9 @@ class ExternalTaskSensor(BaseSensorOperator):
         self.external_dates_filter: str | None = None
 
     def _get_dttm_filter(self, context: Context) -> Sequence[datetime.datetime]:
+        if self.logical_date is not None:
+            return [self._parse_target_logical_date()]
+
         logical_date = self._get_logical_date(context)
 
         if self.execution_delta:
@@ -600,6 +625,13 @@ class ExternalTaskSensor(BaseSensorOperator):
         if not isinstance(execution_date, datetime.datetime):
             raise ValueError("execution_date must be a datetime object")
         return execution_date
+
+    def _parse_target_logical_date(self) -> datetime.datetime:
+        if isinstance(self.logical_date, datetime.datetime):
+            return self.logical_date
+        if isinstance(self.logical_date, str):
+            return timezone.parse(self.logical_date)
+        raise ValueError("logical_date must be set before parsing the external target logical date")
 
     def _handle_execution_date_fn(self, context: Context) -> datetime.datetime | list[datetime.datetime]:
         """
