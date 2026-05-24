@@ -104,6 +104,7 @@ from airflow.sdk.execution_time.comms import (
     ResendLoggingFD,
     RetryTask,
     SentFDs,
+    SetExecutionTimeout,
     SetRenderedFields,
     SetRenderedMapIndex,
     SkipDownstreamTasks,
@@ -1058,6 +1059,9 @@ def startup(msg: StartupDetails) -> tuple[RuntimeTaskInstance, Context, Logger]:
 
         # ideally, we should never reach here, but if we do, we should return None, None, None
         return None, None, None
+
+    if ti.task.execution_timeout:
+        SUPERVISOR_COMMS.send(SetExecutionTimeout(timeout_seconds=ti.task.execution_timeout.total_seconds()))
 
     return ti, ti.get_template_context(), log
 

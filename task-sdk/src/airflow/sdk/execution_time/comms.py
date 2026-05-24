@@ -1038,6 +1038,13 @@ class SetRenderedMapIndex(BaseModel):
     type: Literal["SetRenderedMapIndex"] = "SetRenderedMapIndex"
 
 
+class SetExecutionTimeout(BaseModel):
+    """Payload for setting the parsed execution timeout on the supervisor."""
+
+    timeout_seconds: float
+    type: Literal["SetExecutionTimeout"] = "SetExecutionTimeout"
+
+
 class TriggerDagRun(TriggerDAGRunPayload):
     dag_id: str
     run_id: Annotated[str, Field(title="Dag Run Id")]
@@ -1229,6 +1236,7 @@ ToSupervisor = Annotated[
     | RetryTask
     | SetAssetStateByName
     | SetAssetStateByUri
+    | SetExecutionTimeout
     | SetRenderedFields
     | SetRenderedMapIndex
     | SetTaskState

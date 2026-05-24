@@ -114,6 +114,7 @@ from airflow.sdk.execution_time.comms import (
     SentFDs,
     SetAssetStateByName,
     SetAssetStateByUri,
+    SetExecutionTimeout,
     SetRenderedFields,
     SetRenderedMapIndex,
     SetTaskState,
@@ -1218,6 +1219,8 @@ class ActivitySubprocess(WatchedSubprocess):
     failed_heartbeats: int = attrs.field(default=0, init=False)
 
     _task_end_time_monotonic: float | None = attrs.field(default=None, init=False)
+    _execution_timeout_deadline_monotonic: float | None = attrs.field(default=None, init=False)
+    _execution_timeout_killed: bool = attrs.field(default=False, init=False)
     _rendered_map_index: str | None = attrs.field(default=None, init=False)
 
     decoder: ClassVar[TypeAdapter[ToSupervisor]] = TypeAdapter(ToSupervisor)
@@ -1460,7 +1463,22 @@ class ActivitySubprocess(WatchedSubprocess):
                 # logs
                 self._send_heartbeat_if_needed()
 
+                self._handle_execution_timeout_if_needed()
                 self._handle_process_overtime_if_needed()
+
+    def _handle_execution_timeout_if_needed(self):
+        """Kill the task process if it runs past its parsed execution timeout."""
+        if (
+            self._terminal_state
+            or self._execution_timeout_killed
+            or self._execution_timeout_deadline_monotonic is None
+            or time.monotonic() < self._execution_timeout_deadline_monotonic
+        ):
+            return
+
+        self._execution_timeout_killed = True
+        self.process_log.error("Task exceeded execution_timeout. Terminating process")
+        self.kill(signal.SIGTERM, force=True)
 
     def _handle_process_overtime_if_needed(self):
         """Handle termination of auxiliary processes if the task exceeds the configured overtime."""
@@ -1611,6 +1629,9 @@ class ActivitySubprocess(WatchedSubprocess):
             resp, dump_opts = handle_put_variable(self.client, msg)
         elif isinstance(msg, SetRenderedFields):
             self.client.task_instances.set_rtif(self.id, msg.rendered_fields)
+        elif isinstance(msg, SetExecutionTimeout):
+            self._execution_timeout_deadline_monotonic = time.monotonic() + msg.timeout_seconds
+            self._execution_timeout_killed = False
         elif isinstance(msg, SetRenderedMapIndex):
             self.client.task_instances.set_rendered_map_index(self.id, msg.rendered_map_index)
         elif isinstance(msg, GetAssetByName):

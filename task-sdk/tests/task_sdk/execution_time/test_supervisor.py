@@ -132,6 +132,7 @@ from airflow.sdk.execution_time.comms import (
     SentFDs,
     SetAssetStateByName,
     SetAssetStateByUri,
+    SetExecutionTimeout,
     SetRenderedFields,
     SetRenderedMapIndex,
     SetTaskState,
@@ -1780,6 +1781,10 @@ REQUEST_TEST_CASES = [
         test_id="up_for_retry",
     ),
     RequestTestCase(
+        message=SetExecutionTimeout(timeout_seconds=30),
+        test_id="set_execution_timeout",
+    ),
+    RequestTestCase(
         message=SetRenderedFields(rendered_fields={"field1": "rendered_value1", "field2": "rendered_value2"}),
         client_mock=ClientMock(
             method_path="task_instances.set_rtif",
@@ -2984,6 +2989,34 @@ class TestHandleRequest:
             + "\n".join(f"  - {t.__name__}" for t in sorted(untested_types, key=lambda x: x.__name__))
             + "\n\nPlease add test cases to REQUEST_TEST_CASES."
         )
+
+    def test_set_execution_timeout_updates_supervisor_deadline(self, watched_subprocess, mocker):
+        watched_subprocess, read_socket = watched_subprocess
+        generator = watched_subprocess.handle_requests(log=mocker.Mock())
+        next(generator)
+
+        monotonic_now = time.monotonic()
+        generator.send(_RequestFrame(id=1, body=SetExecutionTimeout(timeout_seconds=30).model_dump()))
+
+        read_socket.settimeout(0.1)
+        frame_len = int.from_bytes(read_socket.recv(4), "big")
+        read_socket.recv(frame_len)
+
+        assert watched_subprocess._execution_timeout_deadline_monotonic == pytest.approx(monotonic_now + 30)
+
+    def test_handle_execution_timeout_kills_process_once(self, watched_subprocess, mocker):
+        watched_subprocess, _ = watched_subprocess
+        watched_subprocess._execution_timeout_deadline_monotonic = time.monotonic() - 1
+
+        kill = mocker.patch.object(ActivitySubprocess, "kill", autospec=True)
+
+        watched_subprocess._handle_execution_timeout_if_needed()
+        watched_subprocess._handle_execution_timeout_if_needed()
+
+        watched_subprocess.process_log.error.assert_called_once_with(
+            "Task exceeded execution_timeout. Terminating process"
+        )
+        kill.assert_called_once_with(watched_subprocess, signal.SIGTERM, force=True)
 
     def test_handle_requests_api_server_error(self, watched_subprocess, mocker):
         """Test that API server errors are properly handled and sent back to the task."""
