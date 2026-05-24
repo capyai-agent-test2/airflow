@@ -105,6 +105,8 @@ class TestGetDagRuns(TestPublicDagEndpoint):
             ({"bundle_name": "dag_maker", "bundle_version": "some_commit_hash"}, [DAG1_ID, DAG2_ID], 11),
             ({"bundle_name": "dag_maker", "bundle_version": "wrong_version"}, [], 0),
             ({"bundle_name": "wrong_bundle", "bundle_version": "some_commit_hash"}, [], 0),
+            ({"timetable_type": ["CronTriggerTimetable"], "exclude_stale": False}, [DAG3_ID], 4),
+            ({"timetable_type": ["NullTimetable"], "exclude_stale": False}, [DAG1_ID, DAG2_ID], 11),
         ],
     )
     @pytest.mark.usefixtures("configure_git_connection_for_dag_bundle")

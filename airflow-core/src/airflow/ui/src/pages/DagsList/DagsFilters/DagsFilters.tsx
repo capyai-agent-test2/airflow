@@ -32,6 +32,7 @@ import { PausedFilter } from "./PausedFilter";
 import { RequiredActionFilter } from "./RequiredActionFilter";
 import { StateFilters } from "./StateFilters";
 import { TagFilter } from "./TagFilter";
+import { TimetableTypeFilter } from "./TimetableTypeFilter";
 
 const {
   FAVORITE: FAVORITE_PARAM,
@@ -39,6 +40,7 @@ const {
   NEEDS_REVIEW: NEEDS_REVIEW_PARAM,
   OFFSET: OFFSET_PARAM,
   PAUSED: PAUSED_PARAM,
+  TIMETABLE_TYPE: TIMETABLE_TYPE_PARAM,
 }: SearchParamsKeysType = SearchParamsKeys;
 
 type StateValue = "all" | "failed" | "queued" | "running" | "success";
@@ -64,6 +66,7 @@ export const DagsFilters = () => {
   const showFavorites = searchParams.get(FAVORITE_PARAM);
   const needsReview = searchParams.get(NEEDS_REVIEW_PARAM);
   const state = searchParams.get(LAST_DAG_RUN_STATE_PARAM);
+  const timetableTypes = searchParams.getAll(TIMETABLE_TYPE_PARAM).join(", ");
 
   const [pattern, setPattern] = useState("");
 
@@ -140,6 +143,20 @@ export const DagsFilters = () => {
     setTagFilterMode(checked ? "all" : "any");
   };
 
+  const handleTimetableTypeChange = (value: string) => {
+    const parsedValues = value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    searchParams.delete(TIMETABLE_TYPE_PARAM);
+    parsedValues.forEach((entry) => {
+      searchParams.append(TIMETABLE_TYPE_PARAM, entry);
+    });
+    resetPagination();
+    setSearchParams(searchParams);
+  };
+
   const stateValue = toStateValue(state);
   const pausedValue = toBooleanFilterValue(showPaused, defaultShowPaused);
   const favoriteValue = toBooleanFilterValue(showFavorites);
@@ -165,6 +182,7 @@ export const DagsFilters = () => {
         tagFilterMode={tagFilterMode}
         tags={data?.pages.flatMap((dagResponse) => dagResponse.tags) ?? []}
       />
+      <TimetableTypeFilter onChange={handleTimetableTypeChange} value={timetableTypes} />
       <FavoriteFilter onChange={handleFavoriteChange} value={favoriteValue} />
     </HStack>
   );

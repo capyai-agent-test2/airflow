@@ -499,6 +499,14 @@ paths:
           - type: boolean
           - type: 'null'
           title: Is Favorite
+      - name: timetable_type
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+          title: Timetable Type
       - name: has_asset_schedule
         in: query
         required: false
