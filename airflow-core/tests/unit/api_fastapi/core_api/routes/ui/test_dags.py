@@ -105,8 +105,6 @@ class TestGetDagRuns(TestPublicDagEndpoint):
             ({"bundle_name": "dag_maker", "bundle_version": "some_commit_hash"}, [DAG1_ID, DAG2_ID], 11),
             ({"bundle_name": "dag_maker", "bundle_version": "wrong_version"}, [], 0),
             ({"bundle_name": "wrong_bundle", "bundle_version": "some_commit_hash"}, [], 0),
-            ({"timetable_type": ["CronTriggerTimetable"], "exclude_stale": False}, [DAG3_ID], 4),
-            ({"timetable_type": ["NullTimetable"], "exclude_stale": False}, [DAG1_ID, DAG2_ID], 11),
         ],
     )
     @pytest.mark.usefixtures("configure_git_connection_for_dag_bundle")
@@ -134,6 +132,23 @@ class TestGetDagRuns(TestPublicDagEndpoint):
                 if previous_run_after:
                     assert previous_run_after > dag_run["run_after"]
                 previous_run_after = dag_run["run_after"]
+
+    @pytest.mark.parametrize(
+        ("query_params", "expected_total_entries", "expected_ids"),
+        [
+            ({"timetable_type": ["CronTriggerTimetable"], "exclude_stale": False}, 1, [DAG3_ID]),
+            ({"timetable_type": ["NullTimetable"], "exclude_stale": False}, 2, [DAG1_ID, DAG2_ID]),
+        ],
+    )
+    def test_should_filter_by_timetable_type(
+        self, test_client, query_params, expected_total_entries, expected_ids
+    ):
+        response = test_client.get("/dags", params=query_params)
+        assert response.status_code == 200
+        body = response.json()
+
+        assert body["total_entries"] == expected_total_entries
+        assert [dag["dag_id"] for dag in body["dags"]] == expected_ids
 
     @pytest.fixture
     def setup_hitl_data(self, create_task_instance: TaskInstance, session: Session):

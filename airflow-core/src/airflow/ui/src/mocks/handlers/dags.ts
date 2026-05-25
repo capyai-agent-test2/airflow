@@ -124,26 +124,24 @@ const filterDags = (paused: string | null, timetableTypes: Array<string>) => {
   return dagsByTimetableType;
 };
 
+const filterDagsByLastRunState = (dags: Array<typeof successDag>, lastDagRunState: string | null) => {
+  if (lastDagRunState === "success") {
+    return dags.filter((dag) => dag.latest_dag_runs.some((dagRun) => dagRun.state === "success"));
+  }
+  if (lastDagRunState === "failed") {
+    return dags.filter((dag) => dag.latest_dag_runs.some((dagRun) => dagRun.state === "failed"));
+  }
+
+  return dags;
+};
+
 export const handlers: Array<HttpHandler> = [
   http.get("/ui/dags", ({ request }) => {
     const url = new URL(request.url);
     const lastDagRunState = url.searchParams.get("last_dag_run_state");
     const paused = url.searchParams.get("paused");
     const timetableTypes = url.searchParams.getAll("timetable_type");
-
-    if (lastDagRunState === "success") {
-      return HttpResponse.json({
-        dags: [successDag],
-        total_entries: 1,
-      });
-    } else if (lastDagRunState === "failed") {
-      return HttpResponse.json({
-        dags: [failedDag],
-        total_entries: 1,
-      });
-    }
-
-    const dags = filterDags(paused, timetableTypes);
+    const dags = filterDagsByLastRunState(filterDags(paused, timetableTypes), lastDagRunState);
 
     return HttpResponse.json({
       dags,
