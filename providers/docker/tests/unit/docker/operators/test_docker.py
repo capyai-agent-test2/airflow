@@ -108,17 +108,27 @@ def test_unpack_environment_variables(env_str, expected):
 
 
 @pytest.mark.parametrize("container_exists", [True, False])
-def test_on_kill_client_created(docker_api_client_patcher, container_exists):
+@pytest.mark.parametrize("auto_remove", ["never", "force"])
+def test_on_kill_client_created(docker_api_client_patcher, container_exists, auto_remove):
     """Test operator on_kill method if APIClient created."""
-    op = DockerOperator(image=TEST_IMAGE, hostname=TEST_DOCKER_URL, task_id="test_on_kill")
+    op = DockerOperator(
+        image=TEST_IMAGE, hostname=TEST_DOCKER_URL, task_id="test_on_kill", auto_remove=auto_remove
+    )
     op.container = {"Id": "some_id"} if container_exists else None
 
     op.hook.get_conn()  # Try to create APIClient
     op.on_kill()
     if container_exists:
         docker_api_client_patcher.return_value.stop.assert_called_once_with("some_id")
+        if auto_remove == "force":
+            docker_api_client_patcher.return_value.remove_container.assert_called_once_with(
+                "some_id", force=True
+            )
+        else:
+            docker_api_client_patcher.return_value.remove_container.assert_not_called()
     else:
         docker_api_client_patcher.return_value.stop.assert_not_called()
+        docker_api_client_patcher.return_value.remove_container.assert_not_called()
 
 
 def test_on_kill_client_not_created(docker_api_client_patcher):
