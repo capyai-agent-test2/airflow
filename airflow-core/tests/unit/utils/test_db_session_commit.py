@@ -16,7 +16,9 @@
 # under the License.
 from __future__ import annotations
 
-from unittest.mock import Mock
+from unittest.mock import create_autospec
+
+from sqlalchemy.orm import Session
 
 from airflow.models.connection import Connection
 from airflow.models.pool import Pool
@@ -25,7 +27,7 @@ from airflow.utils.db import add_default_pool_if_not_exists, merge_conn
 
 class TestProvideSessionCommitBehavior:
     def test_merge_conn_does_not_commit_provided_session(self):
-        session = Mock()
+        session = create_autospec(Session, instance=True)
         session.scalar.return_value = None
 
         merge_conn(Connection(conn_id="test-conn"), session=session)
@@ -34,7 +36,7 @@ class TestProvideSessionCommitBehavior:
         session.commit.assert_not_called()
 
     def test_add_default_pool_does_not_commit_provided_session(self):
-        session = Mock()
+        session = create_autospec(Session, instance=True)
         session.scalar.return_value = None
 
         add_default_pool_if_not_exists(session=session)
@@ -46,7 +48,7 @@ class TestProvideSessionCommitBehavior:
         session.commit.assert_not_called()
 
     def test_merge_conn_commits_when_decorator_creates_session(self, monkeypatch):
-        session = Mock()
+        session = create_autospec(Session, instance=True)
         session.scalar.return_value = None
 
         def fake_create_session(scoped: bool = True):
@@ -72,7 +74,7 @@ class TestProvideSessionCommitBehavior:
         session.commit.assert_called_once()
 
     def test_add_default_pool_commits_when_decorator_creates_session(self, monkeypatch):
-        session = Mock()
+        session = create_autospec(Session, instance=True)
         session.scalar.return_value = None
 
         def fake_create_session(scoped: bool = True):
