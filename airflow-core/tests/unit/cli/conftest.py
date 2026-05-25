@@ -17,14 +17,13 @@
 # under the License.
 from __future__ import annotations
 
+import importlib
 import sys
 
 import pytest
 
 from airflow.dag_processing.dagbag import DagBag
 from airflow.executors import local_executor
-from airflow.providers.celery.executors import celery_executor
-from airflow.providers.cncf.kubernetes.executors import kubernetes_executor
 
 from tests_common.test_utils.config import conf_vars
 from tests_common.test_utils.stream_capture_manager import (
@@ -36,14 +35,32 @@ from tests_common.test_utils.stream_capture_manager import (
 
 # Create custom executors here because conftest is imported first
 custom_executor_module = type(sys)("custom_executor")
-custom_executor_module.CustomCeleryExecutor = type(  # type:  ignore
-    "CustomCeleryExecutor", (celery_executor.CeleryExecutor,), {}
-)
 custom_executor_module.CustomLocalExecutor = type(  # type:  ignore
     "CustomLocalExecutor", (local_executor.LocalExecutor,), {}
 )
-custom_executor_module.CustomKubernetesExecutor = type(  # type:  ignore
-    "CustomKubernetesExecutor", (kubernetes_executor.KubernetesExecutor,), {}
+
+
+def _add_provider_executor(executor_module_path: str, base_class_name: str, class_name: str) -> None:
+    try:
+        executor_module = importlib.import_module(executor_module_path)
+    except ModuleNotFoundError:
+        return
+    setattr(
+        custom_executor_module,
+        class_name,
+        type(class_name, (getattr(executor_module, base_class_name),), {}),  # type: ignore[misc]
+    )
+
+
+_add_provider_executor(
+    "airflow.providers.celery.executors.celery_executor",
+    "CeleryExecutor",
+    "CustomCeleryExecutor",
+)
+_add_provider_executor(
+    "airflow.providers.cncf.kubernetes.executors.kubernetes_executor",
+    "KubernetesExecutor",
+    "CustomKubernetesExecutor",
 )
 sys.modules["custom_executor"] = custom_executor_module
 

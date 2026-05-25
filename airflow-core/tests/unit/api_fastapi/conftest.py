@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest import mock
 
@@ -27,9 +28,9 @@ from fastapi.testclient import TestClient
 
 from airflow.api_fastapi.app import create_app
 from airflow.api_fastapi.auth.managers.simple.user import SimpleAuthManagerUser
+from airflow.dag_processing.bundles.base import BaseDagBundle
 from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.models import Connection
-from airflow.providers.git.bundles.git import GitDagBundle
 from airflow.providers.standard.operators.empty import EmptyOperator
 
 from tests_common.test_utils.config import conf_vars
@@ -44,6 +45,28 @@ API_PATHS = {
 }
 
 BASE_URL = "http://testserver"
+
+
+class TestVersionedDagBundle(BaseDagBundle):
+    supports_versioning = True
+
+    def __init__(self, *, name: str, subdir: str, tracking_ref: str, refresh_interval: int = 0, version=None):
+        super().__init__(name=name, refresh_interval=refresh_interval, version=version)
+        self.subdir = subdir
+        self.tracking_ref = tracking_ref
+
+    @property
+    def path(self) -> Path:
+        return self.base_dir / self.subdir
+
+    def get_current_version(self) -> str:
+        return self.version or "some_commit_hash"
+
+    def refresh(self) -> None:
+        self.path.mkdir(parents=True, exist_ok=True)
+
+    def view_url_template(self) -> str:
+        return "http://test_host.github.com/{version}/{subdir}"
 
 
 def get_api_path(request):
@@ -144,14 +167,10 @@ def configure_git_connection_for_dag_bundle(session):
                 (
                     "dag_processor",
                     "dag_bundle_config_list",
-                ): '[{ "name": "dag_maker", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"subdir": "dags", "tracking_ref": "main", "refresh_interval": 0}}, { "name": "another_bundle_name", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"subdir": "dags", "tracking_ref": "main", "refresh_interval": 0}}]'
+                ): '[{ "name": "dag_maker", "classpath": "tests.unit.api_fastapi.conftest.TestVersionedDagBundle", "kwargs": {"subdir": "dags", "tracking_ref": "main", "refresh_interval": 0}}, { "name": "another_bundle_name", "classpath": "tests.unit.api_fastapi.conftest.TestVersionedDagBundle", "kwargs": {"subdir": "dags", "tracking_ref": "main", "refresh_interval": 0}}]'
             }
         ),
-        mock.patch("airflow.providers.git.bundles.git.GitHook") as mock_git_hook,
-        mock.patch.object(GitDagBundle, "get_current_version") as mock_get_current_version,
     ):
-        mock_get_current_version.return_value = "some_commit_hash"
-        mock_git_hook.return_value.repo_url = connection.host
         DagBundlesManager().sync_bundles_to_db()
         yield
     # in case no flush or commit was executed after the "session.add" above, we need to flush the session

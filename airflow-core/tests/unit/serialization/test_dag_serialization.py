@@ -44,7 +44,6 @@ import attrs
 import pendulum
 import pytest
 from dateutil.relativedelta import FR, relativedelta
-from kubernetes.client import models as k8s
 
 import airflow
 from airflow._shared.module_loading import qualname
@@ -59,7 +58,6 @@ from airflow.models.asset import AssetModel
 from airflow.models.connection import Connection
 from airflow.models.taskinstance import TaskInstance as TI
 from airflow.models.xcom import XCOM_RETURN_KEY, XComModel
-from airflow.providers.cncf.kubernetes.pod_generator import PodGenerator
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import DAG, Asset, AssetAlias, BaseHook, TaskGroup, WeightRule, XComArg, teardown
 from airflow.sdk.bases.decorator import DecoratedOperator
@@ -117,6 +115,14 @@ from tests_common.test_utils.timetables import (
 )
 from unit.models import TEST_DAGS_FOLDER
 
+try:
+    from kubernetes.client import models as k8s
+
+    from airflow.providers.cncf.kubernetes.pod_generator import PodGenerator
+except ModuleNotFoundError:
+    k8s = None
+    PodGenerator = None
+
 if TYPE_CHECKING:
     from airflow.sdk.definitions.context import Context
 
@@ -171,17 +177,38 @@ def operator_defaults(monkeypatch):
 AIRFLOW_REPO_ROOT_PATH = Path(airflow.__file__).parents[3]
 
 
-executor_config_pod = k8s.V1Pod(
-    metadata=k8s.V1ObjectMeta(name="my-name"),
-    spec=k8s.V1PodSpec(
-        containers=[
-            k8s.V1Container(
-                name="base",
-                volume_mounts=[k8s.V1VolumeMount(name="my-vol", mount_path="/vol/")],
-            )
-        ]
-    ),
-)
+def _create_executor_config_pod():
+    if k8s is None:
+        return None
+    return k8s.V1Pod(
+        metadata=k8s.V1ObjectMeta(name="my-name"),
+        spec=k8s.V1PodSpec(
+            containers=[
+                k8s.V1Container(
+                    name="base",
+                    volume_mounts=[k8s.V1VolumeMount(name="my-vol", mount_path="/vol/")],
+                )
+            ]
+        ),
+    )
+
+
+def _serialize_executor_config():
+    if PodGenerator is None or executor_config_pod is None:
+        return {"__type": "dict", "__var": {}}
+    return {
+        "__type": "dict",
+        "__var": {
+            "pod_override": {
+                "__type": "k8s.V1Pod",
+                "__var": PodGenerator.serialize_pod(executor_config_pod),
+            }
+        },
+    }
+
+
+executor_config_pod = _create_executor_config_pod()
+serialized_executor_config = _serialize_executor_config()
 TYPE = Encoding.TYPE
 VAR = Encoding.VAR
 serialized_simple_dag_ground_truth = {
@@ -249,15 +276,7 @@ serialized_simple_dag_ground_truth = {
                     "_task_display_name": "my_bash_task",
                     "owner": "airflow1",
                     "pool": "pool1",
-                    "executor_config": {
-                        "__type": "dict",
-                        "__var": {
-                            "pod_override": {
-                                "__type": "k8s.V1Pod",
-                                "__var": PodGenerator.serialize_pod(executor_config_pod),
-                            }
-                        },
-                    },
+                    "executor_config": serialized_executor_config,
                     "doc_md": "### Task Tutorial Documentation",
                     "has_retry_policy": False,
                     "_needs_expansion": False,
@@ -386,7 +405,7 @@ def make_simple_dag():
             task_id="bash_task",
             bash_command="echo {{ task.task_id }}",
             owner="airflow1",
-            executor_config={"pod_override": executor_config_pod},
+            executor_config={"pod_override": executor_config_pod} if executor_config_pod is not None else {},
             doc_md="### Task Tutorial Documentation",
             inlets=[Asset("asset-1"), AssetAlias(name="alias-name")],
             outlets=Asset("asset-2"),
@@ -2754,6 +2773,8 @@ class TestStringifiedDAGs:
 
 def test_kubernetes_optional():
     """Test that serialization module loads without kubernetes, but deserialization of PODs requires it"""
+    if PodGenerator is None or executor_config_pod is None:
+        pytest.skip("Kubernetes provider is not installed.")
 
     def mock__import__(name, globals_=None, locals_=None, fromlist=(), level=0):
         if level == 0 and name.partition(".")[0] == "kubernetes":
@@ -3416,15 +3437,7 @@ def test_handle_v1_serdag():
                         "is_setup": False,
                         "is_teardown": False,
                         "on_failure_fail_dagrun": False,
-                        "executor_config": {
-                            "__type": "dict",
-                            "__var": {
-                                "pod_override": {
-                                    "__type": "k8s.V1Pod",
-                                    "__var": PodGenerator.serialize_pod(executor_config_pod),
-                                }
-                            },
-                        },
+                        "executor_config": serialized_executor_config,
                         "doc_md": "### Task Tutorial Documentation",
                         "_log_config_logger_name": "airflow.task.operators",
                         "_needs_expansion": False,
@@ -3734,15 +3747,7 @@ def test_handle_v2_serdag():
                         "is_setup": False,
                         "is_teardown": False,
                         "on_failure_fail_dagrun": False,
-                        "executor_config": {
-                            "__type": "dict",
-                            "__var": {
-                                "pod_override": {
-                                    "__type": "k8s.V1Pod",
-                                    "__var": PodGenerator.serialize_pod(executor_config_pod),
-                                }
-                            },
-                        },
+                        "executor_config": serialized_executor_config,
                         "doc_md": "### Task Tutorial Documentation",
                         "_needs_expansion": False,
                         "weight_rule": "downstream",
