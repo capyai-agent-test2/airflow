@@ -840,11 +840,11 @@ Priority of values are from left to right, meaning if first value is not empty, 
   {{- $result := dict }}
   {{- range . }}
     {{- if and (hasKey . "securityContexts") (hasKey .securityContexts "pod") (gt (len .securityContexts.pod) 0) }}
-      {{- $result = .securityContexts.pod }}
+      {{- $result = deepCopy .securityContexts.pod }}
       {{- break }}
     {{- end }}
     {{- if and (hasKey . "securityContext") (gt (len .securityContext) 0) }}
-      {{- $result = .securityContext }}
+      {{- $result = deepCopy .securityContext }}
       {{- break }}
     {{- end }}
   {{- end }}
