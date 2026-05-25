@@ -37,6 +37,7 @@ from airflow.providers.common.compat.sdk import (
     BaseOperator,
 )
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
+from airflow.providers.databricks.hooks.databricks import DatabricksHook
 from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
 
 if TYPE_CHECKING:
@@ -302,6 +303,124 @@ class DatabricksSqlOperator(SQLExecuteQueryOperator):
                 os.unlink(local_path)
 
         return list(zip(descriptions, results))
+
+
+class _DatabricksSqlWarehouseOperator(BaseOperator):
+    template_fields: Sequence[str] = ("warehouse_id", "databricks_conn_id")
+
+    def __init__(
+        self,
+        *,
+        warehouse_id: str,
+        databricks_conn_id: str = "databricks_default",
+        databricks_retry_limit: int = 3,
+        databricks_retry_delay: int = 1,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.warehouse_id = warehouse_id
+        self.databricks_conn_id = databricks_conn_id
+        self.databricks_retry_limit = databricks_retry_limit
+        self.databricks_retry_delay = databricks_retry_delay
+
+    @cached_property
+    def _hook(self) -> DatabricksHook:
+        return DatabricksHook(
+            self.databricks_conn_id,
+            retry_limit=self.databricks_retry_limit,
+            retry_delay=self.databricks_retry_delay,
+            caller=self.__class__.__name__,
+        )
+
+
+class DatabricksSqlWarehouseCreateOperator(BaseOperator):
+    """
+    Creates a Databricks SQL warehouse using the POST api/2.0/sql/warehouses endpoint.
+
+    See: https://docs.databricks.com/api/workspace/warehouses/create
+
+    :param json: A JSON object containing API parameters passed directly to the create endpoint.
+        The ``name`` and ``cluster_size`` parameters override top-level keys in ``json`` when provided.
+        (templated)
+    :param name: Logical name for the warehouse.
+    :param cluster_size: Size of the clusters allocated for the warehouse.
+    :param databricks_conn_id: Reference to the :ref:`Databricks connection <howto/connection:databricks>`.
+        (templated)
+    :param databricks_retry_limit: Amount of times retry if the Databricks backend is unreachable.
+    :param databricks_retry_delay: Number of seconds to wait between retries.
+    """
+
+    template_fields: Sequence[str] = ("json", "databricks_conn_id")
+
+    def __init__(
+        self,
+        *,
+        json: dict[str, Any] | None = None,
+        name: str | None = None,
+        cluster_size: str | None = None,
+        databricks_conn_id: str = "databricks_default",
+        databricks_retry_limit: int = 3,
+        databricks_retry_delay: int = 1,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.json = json or {}
+        self.databricks_conn_id = databricks_conn_id
+        self.databricks_retry_limit = databricks_retry_limit
+        self.databricks_retry_delay = databricks_retry_delay
+        if name is not None:
+            self.json["name"] = name
+        if cluster_size is not None:
+            self.json["cluster_size"] = cluster_size
+
+    @cached_property
+    def _hook(self) -> DatabricksHook:
+        return DatabricksHook(
+            self.databricks_conn_id,
+            retry_limit=self.databricks_retry_limit,
+            retry_delay=self.databricks_retry_delay,
+            caller="DatabricksSqlWarehouseCreateOperator",
+        )
+
+    def execute(self, context: Context) -> str:
+        if "name" not in self.json:
+            raise AirflowException("Missing required parameter: name")
+        if "cluster_size" not in self.json:
+            raise AirflowException("Missing required parameter: cluster_size")
+        return self._hook.create_sql_warehouse(self.json)
+
+
+class DatabricksSqlWarehouseDeleteOperator(_DatabricksSqlWarehouseOperator):
+    """
+    Deletes a Databricks SQL warehouse using the DELETE api/2.0/sql/warehouses/{id} endpoint.
+
+    See: https://docs.databricks.com/api/workspace/warehouses/delete
+    """
+
+    def execute(self, context: Context) -> None:
+        self._hook.delete_sql_warehouse(self.warehouse_id)
+
+
+class DatabricksSqlWarehouseStartOperator(_DatabricksSqlWarehouseOperator):
+    """
+    Starts a Databricks SQL warehouse using the POST api/2.0/sql/warehouses/{id}/start endpoint.
+
+    See: https://docs.databricks.com/api/workspace/warehouses/start
+    """
+
+    def execute(self, context: Context) -> None:
+        self._hook.start_sql_warehouse(self.warehouse_id)
+
+
+class DatabricksSqlWarehouseStopOperator(_DatabricksSqlWarehouseOperator):
+    """
+    Stops a Databricks SQL warehouse using the POST api/2.0/sql/warehouses/{id}/stop endpoint.
+
+    See: https://docs.databricks.com/api/workspace/warehouses/stop
+    """
+
+    def execute(self, context: Context) -> None:
+        self._hook.stop_sql_warehouse(self.warehouse_id)
 
 
 COPY_INTO_APPROVED_FORMATS = ["CSV", "JSON", "AVRO", "ORC", "PARQUET", "TEXT", "BINARYFILE"]

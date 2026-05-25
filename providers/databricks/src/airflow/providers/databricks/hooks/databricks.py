@@ -64,6 +64,7 @@ CREATE_REPO_ENDPOINT = ("POST", "2.0/repos")
 LIST_JOBS_ENDPOINT = ("GET", "2.2/jobs/list")
 LIST_PIPELINES_ENDPOINT = ("GET", "2.0/pipelines")
 LIST_SQL_ENDPOINTS_ENDPOINT = ("GET", "2.0/sql/warehouses")
+CREATE_SQL_WAREHOUSE_ENDPOINT = ("POST", "2.0/sql/warehouses")
 
 WORKSPACE_GET_STATUS_ENDPOINT = ("GET", "2.0/workspace/get-status")
 
@@ -450,6 +451,40 @@ class DatabricksHook(BaseDatabricksHook):
                 has_more = False
 
         return all_pipelines
+
+    def create_sql_warehouse(self, json: dict[str, Any]) -> str:
+        """
+        Create a Databricks SQL warehouse.
+
+        :param json: The data used in the body of the request to the create endpoint.
+        :return: The warehouse id.
+        """
+        response = self._do_api_call(CREATE_SQL_WAREHOUSE_ENDPOINT, json)
+        return response["id"]
+
+    def delete_sql_warehouse(self, warehouse_id: str) -> None:
+        """
+        Delete a Databricks SQL warehouse.
+
+        :param warehouse_id: The id of the warehouse to delete.
+        """
+        self._do_api_call(("DELETE", f"2.0/sql/warehouses/{warehouse_id}"))
+
+    def start_sql_warehouse(self, warehouse_id: str) -> None:
+        """
+        Start a Databricks SQL warehouse.
+
+        :param warehouse_id: The id of the warehouse to start.
+        """
+        self._do_api_call(("POST", f"2.0/sql/warehouses/{warehouse_id}/start"))
+
+    def stop_sql_warehouse(self, warehouse_id: str) -> None:
+        """
+        Stop a Databricks SQL warehouse.
+
+        :param warehouse_id: The id of the warehouse to stop.
+        """
+        self._do_api_call(("POST", f"2.0/sql/warehouses/{warehouse_id}/stop"))
 
     def find_pipeline_id_by_name(self, pipeline_name: str) -> str | None:
         """

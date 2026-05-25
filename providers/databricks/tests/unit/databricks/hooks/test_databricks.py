@@ -242,6 +242,26 @@ def terminate_cluster_endpoint(host):
     return f"https://{host}/api/2.1/clusters/delete"
 
 
+def create_sql_warehouse_endpoint(host):
+    """Utility function to generate the create SQL warehouse endpoint given the host."""
+    return f"https://{host}/api/2.0/sql/warehouses"
+
+
+def delete_sql_warehouse_endpoint(host, warehouse_id):
+    """Utility function to generate the delete SQL warehouse endpoint given the host."""
+    return f"https://{host}/api/2.0/sql/warehouses/{warehouse_id}"
+
+
+def start_sql_warehouse_endpoint(host, warehouse_id):
+    """Utility function to generate the start SQL warehouse endpoint given the host."""
+    return f"https://{host}/api/2.0/sql/warehouses/{warehouse_id}/start"
+
+
+def stop_sql_warehouse_endpoint(host, warehouse_id):
+    """Utility function to generate the stop SQL warehouse endpoint given the host."""
+    return f"https://{host}/api/2.0/sql/warehouses/{warehouse_id}/stop"
+
+
 def install_endpoint(host):
     """
     Utility function to generate the install endpoint given the host.
@@ -898,6 +918,79 @@ class TestDatabricksHook:
         mock_requests.post.assert_called_once_with(
             start_cluster_endpoint(HOST),
             json={"cluster_id": CLUSTER_ID},
+            params=None,
+            auth=HTTPBasicAuth(LOGIN, PASSWORD),
+            headers=self.hook.user_agent_header,
+            timeout=self.hook.timeout_seconds,
+        )
+
+    @mock.patch("airflow.providers.databricks.hooks.databricks_base.requests")
+    def test_create_sql_warehouse(self, mock_requests):
+        mock_requests.codes.ok = 200
+        mock_requests.post.return_value.json.return_value = {"id": WAREHOUSE_ID}
+        status_code_mock = mock.PropertyMock(return_value=200)
+        type(mock_requests.post.return_value).status_code = status_code_mock
+
+        result = self.hook.create_sql_warehouse({"name": "warehouse", "cluster_size": "2X-Small"})
+
+        assert result == WAREHOUSE_ID
+        mock_requests.post.assert_called_once_with(
+            create_sql_warehouse_endpoint(HOST),
+            json={"name": "warehouse", "cluster_size": "2X-Small"},
+            params=None,
+            auth=HTTPBasicAuth(LOGIN, PASSWORD),
+            headers=self.hook.user_agent_header,
+            timeout=self.hook.timeout_seconds,
+        )
+
+    @mock.patch("airflow.providers.databricks.hooks.databricks_base.requests")
+    def test_start_sql_warehouse(self, mock_requests):
+        mock_requests.codes.ok = 200
+        mock_requests.post.return_value.json.return_value = {}
+        status_code_mock = mock.PropertyMock(return_value=200)
+        type(mock_requests.post.return_value).status_code = status_code_mock
+
+        self.hook.start_sql_warehouse(WAREHOUSE_ID)
+
+        mock_requests.post.assert_called_once_with(
+            start_sql_warehouse_endpoint(HOST, WAREHOUSE_ID),
+            json=None,
+            params=None,
+            auth=HTTPBasicAuth(LOGIN, PASSWORD),
+            headers=self.hook.user_agent_header,
+            timeout=self.hook.timeout_seconds,
+        )
+
+    @mock.patch("airflow.providers.databricks.hooks.databricks_base.requests")
+    def test_stop_sql_warehouse(self, mock_requests):
+        mock_requests.codes.ok = 200
+        mock_requests.post.return_value.json.return_value = {}
+        status_code_mock = mock.PropertyMock(return_value=200)
+        type(mock_requests.post.return_value).status_code = status_code_mock
+
+        self.hook.stop_sql_warehouse(WAREHOUSE_ID)
+
+        mock_requests.post.assert_called_once_with(
+            stop_sql_warehouse_endpoint(HOST, WAREHOUSE_ID),
+            json=None,
+            params=None,
+            auth=HTTPBasicAuth(LOGIN, PASSWORD),
+            headers=self.hook.user_agent_header,
+            timeout=self.hook.timeout_seconds,
+        )
+
+    @mock.patch("airflow.providers.databricks.hooks.databricks_base.requests")
+    def test_delete_sql_warehouse(self, mock_requests):
+        mock_requests.codes.ok = 200
+        mock_requests.delete.return_value.json.return_value = {}
+        status_code_mock = mock.PropertyMock(return_value=200)
+        type(mock_requests.delete.return_value).status_code = status_code_mock
+
+        self.hook.delete_sql_warehouse(WAREHOUSE_ID)
+
+        mock_requests.delete.assert_called_once_with(
+            delete_sql_warehouse_endpoint(HOST, WAREHOUSE_ID),
+            json=None,
             params=None,
             auth=HTTPBasicAuth(LOGIN, PASSWORD),
             headers=self.hook.user_agent_header,
