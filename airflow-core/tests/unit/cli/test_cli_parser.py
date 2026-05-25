@@ -47,18 +47,24 @@ from tests_common.test_utils.config import conf_vars
 
 
 def _build_executor_test_cases() -> list[tuple[str, list[str]]]:
+    def _has_provider_module(module_name: str) -> bool:
+        try:
+            return importlib.util.find_spec(module_name) is not None
+        except ModuleNotFoundError:
+            return False
+
     test_cases: list[tuple[str, list[str]]] = [
         ("LocalExecutor", []),
         ("custom_executor.CustomLocalExecutor", []),
     ]
-    if importlib.util.find_spec("airflow.providers.celery.executors.celery_executor"):
+    if _has_provider_module("airflow.providers.celery.executors.celery_executor"):
         test_cases.extend(
             [
                 ("CeleryExecutor", ["celery"]),
                 ("custom_executor.CustomCeleryExecutor", ["celery"]),
             ]
         )
-    if importlib.util.find_spec("airflow.providers.cncf.kubernetes.executors.kubernetes_executor"):
+    if _has_provider_module("airflow.providers.cncf.kubernetes.executors.kubernetes_executor"):
         test_cases.extend(
             [
                 ("KubernetesExecutor", ["kubernetes"]),

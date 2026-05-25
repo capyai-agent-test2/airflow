@@ -66,7 +66,7 @@ class TestVersionedDagBundle(BaseDagBundle):
         self.path.mkdir(parents=True, exist_ok=True)
 
     def view_url_template(self) -> str:
-        return "http://test_host.github.com/{version}/{subdir}"
+        return "http://test_host.github.com/tree/{version}/{subdir}"
 
 
 def get_api_path(request):
