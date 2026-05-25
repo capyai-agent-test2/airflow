@@ -1625,6 +1625,12 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         """
         if not jinja_env:
             jinja_env = self.get_template_env()
+        if self.params:
+            rendered_task_params = self.render_template(self.params.dump(), context, jinja_env)
+            context["params"] = {**context["params"], **rendered_task_params}
+            rendered_task_params = self.render_template(rendered_task_params, context, jinja_env)
+            self.params.update(rendered_task_params)
+            context["params"] = {**context["params"], **rendered_task_params}
         self._do_render_template_fields(self, self.template_fields, context, jinja_env, set())
 
     def pre_execute(self, context: Any):
