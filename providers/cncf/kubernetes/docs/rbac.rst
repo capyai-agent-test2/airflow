@@ -80,9 +80,9 @@ Executors
      - Verbs
      - Notes
    * - ``KubernetesExecutor``
-     - ``pods``, ``pods/log``, ``events``
+     - ``pods``, ``pods/log``
      - ``create``, ``get``, ``list``, ``watch``, ``patch``, ``delete``
-     - Matches the Helm chart's pod launcher role used by the scheduler.
+     - Matches the executor code path. The Helm chart's pod launcher role also includes ``events`` for broader pod-launching workflows.
    * - ``LocalKubernetesExecutor``
      - Same resources as ``KubernetesExecutor``
      - Same verbs as ``KubernetesExecutor``
