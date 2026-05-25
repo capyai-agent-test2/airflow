@@ -128,8 +128,11 @@ with open(sys.argv[3], "r") as file:
     virtualenv_string_args = list(map(lambda x: x.strip(), list(file)))
 {% endif %}
 
-with open(sys.argv[5], "rb") as file:
-    virtualenv_context = {{ pickling_library }}.load(file)
+if len(sys.argv) > 5:
+    with open(sys.argv[5], "rb") as file:
+        virtualenv_context = {{ pickling_library }}.load(file)
+else:
+    virtualenv_context = {}
 
 try:
     from airflow.sdk.execution_time.context import set_current_context

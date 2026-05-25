@@ -23,7 +23,12 @@ from unittest import mock
 
 import pytest
 
-from airflow.providers.standard.utils.python_virtualenv import _generate_pip_conf, _use_uv, prepare_virtualenv
+from airflow.providers.standard.utils.python_virtualenv import (
+    _generate_pip_conf,
+    _use_uv,
+    prepare_virtualenv,
+    write_python_script,
+)
 
 from tests_common.test_utils.config import conf_vars
 from tests_common.test_utils.version_compat import remove_task_decorator
@@ -248,6 +253,30 @@ class TestPrepareVirtualenv:
         assert pip_cmd == ["uv", "pip", "install", "--python", f"{venv_dir}/bin/python", "somepackage"]
         assert "env" in pip_kwargs
         assert pip_kwargs["env"]["UV_DEFAULT_INDEX"] == "https://private.package.index"
+
+    def test_python_script_backwards_compatible_without_context_arg(self, tmp_path: Path):
+        script_path = tmp_path / "script.py"
+
+        write_python_script(
+            jinja_context={
+                "op_args": [],
+                "op_kwargs": {},
+                "pickling_library": "pickle",
+                "python_callable": "f",
+                "python_callable_source": dedent(
+                    """
+                    def f():
+                        return "ok"
+                    """
+                ),
+                "expect_airflow": False,
+                "string_args_global": False,
+            },
+            filename=str(script_path),
+        )
+        rendered_script = script_path.read_text()
+        assert "if len(sys.argv) > 5:" in rendered_script
+        assert "virtualenv_context = {}" in rendered_script
 
     @pytest.mark.parametrize(
         ("decorators", "expected_decorators"),
