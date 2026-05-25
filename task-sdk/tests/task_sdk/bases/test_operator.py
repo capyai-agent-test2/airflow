@@ -765,12 +765,20 @@ class TestBaseOperator:
     def test_render_template_fields_resolves_deep_task_param_chains(self):
         task = MockOperator(
             task_id="op1",
-            arg1="{{ params.d }}",
+            arg1="{{ params.l }}",
             params={
                 "a": "{{ ds }}",
                 "b": "{{ params.a }}",
                 "c": "{{ params.b }}",
                 "d": "{{ params.c }}",
+                "e": "{{ params.d }}",
+                "f": "{{ params.e }}",
+                "g": "{{ params.f }}",
+                "h": "{{ params.g }}",
+                "i": "{{ params.h }}",
+                "j": "{{ params.i }}",
+                "k": "{{ params.j }}",
+                "l": "{{ params.k }}",
             },
         )
 
@@ -778,8 +786,8 @@ class TestBaseOperator:
         task.render_template_fields(context=context)
 
         assert task.arg1 == "2024-12-01"
-        assert task.params["d"] == "2024-12-01"
-        assert context["params"]["d"] == "2024-12-01"
+        assert task.params["l"] == "2024-12-01"
+        assert context["params"]["l"] == "2024-12-01"
 
     @mock.patch("airflow.sdk.configuration.conf.getboolean", return_value=True)
     def test_render_template_fields_preserves_conf_literal_matching_raw_template(self, _mock_getboolean):

@@ -23,6 +23,7 @@ import collections.abc
 import contextlib
 import copy
 import inspect
+import json
 import sys
 import warnings
 from asyncio import AbstractEventLoop
@@ -1649,8 +1650,13 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
             conf_override_keys = set(dag_run_conf)
 
         rendered_task_params = raw_task_params
-        max_render_passes = 10
-        for _ in range(max_render_passes):
+        seen_rendered_task_params: set[str] = set()
+        while True:
+            rendered_task_params_key = json.dumps(rendered_task_params, sort_keys=True)
+            if rendered_task_params_key in seen_rendered_task_params:
+                break
+            seen_rendered_task_params.add(rendered_task_params_key)
+
             rendered_context_params = dict(current_context_params)
             for key, value in rendered_task_params.items():
                 if key not in conf_override_keys:
