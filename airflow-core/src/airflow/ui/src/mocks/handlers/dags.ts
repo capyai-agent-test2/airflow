@@ -71,7 +71,7 @@ const failedDag = {
       logical_date: "2025-01-13T04:33:58.396323Z",
       run_id: "manual__2025-01-13T04:33:58.387988+00:00",
       start_date: "2025-01-13T04:33:58.496197Z",
-      state: "success",
+      state: "failed",
     },
   ],
   max_active_runs: 16,
