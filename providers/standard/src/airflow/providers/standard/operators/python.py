@@ -482,6 +482,9 @@ class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):
         # The following should be removed when Airflow 2 support is dropped.
         "triggering_dataset_events",
     }
+    BASE_VIRTUALENV_CONTEXT_KEYS = (
+        BASE_SERIALIZABLE_CONTEXT_KEYS | PENDULUM_SERIALIZABLE_CONTEXT_KEYS | {"params"}
+    )
 
     def __init__(
         self,
@@ -546,6 +549,7 @@ class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):
         serializable_keys = set(self._iter_serializable_context_keys())
         new = {k: v for k, v in context.items() if k in serializable_keys}
         serializable_context = cast("Context", new)
+        self._serializable_context = serializable_context
         # Store bundle_path for subprocess execution
         self._bundle_path = self._get_bundle_path_from_context(context)
         return super().execute(context=serializable_context)
@@ -573,19 +577,9 @@ class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):
         return textwrap.dedent(inspect.getsource(self.python_callable))
 
     def _write_args(self, file: Path):
-        def resolve_proxies(obj):
-            """Recursively replaces lazy_object_proxy.Proxy instances with their resolved values."""
-            if isinstance(obj, lazy_object_proxy.Proxy):
-                return obj.__wrapped__  # force evaluation
-            if isinstance(obj, dict):
-                return {k: resolve_proxies(v) for k, v in obj.items()}
-            if isinstance(obj, list):
-                return [resolve_proxies(v) for v in obj]
-            return obj
-
         if self.op_args or self.op_kwargs:
             self.log.info("Use %r as serializer.", self.serializer)
-            resolved_kwargs = resolve_proxies(self.op_kwargs)
+            resolved_kwargs = self._resolve_proxies(self.op_kwargs)
             try:
                 file.write_bytes(
                     self.pickling_library.dumps({"args": self.op_args, "kwargs": resolved_kwargs})
@@ -609,6 +603,30 @@ class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):
                         f"(e.g. '{{{{ ti.task_id }}}}', '{{{{ ti.run_id }}}}')."
                     )
                 raise
+
+    def _write_airflow_context(self, file: Path) -> None:
+        serializable_context = {}
+        for key, value in self._resolve_proxies(self._serializable_context).items():
+            if key not in self.BASE_VIRTUALENV_CONTEXT_KEYS:
+                continue
+            try:
+                self.pickling_library.dumps(value)
+            except Exception:
+                self.log.debug("Skipping context key %r for virtualenv current context serialization", key)
+            else:
+                serializable_context[key] = value
+        file.write_bytes(self.pickling_library.dumps(serializable_context))
+
+    @staticmethod
+    def _resolve_proxies(obj):
+        """Recursively replaces lazy_object_proxy.Proxy instances with their resolved values."""
+        if isinstance(obj, lazy_object_proxy.Proxy):
+            return obj.__wrapped__
+        if isinstance(obj, dict):
+            return {k: _BasePythonVirtualenvOperator._resolve_proxies(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_BasePythonVirtualenvOperator._resolve_proxies(v) for v in obj]
+        return obj
 
     def _write_string_args(self, file: Path):
         file.write_text("\n".join(map(str, self.string_args)))
@@ -641,6 +659,7 @@ class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):
 
             self._write_args(input_path)
             self._write_string_args(string_args_path)
+            self._write_airflow_context(airflow_context_path)
 
             jinja_context = {
                 "op_args": self.op_args,
@@ -1097,6 +1116,13 @@ class PythonVirtualenvOperator(_BasePythonVirtualenvOperator):
             self.op_args = _pendulum_to_native_datetime(self.op_args)
             self.op_kwargs = _pendulum_to_native_datetime(self.op_kwargs)
         super()._write_args(file)
+
+    def _write_airflow_context(self, file: Path) -> None:
+        if self._is_pendulum_version_mismatch():
+            self._serializable_context = cast(
+                "Context", _pendulum_to_native_datetime(self._serializable_context)
+            )
+        super()._write_airflow_context(file)
 
     def _get_additional_jinja_context(self) -> dict:
         return {"pendulum_version_mismatch": self._is_pendulum_version_mismatch()}
