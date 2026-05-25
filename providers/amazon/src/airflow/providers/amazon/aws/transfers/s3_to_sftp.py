@@ -119,11 +119,15 @@ class S3ToSFTPOperator(BaseOperator):
                 files = s3_hook.list_keys(bucket_name=self.s3_bucket, prefix=self.s3_key) or []
                 if self.s3_filenames != "*":
                     s3_filename: str = self.s3_filenames
-                    files = [file for file in files if s3_filename in file.removeprefix(self.s3_key)]
+                    files = [
+                        file
+                        for file in files
+                        if file.removeprefix(self.s3_key).lstrip("/").startswith(s3_filename)
+                    ]
 
                 for file in files:
                     self.log.info("Moving file %s", file)
-                    filename = file.removeprefix(self.s3_key)
+                    filename = file.removeprefix(self.s3_key).lstrip("/")
                     if self.sftp_filenames and isinstance(self.sftp_filenames, str):
                         filename = filename.replace(self.s3_filenames, self.sftp_filenames)
 

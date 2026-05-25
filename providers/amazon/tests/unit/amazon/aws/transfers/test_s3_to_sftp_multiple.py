@@ -101,3 +101,40 @@ class TestS3ToSFTPOperatorMultipleFiles:
                 sftp_path="/tmp/renamed_b.csv",
             ),
         ]
+
+    @mock.patch.object(S3ToSFTPOperator, "_copy_single_file")
+    @mock.patch("airflow.providers.amazon.aws.hooks.s3.S3Hook.list_keys")
+    @mock.patch("airflow.providers.amazon.aws.hooks.s3.S3Hook.get_conn")
+    @mock.patch("airflow.providers.ssh.hooks.ssh.SSHHook.get_conn")
+    def test_execute_multiple_files_with_prefix_filters_prefix_only_and_keeps_destination_path(
+        self,
+        mock_ssh_hook_get_conn,
+        mock_s3_hook_get_conn,
+        mock_s3_hook_list_keys,
+        mock_copy_single_file,
+    ):
+        mock_s3_hook_list_keys.return_value = [
+            "test/file_a.csv",
+            "test/subdir/file_b.csv",
+            "test/notfile.csv",
+        ]
+        operator = S3ToSFTPOperator(
+            task_id=TASK_ID,
+            s3_bucket=BUCKET,
+            s3_key="test",
+            s3_filenames="file_",
+            sftp_path=SFTP_PATH,
+        )
+
+        operator.execute(None)
+
+        s3_client = mock_s3_hook_get_conn.return_value
+        sftp_client = mock_ssh_hook_get_conn.return_value.open_sftp.return_value
+        assert mock_copy_single_file.call_args_list == [
+            mock.call(
+                s3_client=s3_client,
+                sftp_client=sftp_client,
+                s3_key="test/file_a.csv",
+                sftp_path="/tmp/file_a.csv",
+            )
+        ]
