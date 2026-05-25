@@ -448,6 +448,22 @@ class TestDagFileProcessorManager:
 
         assert manager.has_missing_import_error_filelocs("testing", tmp_path) is True
 
+    @pytest.mark.usefixtures("clear_parse_import_errors")
+    def test_has_missing_import_error_filelocs_detects_null_filename(self, session, tmp_path):
+        session.add(
+            ParseImportError(
+                filename=None,
+                bundle_name="testing",
+                timestamp=timezone.utcnow(),
+                stacktrace="missing filename",
+            )
+        )
+        session.flush()
+
+        manager = DagFileProcessorManager(max_runs=1)
+
+        assert manager.has_missing_import_error_filelocs("testing", tmp_path) is True
+
     def test_refresh_dag_bundles_calls_legacy_deactivate_deleted_dags_override(
         self, tmp_path, configure_dag_bundles
     ):

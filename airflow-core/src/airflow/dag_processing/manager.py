@@ -959,6 +959,8 @@ class DagFileProcessorManager(LoggingMixin):
             select(ParseImportError.filename).where(ParseImportError.bundle_name == bundle_name).distinct()
         )
         for filename in filenames:
+            if filename is None:
+                return True
             file_path = Path(filename)
             absolute_path = bundle_path / file_path
             if absolute_path.exists():
