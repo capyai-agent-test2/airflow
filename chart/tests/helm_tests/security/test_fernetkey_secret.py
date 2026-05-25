@@ -26,6 +26,22 @@ from cryptography.fernet import Fernet
 class TestFernetKeySecret:
     """Tests fernet key secret."""
 
+    def test_should_support_rotation_value_on_upgrade(self):
+        new_fernet_key = Fernet.generate_key().decode()
+        old_fernet_key = Fernet.generate_key().decode()
+        fernet_key_provided = f"{new_fernet_key},{old_fernet_key}"
+        docs = render_chart(
+            values={"fernetKey": fernet_key_provided},
+            show_only=["templates/secrets/fernetkey-secret.yaml"],
+        )[0]
+
+        assert jmespath.search('metadata.annotations."helm.sh/hook"', docs) == "pre-install,pre-upgrade"
+
+        fernet_key_b64 = jmespath.search('data."fernet-key"', docs).strip('"')
+        fernet_key = base64.b64decode(fernet_key_b64).decode()
+
+        assert fernet_key == fernet_key_provided
+
     def test_should_add_annotations_to_fernetkey_secret(self):
         # Create a Fernet key
         fernet_key_provided = Fernet.generate_key().decode()

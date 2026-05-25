@@ -526,7 +526,9 @@ data:
   brokerUrlSecretAnnotations: {}
 
 # Fernet key settings
-# Note: `fernetKey` can only be set during 'helm install', not 'helm upgrade' command
+# Set this explicitly to keep the same key across reinstalls or upgrades.
+# For key rotation, first set it to "new-key,old-key", run `airflow rotate-fernet-key`,
+# then update it again to just "new-key".
 fernetKey: ~
 
 # If set, the secret must contain a 'fernet-key' key with a base64-encoded key value
