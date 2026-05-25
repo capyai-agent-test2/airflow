@@ -17,6 +17,9 @@
 # under the License.
 from __future__ import annotations
 
+import pickle
+import subprocess
+import sys
 from pathlib import Path
 from textwrap import dedent
 from unittest import mock
@@ -255,7 +258,20 @@ class TestPrepareVirtualenv:
         assert pip_kwargs["env"]["UV_DEFAULT_INDEX"] == "https://private.package.index"
 
     def test_python_script_backwards_compatible_without_context_arg(self, tmp_path: Path):
+        fake_airflow = tmp_path / "fake_airflow"
+        for package_dir in [
+            fake_airflow / "airflow",
+            fake_airflow / "airflow" / "sdk",
+            fake_airflow / "airflow" / "sdk" / "execution_time",
+        ]:
+            package_dir.mkdir(parents=True, exist_ok=True)
+            (package_dir / "__init__.py").write_text("")
+        (fake_airflow / "airflow" / "sdk" / "execution_time" / "task_runner.py").write_text("")
+
+        input_path = tmp_path / "script.in"
+        output_path = tmp_path / "script.out"
         script_path = tmp_path / "script.py"
+        termination_log_path = tmp_path / "termination.log"
 
         write_python_script(
             jinja_context={
@@ -274,9 +290,21 @@ class TestPrepareVirtualenv:
             },
             filename=str(script_path),
         )
-        rendered_script = script_path.read_text()
-        assert "if len(sys.argv) > 5:" in rendered_script
-        assert "virtualenv_context = {}" in rendered_script
+
+        subprocess.run(
+            [
+                sys.executable,
+                str(script_path),
+                str(input_path),
+                str(output_path),
+                "none",
+                str(termination_log_path),
+            ],
+            check=True,
+            env={"PYTHONPATH": str(fake_airflow)},
+        )
+
+        assert pickle.loads(output_path.read_bytes()) == "ok"
 
     @pytest.mark.parametrize(
         ("decorators", "expected_decorators"),
