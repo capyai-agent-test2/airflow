@@ -20,7 +20,7 @@
 Redis Connection
 ================
 
-The Redis connection type enables connection to Redis cluster.
+The Redis connection type enables connections to a single Redis instance and to Redis cluster deployments.
 
 Default Connection IDs
 ----------------------
@@ -31,22 +31,30 @@ parameter as ``redis_default`` by default.
 Configuring the Connection
 --------------------------
 Host
-    The host of the Redis cluster.
+    The host of the Redis instance, or a cluster node that can be used for discovery.
 
 Port
-    Specify the port to use for connecting the Redis cluster (Default is ``6379``).
+    Specify the port to use for connecting to Redis (Default is ``6379``).
 
 Login
-    The user that will be used for authentication against the Redis cluster (only applicable in Redis 6.0 and above).
+    The user that will be used for authentication against Redis (only applicable in Redis 6.0 and above).
 
 Password
-    The password of the user that will be used for authentication against the Redis cluster.
+    The password of the user that will be used for authentication against Redis.
 
 DB
-    The DB number to use in the Redis cluster (Default is ``0``).
+    The DB number to use for a single Redis instance (Default is ``0``). Redis cluster mode does not support selecting a DB.
+
+Cluster mode
+    Set to ``True`` to create a ``RedisCluster`` client instead of a single-node ``Redis`` client (Default is ``False``).
+
+Startup nodes
+    Optional JSON list of cluster nodes used for discovery, for example
+    ``[{"host": "redis-1", "port": 6379}, {"host": "redis-2", "port": 6379}]``.
+    If this field is empty, the values from the Host and Port fields are used as the initial cluster node.
 
 Enable SSL
-    Whether to enable SSL connection to the Redis cluster (Default is ``False``).
+    Whether to enable an SSL connection to Redis (Default is ``False``).
 
 SSL verify mode
     Whether to try to verify other peers' certificates and how to behave if verification fails.

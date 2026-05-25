@@ -77,6 +77,62 @@ class TestRedisHook:
             ssl_check_hostname=connection.extra_dejson["ssl_check_hostname"],
         )
 
+    @mock.patch("airflow.providers.redis.hooks.redis.RedisCluster")
+    @mock.patch(
+        "airflow.providers.redis.hooks.redis.RedisHook.get_connection",
+    )
+    def test_get_conn_with_cluster_mode(self, mock_get_connection, mock_redis_cluster):
+        connection = Connection(
+            login="user",
+            password="password",
+            host="remote_host",
+            port=1234,
+        )
+        connection.set_extra(
+            """{
+                "cluster": true,
+                "ssl": true
+            }"""
+        )
+        mock_get_connection.return_value = connection
+        hook = RedisHook()
+
+        hook.get_conn()
+        mock_redis_cluster.assert_called_once_with(
+            host=connection.host,
+            port=connection.port,
+            username=connection.login,
+            password=connection.password,
+            ssl=connection.extra_dejson["ssl"],
+        )
+
+    @mock.patch("airflow.providers.redis.hooks.redis.RedisCluster")
+    @mock.patch(
+        "airflow.providers.redis.hooks.redis.RedisHook.get_connection",
+    )
+    def test_get_conn_with_cluster_startup_nodes(self, mock_get_connection, mock_redis_cluster):
+        connection = Connection(
+            login="user",
+            password="password",
+        )
+        connection.set_extra(
+            """{
+                "cluster": true,
+                "startup_nodes": [
+                    {"host": "redis-1", "port": 6379},
+                    {"host": "redis-2", "port": 6380}
+                ]
+            }"""
+        )
+        mock_get_connection.return_value = connection
+        hook = RedisHook()
+
+        hook.get_conn()
+        startup_nodes = mock_redis_cluster.call_args.kwargs["startup_nodes"]
+        assert [(node.host, node.port) for node in startup_nodes] == [("redis-1", 6379), ("redis-2", 6380)]
+        assert mock_redis_cluster.call_args.kwargs["username"] == connection.login
+        assert mock_redis_cluster.call_args.kwargs["password"] == connection.password
+
     @pytest.mark.db_test
     def test_get_conn_password_stays_none(self):
         hook = RedisHook(redis_conn_id="redis_default")

@@ -114,6 +114,20 @@ connection-types:
             - integer
             - 'null'
           default: 0
+      cluster:
+        label: Cluster mode
+        schema:
+          type:
+            - boolean
+            - 'null'
+          default: false
+      startup_nodes:
+        label: Startup nodes
+        description: 'Optional JSON list of cluster nodes, for example: [{"host": "redis-1", "port": 6379}]'
+        schema:
+          type:
+            - string
+            - 'null'
       ssl:
         label: Enable SSL
         schema:

@@ -19,9 +19,11 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from redis import Redis
+from redis.cluster import ClusterNode, RedisCluster
 
 from airflow.providers.common.compat.sdk import BaseHook
 
@@ -36,6 +38,9 @@ class RedisHook(BaseHook):
     You can set your db in the extra field of your connection as ``{"db": 3}``.
     Also you can set ssl parameters as:
     ``{"ssl": true, "ssl_cert_reqs": "require", "ssl_certfile": "/path/to/cert.pem", etc}``.
+    To connect to a Redis cluster, set ``{"cluster": true}`` and optionally provide
+    ``startup_nodes`` as JSON, for example
+    ``{"cluster": true, "startup_nodes": [{"host": "redis-1", "port": 6379}]}``.
     """
 
     conn_name_attr = "redis_conn_id"
@@ -59,6 +64,14 @@ class RedisHook(BaseHook):
         self.password = kwargs.get("password", None)
         self.db = kwargs.get("db", None)
 
+    @staticmethod
+    def _parse_startup_nodes(startup_nodes: str | list[dict[str, Any]] | None) -> list[ClusterNode] | None:
+        if not startup_nodes:
+            return None
+        if isinstance(startup_nodes, str):
+            startup_nodes = json.loads(startup_nodes)
+        return [ClusterNode(node["host"], int(node["port"])) for node in startup_nodes]
+
     def get_conn(self):
         """Return a Redis connection."""
         conn = self.get_connection(self.redis_conn_id)
@@ -67,6 +80,8 @@ class RedisHook(BaseHook):
         self.username = conn.login
         self.password = None if str(conn.password).lower() in ["none", "false", ""] else conn.password
         self.db = conn.extra_dejson.get("db")
+        cluster = conn.extra_dejson.get("cluster", False)
+        startup_nodes = self._parse_startup_nodes(conn.extra_dejson.get("startup_nodes"))
 
         # check for ssl parameters in conn.extra
         ssl_arg_names = [
@@ -87,14 +102,23 @@ class RedisHook(BaseHook):
                 self.port,
                 self.db,
             )
-            self.redis = Redis(
-                host=self.host,
-                port=self.port,
-                username=self.username,
-                password=self.password,
-                db=self.db,
+            connection_kwargs = {
+                "username": self.username,
+                "password": self.password,
                 **ssl_args,
-            )
+            }
+            if cluster or startup_nodes:
+                if startup_nodes:
+                    self.redis = RedisCluster(startup_nodes=startup_nodes, **connection_kwargs)
+                else:
+                    self.redis = RedisCluster(host=self.host, port=self.port, **connection_kwargs)
+            else:
+                self.redis = Redis(
+                    host=self.host,
+                    port=self.port,
+                    db=self.db,
+                    **connection_kwargs,
+                )
 
         return self.redis
 
@@ -116,6 +140,14 @@ class RedisHook(BaseHook):
 
         return {
             "db": IntegerField(lazy_gettext("DB"), widget=BS3TextFieldWidget(), default=0),
+            "cluster": BooleanField(lazy_gettext("Cluster mode"), default=False),
+            "startup_nodes": StringField(
+                lazy_gettext("Startup nodes"),
+                widget=BS3TextFieldWidget(),
+                validators=[Optional()],
+                description='Optional JSON list of cluster nodes, for example: [{"host": "redis-1", "port": 6379}]',
+                default=None,
+            ),
             "ssl": BooleanField(lazy_gettext("Enable SSL"), default=False),
             "ssl_cert_reqs": StringField(
                 lazy_gettext("SSL verify mode"),
