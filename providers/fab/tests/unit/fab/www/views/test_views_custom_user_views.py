@@ -34,7 +34,7 @@ from unit.fab.auth_manager.test_utils import (
     delete_role,
     delete_user,
 )
-from unit.fab.utils import check_content_in_response, client_with_login
+from unit.fab.utils import check_content_in_response, check_content_not_in_response, client_with_login
 
 pytestmark = pytest.mark.db_test
 
@@ -228,6 +228,50 @@ class TestSecurity:
 
         assert response.status_code == 200
         check_content_in_response("This field is required", response)
+
+    @pytest.mark.parametrize(
+        ("permissions_to_grant", "expected_content", "unexpected_content"),
+        [
+            (
+                [
+                    (permissions.ACTION_CAN_READ, permissions.RESOURCE_WEBSITE),
+                    (permissions.ACTION_CAN_EDIT, permissions.RESOURCE_USER),
+                    (permissions.ACTION_CAN_READ, permissions.RESOURCE_PASSWORD),
+                ],
+                ["/users/action/resetpasswords/", "Reset Password"],
+                [],
+            ),
+            (
+                [
+                    (permissions.ACTION_CAN_READ, permissions.RESOURCE_WEBSITE),
+                    (permissions.ACTION_CAN_EDIT, permissions.RESOURCE_USER),
+                ],
+                [],
+                ["/users/action/resetpasswords/", "Reset Password"],
+            ),
+        ],
+    )
+    def test_user_edit_view_reset_password_button_visibility(
+        self, app, permissions_to_grant, expected_content, unexpected_content
+    ):
+        user_with_access = create_user(
+            app,
+            username="has_access",
+            role_name="role_has_access",
+            permissions=permissions_to_grant,
+        )
+
+        client = client_with_login(
+            app,
+            username="has_access",
+            password="has_access",
+        )
+        response = client.get(f"/users/edit/{user_with_access.id}", follow_redirects=True)
+
+        if expected_content:
+            check_content_in_response(expected_content, response)
+        if unexpected_content:
+            check_content_not_in_response(unexpected_content, response)
 
 
 class TestResetUserSessions:
