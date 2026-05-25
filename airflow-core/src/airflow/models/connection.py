@@ -449,7 +449,12 @@ class Connection(Base, LoggingMixin):
         """Calls out get_hook method and executes test_connection method on that."""
         status, message = False, ""
         try:
-            hook = self.get_hook()
+            try:
+                hook = self.get_hook(hook_params={"connection": self})
+            except TypeError as exc:
+                if "unexpected keyword argument 'connection'" not in str(exc):
+                    raise
+                hook = self.get_hook()
             if getattr(hook, "test_connection", False):
                 status, message = hook.test_connection()
             else:
