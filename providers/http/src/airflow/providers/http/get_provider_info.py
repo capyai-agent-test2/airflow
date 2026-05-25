@@ -65,8 +65,21 @@ def get_provider_info():
                 "hook-class-name": "airflow.providers.http.hooks.http.HttpHook",
                 "hook-name": "HTTP",
                 "connection-type": "http",
-                "ui-field-behaviour": {"hidden-fields": [], "relabeling": {}, "placeholders": {}},
-                "conn-fields": {},
+                "ui-field-behaviour": {
+                    "hidden-fields": [],
+                    "relabeling": {},
+                    "placeholders": {
+                        "host": "_service._tcp.example.com",
+                        "port": "Leave empty for SRV connections",
+                    },
+                },
+                "conn-fields": {
+                    "srv": {
+                        "label": "SRV Connection",
+                        "schema": {"type": ["boolean", "null"]},
+                        "description": "Resolve the host as a DNS SRV record and use the returned target host and port.",
+                    }
+                },
             }
         ],
     }

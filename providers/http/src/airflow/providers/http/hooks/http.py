@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import copy
+import random
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, cast
@@ -118,10 +119,21 @@ def _resolve_srv_record(host: str) -> tuple[str, int]:
     except dns.exception.DNSException as e:
         raise HttpSRVResolutionException(f"Unable to resolve SRV record for {host}") from e
 
-    selected_record = min(
-        records,
-        key=lambda record: (record.priority, -record.weight, record.target.to_text(omit_final_dot=True)),
-    )
+    sorted_records = sorted(records, key=lambda record: record.priority)
+    best_priority = sorted_records[0].priority
+    priority_records = [record for record in sorted_records if record.priority == best_priority]
+    total_weight = sum(record.weight for record in priority_records)
+    if total_weight <= 0:
+        selected_record = random.choice(priority_records)
+    else:
+        selection_point = random.uniform(0, total_weight)
+        cumulative_weight = 0
+        selected_record = priority_records[-1]
+        for record in priority_records:
+            cumulative_weight += record.weight
+            if selection_point <= cumulative_weight:
+                selected_record = record
+                break
     return selected_record.target.to_text(omit_final_dot=True), int(selected_record.port)
 
 
@@ -170,33 +182,6 @@ class HttpHook(BaseHook):
     hook_name = "HTTP"
     default_host = ""
     default_headers: dict[str, str] = {}
-
-    @classmethod
-    def get_connection_form_widgets(cls) -> dict[str, Any]:
-        """Return connection widgets to add to connection form."""
-        from flask_babel import lazy_gettext
-        from wtforms import BooleanField
-
-        return {
-            "srv": BooleanField(
-                label=lazy_gettext("SRV Connection"),
-                description=lazy_gettext(
-                    "Resolve the host as a DNS SRV record and use the returned target host and port."
-                ),
-            )
-        }
-
-    @classmethod
-    def get_ui_field_behaviour(cls) -> dict[str, Any]:
-        """Return custom field behaviour."""
-        return {
-            "hidden_fields": [],
-            "relabeling": {},
-            "placeholders": {
-                "host": "_service._tcp.example.com",
-                "port": "Leave empty for SRV connections",
-            },
-        }
 
     def __init__(
         self,
