@@ -220,11 +220,17 @@ class PythonOperator(BaseAsyncOperator):
                 "Running async python_callables in a new interpreter is not supported by PythonOperator."
             )
         self._bundle_path = self._get_bundle_path_from_context(context)
+        context_keys_before_merge = set(context)
+        explicit_op_kwargs = set(self.op_kwargs)
         if self.is_async:
             return BaseAsyncOperator.execute(self, context)
 
         context_merge(context, self.op_kwargs, templates_dict=self.templates_dict)
-        self.op_kwargs = self.determine_kwargs(context)
+        self.op_kwargs = self.determine_kwargs(
+            context,
+            context_keys_before_merge=context_keys_before_merge,
+            explicit_op_kwargs=explicit_op_kwargs,
+        )
 
         # This needs to be lazy because subclasses may implement execute_callable
         # by running a separate process that can't use the eager result.
@@ -249,8 +255,22 @@ class PythonOperator(BaseAsyncOperator):
 
         return return_value
 
-    def determine_kwargs(self, context: Mapping[str, Any]) -> Mapping[str, Any]:
-        return KeywordParameters.determine(self.python_callable, self.op_args, context).unpacking()
+    def determine_kwargs(
+        self,
+        context: Mapping[str, Any],
+        *,
+        context_keys_before_merge: set[str] | None = None,
+        explicit_op_kwargs: set[str] | None = None,
+    ) -> Mapping[str, Any]:
+        keyword_params = KeywordParameters.determine(self.python_callable, self.op_args, context)
+        kwargs = keyword_params.unpacking()
+        if self._should_execute_in_subprocess() and self._callable_accepts_var_keyword():
+            return self._filter_serializable_context_kwargs(
+                kwargs,
+                context_keys_before_merge=context_keys_before_merge or set(),
+                explicit_op_kwargs=explicit_op_kwargs or set(),
+            )
+        return kwargs
 
     __prepare_execution: Callable[[], tuple[ExecutionCallableRunner, OutletEventAccessorsProtocol] | None]
 
@@ -313,6 +333,35 @@ class PythonOperator(BaseAsyncOperator):
         if self.execute_tasks_new_python_interpreter is not None:
             return self.execute_tasks_new_python_interpreter
         return conf.getboolean("core", "execute_tasks_new_python_interpreter", fallback=False)
+
+    def _callable_accepts_var_keyword(self) -> bool:
+        return any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in inspect.signature(self.python_callable).parameters.values()
+        )
+
+    def _filter_serializable_context_kwargs(
+        self,
+        kwargs: Mapping[str, Any],
+        *,
+        context_keys_before_merge: set[str],
+        explicit_op_kwargs: set[str],
+    ) -> Mapping[str, Any]:
+        filtered_kwargs: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            if key in explicit_op_kwargs or key not in context_keys_before_merge:
+                filtered_kwargs[key] = value
+                continue
+            try:
+                pickle.dumps(value)
+            except Exception:
+                self.log.debug(
+                    "Dropping non-serializable context key %r for subprocess execution in PythonOperator",
+                    key,
+                )
+                continue
+            filtered_kwargs[key] = value
+        return filtered_kwargs
 
     def _get_bundle_path_from_context(self, context: Context) -> str | None:
         if not AIRFLOW_V_3_0_PLUS:

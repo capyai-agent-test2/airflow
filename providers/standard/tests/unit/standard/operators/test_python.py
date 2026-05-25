@@ -254,6 +254,24 @@ class TestPythonOperator(BasePythonTest):
         op = PythonOperator(task_id=self.task_id, python_callable=f)
         assert op._should_execute_in_subprocess() is True
 
+    def test_execute_tasks_new_python_interpreter_filters_non_serializable_context_for_kwargs(self):
+        class NonSerializable:
+            def __reduce__(self):
+                raise TypeError("cannot pickle this")
+
+        def f(**kwargs):
+            return kwargs
+
+        op = PythonOperator(
+            task_id=self.task_id, python_callable=f, execute_tasks_new_python_interpreter=True
+        )
+        filtered_kwargs = op._filter_serializable_context_kwargs(
+            {"ti": "task-instance", "bad": NonSerializable(), "user_value": "kept"},
+            context_keys_before_merge={"ti", "bad"},
+            explicit_op_kwargs={"user_value"},
+        )
+        assert filtered_kwargs == {"ti": "task-instance", "user_value": "kept"}
+
     @pytest.mark.parametrize("not_callable", [{}, None])
     def test_python_operator_python_callable_is_callable(self, not_callable):
         """Tests that PythonOperator will only instantiate if the python_callable argument is callable."""
