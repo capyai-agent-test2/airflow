@@ -1651,7 +1651,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
 
         def _contains_unresolved_task_param_reference(value: Any) -> bool:
             if isinstance(value, str):
-                return "{{" in value and "params." in value
+                return "{{" in value and ("params." in value or "params[" in value)
             if isinstance(value, dict):
                 return any(
                     _contains_unresolved_task_param_reference(key)
