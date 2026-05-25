@@ -23,11 +23,10 @@ Running Airflow behind a reverse proxy
 Airflow can be set up behind a reverse proxy, with the ability to set its endpoint with great
 flexibility.
 
-Airflow does not support isolating browser sessions for multiple Airflow instances hosted on the
-same domain but under different URL prefixes, for example ``example.com/prod`` and
-``example.com/dev``. Browser cookies are scoped to the domain rather than the URL prefix, so those
-deployments can interfere with each other's UI navigation and redirects. If you need independent
-sessions for multiple Airflow instances, use separate domains or subdomains.
+Airflow does not support relying on different URL prefixes on the same domain to isolate browser
+sessions for multiple Airflow instances, for example ``example.com/prod`` and ``example.com/dev``.
+Those deployments can interfere with each other's UI navigation and redirects. If you need
+predictable session isolation for multiple Airflow instances, use separate domains or subdomains.
 
 For example, you can configure your reverse proxy to get:
 
