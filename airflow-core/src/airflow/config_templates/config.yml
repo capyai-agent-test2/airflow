@@ -1280,6 +1280,23 @@ metrics:
       type: integer
       example: ~
       default: "8889"
+    otel_path:
+      description: |
+        Specifies the HTTP path where Airflow sends OpenTelemetry metrics.
+      version_added: 3.2.0
+      version_deprecated: 3.2.0
+      deprecation_reason: |
+        According to the OpenTelemetry specification, configuration is expected to happen through
+        the standard OpenTelemetry environment variables rather than project-specific settings.
+
+        This option has been deprecated to ensure consistent behavior across different environments
+        and deployments that use OpenTelemetry.
+
+        OpenTelemetry should be configured exclusively using the standard OpenTelemetry environment variables
+        such as 'OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_EXPORTER_OTLP_PROTOCOL', 'OTEL_SERVICE_NAME', etc.
+      type: string
+      example: ~
+      default: "/v1/metrics"
     otel_prefix:
       description: |
         The prefix for the Airflow metrics.
