@@ -384,9 +384,9 @@ class DatabricksSqlWarehouseCreateOperator(BaseOperator):
 
     def execute(self, context: Context) -> str:
         if "name" not in self.json:
-            raise AirflowException("Missing required parameter: name")
+            raise ValueError("Missing required parameter: name")
         if "cluster_size" not in self.json:
-            raise AirflowException("Missing required parameter: cluster_size")
+            raise ValueError("Missing required parameter: cluster_size")
         return self._hook.create_sql_warehouse(self.json)
 
 

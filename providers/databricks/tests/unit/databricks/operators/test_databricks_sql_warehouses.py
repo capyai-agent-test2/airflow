@@ -20,7 +20,6 @@ from unittest import mock
 
 import pytest
 
-from airflow.providers.common.compat.sdk import AirflowException
 from airflow.providers.databricks.operators.databricks_sql import (
     DatabricksSqlWarehouseCreateOperator,
     DatabricksSqlWarehouseDeleteOperator,
@@ -82,12 +81,12 @@ def test_sql_warehouse_lifecycle_operators(db_mock_class, operator_class, hook_m
 def test_create_sql_warehouse_requires_name():
     op = DatabricksSqlWarehouseCreateOperator(task_id=TASK_ID, cluster_size="2X-Small")
 
-    with pytest.raises(AirflowException, match="Missing required parameter: name"):
+    with pytest.raises(ValueError, match="Missing required parameter: name"):
         op.execute(None)
 
 
 def test_create_sql_warehouse_requires_cluster_size():
     op = DatabricksSqlWarehouseCreateOperator(task_id=TASK_ID, name="warehouse")
 
-    with pytest.raises(AirflowException, match="Missing required parameter: cluster_size"):
+    with pytest.raises(ValueError, match="Missing required parameter: cluster_size"):
         op.execute(None)
