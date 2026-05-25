@@ -250,8 +250,8 @@ You can find installation instructions here: https://docs.docker.com/engine/inst
                 sys.exit(1)
 
 
-def check_container_engine_is_docker(quiet: bool = False) -> bool:
-    """Checks if the container engine is Docker or podman."""
+def check_container_engine(quiet: bool = False) -> str:
+    """Checks if the container engine is supported and returns its name."""
     response = run_command(
         ["docker", "version"],
         no_output_dump_on_exception=True,
@@ -275,11 +275,11 @@ def check_container_engine_is_docker(quiet: bool = False) -> bool:
     if podman_engine_enabled:
         console_print(
             "[warning]Podman container engine detected.[/]\n"
-            "[warning]Podman container engine has not become fully supported in breeze yet.[/]"
+            "[warning]Using podman through the Docker-compatible CLI path in breeze.[/]"
         )
-        return False
+        return "podman"
     console_print("[success]Docker container engine detected.[/]")
-    return True
+    return "docker"
 
 
 def check_remote_ghcr_io_commands():
@@ -601,16 +601,12 @@ def check_executable_entrypoint_permissions(quiet: bool = False):
 @lru_cache
 def perform_environment_checks(quiet: bool = False):
     check_docker_is_running()
-    container_engine_is_docker = check_container_engine_is_docker(quiet)
-    if not container_engine_is_docker:
-        console_print("[error]Unsupported container engine detected.[/]")
-        console_print("[error]Install and enable Docker to continue.[/]")
-        sys.exit(1)
-    else:
+    container_engine = check_container_engine(quiet)
+    if container_engine == "docker":
         check_docker_version(quiet)
         check_docker_compose_version(quiet)
-        check_windows_filesystem_mount(quiet)
-        check_executable_entrypoint_permissions(quiet)
+    check_windows_filesystem_mount(quiet)
+    check_executable_entrypoint_permissions(quiet)
     check_uv_version(quiet)
     if not quiet:
         console_print(f"[success]Host python version is {sys.version}[/]")
