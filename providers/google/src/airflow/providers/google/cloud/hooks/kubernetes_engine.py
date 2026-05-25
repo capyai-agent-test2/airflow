@@ -53,6 +53,10 @@ if TYPE_CHECKING:
     from google.api_core.retry import Retry
 
 OPERATIONAL_POLL_INTERVAL = 15
+GKE_KUBERNETES_REQUIRED_SCOPES = (
+    "https://www.googleapis.com/auth/cloud-platform",
+    "https://www.googleapis.com/auth/userinfo.email",
+)
 
 
 class GKEClusterConnection:
@@ -420,6 +424,10 @@ class GKEKubernetesHook(GoogleBaseHook, KubernetesHook):
     functionality against GKE clusters.
     """
 
+    @property
+    def scopes(self) -> Sequence[str]:
+        return tuple(dict.fromkeys((*super().scopes, *GKE_KUBERNETES_REQUIRED_SCOPES)))
+
     def __init__(
         self,
         cluster_url: str,
@@ -481,7 +489,7 @@ class GKEKubernetesAsyncHook(GoogleBaseAsyncHook, AsyncKubernetesHook):
     """
 
     sync_hook_class = GKEKubernetesHook
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    scopes = list(GKE_KUBERNETES_REQUIRED_SCOPES)
 
     def __init__(
         self,
