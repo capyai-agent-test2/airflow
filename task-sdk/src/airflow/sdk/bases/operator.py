@@ -1638,9 +1638,12 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
 
         task_params = ParamsDict.filter_params_by_source(self.params, "task")
         raw_task_params = task_params.dump()
+        if not raw_task_params:
+            return None
         rendered_task_params = self.render_template(raw_task_params, context, jinja_env)
 
-        rendered_context_params = dict(context["params"])
+        current_context_params = context.get("params", {})
+        rendered_context_params = dict(current_context_params)
         for key, value in rendered_task_params.items():
             if rendered_context_params.get(key) == raw_task_params[key]:
                 rendered_context_params[key] = value
@@ -1650,11 +1653,19 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
             {**context, "params": rendered_context_params},
             jinja_env,
         )
-        self.params.update(rendered_task_params)
+        effective_task_params = {
+            key: current_context_params.get(key, value)
+            if current_context_params.get(key) != raw_task_params[key]
+            else value
+            for key, value in rendered_task_params.items()
+        }
+        self.params.update(effective_task_params)
         for key, value in rendered_task_params.items():
-            if context["params"].get(key) == raw_task_params[key]:
-                context["params"][key] = value
-        return rendered_task_params
+            if current_context_params.get(key) == raw_task_params[key]:
+                rendered_context_params[key] = value
+        if "params" in context:
+            context["params"] = rendered_context_params
+        return effective_task_params
 
     def pre_execute(self, context: Any):
         """Execute right before self.execute() is called."""

@@ -3993,6 +3993,34 @@ class TestDagParamRuntime:
         assert task.params["path"] == "/tmp/from-conf.txt"
         assert task.message == "/tmp/from-conf.txt"
 
+    def test_task_params_templating_keeps_non_overridden_context_params(
+        self, create_runtime_ti, mock_supervisor_comms, time_machine
+    ):
+        """Test that task param templating does not disturb unrelated context params."""
+
+        class CustomOperator(BaseOperator):
+            template_fields = ("message",)
+
+            def __init__(self, *, message, **kwargs):
+                super().__init__(**kwargs)
+                self.message = message
+
+        task = CustomOperator(
+            task_id="task_with_extra_params",
+            message="{{ params.path }} {{ params.extra }}",
+            params={"path": "/tmp/{{ ds }}.txt"},
+        )
+        runtime_ti = create_runtime_ti(task=task, dag_id="dag_with_extra_params")
+        context = runtime_ti.get_template_context()
+        context["params"]["extra"] = "kept"
+
+        task.render_template_fields(context)
+
+        assert context["params"]["path"] == "/tmp/2024-12-01.txt"
+        assert context["params"]["extra"] == "kept"
+        assert task.params["path"] == "/tmp/2024-12-01.txt"
+        assert task.message == "/tmp/2024-12-01.txt kept"
+
     def test_dag_param_resolves(
         self, create_runtime_ti, mock_supervisor_comms, time_machine, make_ti_context
     ):

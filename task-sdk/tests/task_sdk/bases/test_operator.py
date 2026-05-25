@@ -754,6 +754,14 @@ class TestBaseOperator:
         task.render_template_fields({})
         assert task.arg2 == "foo_barbarbar"
 
+    def test_render_template_fields_with_task_params_and_minimal_context(self):
+        task = MockOperator(task_id="op1", arg1="{{ foo }}", params={"path": "/tmp/{{ foo }}.txt"})
+
+        task.render_template_fields(context={"foo": "footemplated"})
+
+        assert task.arg1 == "footemplated"
+        assert task.params["path"] == "/tmp/footemplated.txt"
+
     def test_render_template_fields_for_mapped_operator_uses_templated_task_params(self):
         with DAG("test-dag", schedule=None, start_date=DEFAULT_DATE):
             task = MockOperator.partial(
