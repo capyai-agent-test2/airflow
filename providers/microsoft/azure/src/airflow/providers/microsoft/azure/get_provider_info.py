@@ -140,6 +140,11 @@ def get_provider_info():
                 "how-to-guide": ["/docs/apache-airflow-providers-microsoft-azure/operators/powerbi.rst"],
                 "tags": ["azure"],
             },
+            {
+                "integration-name": "Microsoft Azure Analysis Services",
+                "external-doc-url": "https://learn.microsoft.com/en-us/azure/analysis-services/analysis-services-async-refresh",
+                "tags": ["azure"],
+            },
         ],
         "operators": [
             {
@@ -190,6 +195,10 @@ def get_provider_info():
                 "integration-name": "Microsoft Power BI",
                 "python-modules": ["airflow.providers.microsoft.azure.operators.powerbi"],
             },
+            {
+                "integration-name": "Microsoft Azure Analysis Services",
+                "python-modules": ["airflow.providers.microsoft.azure.operators.analysis_services"],
+            },
         ],
         "sensors": [
             {
@@ -211,6 +220,10 @@ def get_provider_info():
             {
                 "integration-name": "Microsoft Graph API",
                 "python-modules": ["airflow.providers.microsoft.azure.sensors.msgraph"],
+            },
+            {
+                "integration-name": "Microsoft Azure Analysis Services",
+                "python-modules": ["airflow.providers.microsoft.azure.sensors.analysis_services"],
             },
         ],
         "filesystems": [
@@ -281,6 +294,10 @@ def get_provider_info():
             {
                 "integration-name": "Microsoft Power BI",
                 "python-modules": ["airflow.providers.microsoft.azure.hooks.powerbi"],
+            },
+            {
+                "integration-name": "Microsoft Azure Analysis Services",
+                "python-modules": ["airflow.providers.microsoft.azure.hooks.analysis_services"],
             },
         ],
         "triggers": [
