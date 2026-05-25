@@ -47,9 +47,15 @@ def get_fs(conn_id: str | None, storage_options: dict[str, Any] | None = None) -
     if connection_string:
         return AzureBlobFileSystem(connection_string=connection_string)
 
-    options: dict[str, Any] = {
-        "account_url": parse_blob_account_url(conn.host, conn.login),
-    }
+    options: dict[str, Any]
+    if conn_type in {"adls", "azure_data_lake"}:
+        options = {}
+        if conn.host or conn.login:
+            options["account_name"] = conn.host or conn.login
+    else:
+        options = {
+            "account_url": parse_blob_account_url(conn.host, conn.login),
+        }
 
     # mirror handling of custom field "client_secret_auth_config" from extras. Ignore if missing as AzureBlobFileSystem can handle.
     tenant_id = get_field(conn_id=conn_id, conn_type=conn_type, extras=extras, field_name="tenant_id")
