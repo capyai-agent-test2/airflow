@@ -23,7 +23,7 @@ from tempfile import NamedTemporaryFile
 import jmespath
 import pytest
 import yaml
-from chart_utils.helm_template_generator import CHART_DIR, render_chart
+from chart_utils.helm_template_generator import CHART_DIR, DEFAULT_KUBERNETES_VERSION, render_chart
 
 
 def render_chart_without_k8s_schema_validation(values, show_only):
@@ -39,7 +39,7 @@ def render_chart_without_k8s_schema_validation(values, show_only):
                 "--values",
                 tmp_file.name,
                 "--kube-version",
-                "1.30.13",
+                DEFAULT_KUBERNETES_VERSION,
                 "--namespace",
                 "default",
                 "--show-only",
