@@ -801,6 +801,30 @@ class TestBaseOperator:
         with pytest.raises(ValueError, match="Task params templating did not converge"):
             task.render_template_fields(context=context)
 
+    def test_render_template_fields_raises_for_cyclic_task_params(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.a }}",
+            params={"a": "{{ params.b }}", "b": "{{ params.a }}"},
+        )
+
+        context = {"params": task.params.dump()}
+
+        with pytest.raises(ValueError, match="cyclic task param references"):
+            task.render_template_fields(context=context)
+
+    def test_render_template_fields_cycle_detection_handles_mixed_dict_keys(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ foo }}",
+            params={"payload": {"mixed": {1: "one", "2": "two"}}},
+        )
+
+        task.render_template_fields(context={"foo": "footemplated"})
+
+        assert task.arg1 == "footemplated"
+        assert task.params["payload"] == {"mixed": {1: "one", "2": "two"}}
+
     @mock.patch("airflow.sdk.configuration.conf.getboolean", return_value=True)
     def test_render_template_fields_preserves_conf_literal_matching_raw_template(self, _mock_getboolean):
         task = MockOperator(

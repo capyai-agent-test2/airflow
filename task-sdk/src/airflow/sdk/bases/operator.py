@@ -1649,13 +1649,28 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         if conf.getboolean("core", "dag_run_conf_overrides_params") and isinstance(dag_run_conf, dict):
             conf_override_keys = set(dag_run_conf)
 
+        def _contains_unresolved_task_param_reference(value: Any) -> bool:
+            if isinstance(value, str):
+                return "{{" in value and "params." in value
+            if isinstance(value, dict):
+                return any(
+                    _contains_unresolved_task_param_reference(key)
+                    or _contains_unresolved_task_param_reference(item)
+                    for key, item in value.items()
+                )
+            if isinstance(value, (list, tuple, set)):
+                return any(_contains_unresolved_task_param_reference(item) for item in value)
+            return False
+
         rendered_task_params = raw_task_params
         seen_rendered_task_params: set[str] = set()
         max_render_passes = len(raw_task_params) + 1
         for _ in range(max_render_passes):
-            rendered_task_params_key = json.dumps(rendered_task_params, sort_keys=True)
+            rendered_task_params_key = json.dumps(rendered_task_params)
             if rendered_task_params_key in seen_rendered_task_params:
-                break
+                raise ValueError(
+                    "Task params templating did not converge due to cyclic task param references"
+                )
             seen_rendered_task_params.add(rendered_task_params_key)
 
             rendered_context_params = dict(current_context_params)
@@ -1669,6 +1684,11 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
                 jinja_env,
             )
             if next_rendered_task_params == rendered_task_params:
+                if (
+                    rendered_task_params != raw_task_params
+                    and _contains_unresolved_task_param_reference(rendered_task_params)
+                ):
+                    raise ValueError("Task params templating did not converge due to cyclic task param references")
                 break
             rendered_task_params = next_rendered_task_params
         else:
