@@ -842,6 +842,7 @@ class MappedOperator(AbstractOperator):
         # `MappedOperator`, we need to call `_do_render_template_fields` from
         # the unmapped task in order to call the operator method when we override
         # it to customize the parsing of nested fields.
+        unmapped_task._render_task_params(context, jinja_env)
         unmapped_task._do_render_template_fields(
             parent=unmapped_task,
             template_fields=self.template_fields,

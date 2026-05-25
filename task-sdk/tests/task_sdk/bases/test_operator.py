@@ -754,6 +754,33 @@ class TestBaseOperator:
         task.render_template_fields({})
         assert task.arg2 == "foo_barbarbar"
 
+    def test_render_template_fields_for_mapped_operator_uses_templated_task_params(self):
+        with DAG("test-dag", schedule=None, start_date=DEFAULT_DATE):
+            task = MockOperator.partial(
+                task_id="op1",
+                params={"path": "/tmp/{{ ds }}/{{ ds_nodash }}.txt"},
+            ).expand(arg1=["unused"])
+
+        ti = mock.Mock(task=task)
+        context = {
+            "dag": task.dag,
+            "dag_run": mock.Mock(conf={}),
+            "ds": "2024-12-01",
+            "ds_nodash": "20241201",
+            "params": {"path": "/tmp/{{ ds }}/{{ ds_nodash }}.txt"},
+            "task": task,
+            "ti": ti,
+        }
+
+        with mock.patch.object(
+            task, "_expand_mapped_kwargs", return_value=({"arg1": "{{ params.path }}"}, set())
+        ):
+            task.render_template_fields(context)
+
+        assert context["task"].arg1 == "/tmp/2024-12-01/20241201.txt"
+        assert context["task"].params["path"] == "/tmp/2024-12-01/20241201.txt"
+        assert context["params"]["path"] == "/tmp/2024-12-01/20241201.txt"
+
     @pytest.mark.parametrize("content", [object(), uuid.uuid4()])
     def test_render_template_fields_no_change(self, content):
         """Tests if non-templatable types remain unchanged."""

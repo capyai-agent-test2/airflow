@@ -1625,26 +1625,36 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         """
         if not jinja_env:
             jinja_env = self.get_template_env()
-        if self.params:
-            task_params = ParamsDict.filter_params_by_source(self.params, "task")
-            raw_task_params = task_params.dump()
-            rendered_task_params = self.render_template(raw_task_params, context, jinja_env)
-
-            rendered_context_params = dict(context["params"])
-            for key, value in rendered_task_params.items():
-                if rendered_context_params.get(key) == raw_task_params[key]:
-                    rendered_context_params[key] = value
-
-            rendered_task_params = self.render_template(
-                rendered_task_params,
-                {**context, "params": rendered_context_params},
-                jinja_env,
-            )
-            self.params.update(rendered_task_params)
-            for key, value in rendered_task_params.items():
-                if context["params"].get(key) == raw_task_params[key]:
-                    context["params"][key] = value
+        self._render_task_params(context, jinja_env)
         self._do_render_template_fields(self, self.template_fields, context, jinja_env, set())
+
+    def _render_task_params(
+        self, context: Context, jinja_env: jinja2.Environment | None = None
+    ) -> dict[str, Any] | None:
+        if not self.params:
+            return None
+        if not jinja_env:
+            jinja_env = self.get_template_env()
+
+        task_params = ParamsDict.filter_params_by_source(self.params, "task")
+        raw_task_params = task_params.dump()
+        rendered_task_params = self.render_template(raw_task_params, context, jinja_env)
+
+        rendered_context_params = dict(context["params"])
+        for key, value in rendered_task_params.items():
+            if rendered_context_params.get(key) == raw_task_params[key]:
+                rendered_context_params[key] = value
+
+        rendered_task_params = self.render_template(
+            rendered_task_params,
+            {**context, "params": rendered_context_params},
+            jinja_env,
+        )
+        self.params.update(rendered_task_params)
+        for key, value in rendered_task_params.items():
+            if context["params"].get(key) == raw_task_params[key]:
+                context["params"][key] = value
+        return rendered_task_params
 
     def pre_execute(self, context: Any):
         """Execute right before self.execute() is called."""
