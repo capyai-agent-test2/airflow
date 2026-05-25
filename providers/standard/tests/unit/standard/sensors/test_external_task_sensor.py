@@ -119,6 +119,8 @@ def test_example_external_task_marker_dags_can_be_scheduled(dag_id):
 
     assert dag is not None
     assert dag.timetable.can_be_scheduled
+    if dag_id == "example_external_task_marker_parent":
+        assert "parent_dag_task_group_id" in dag.task_group_dict
 
 
 @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Different test for v3.0+")
