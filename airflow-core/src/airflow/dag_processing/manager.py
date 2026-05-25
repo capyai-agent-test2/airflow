@@ -966,7 +966,15 @@ class DagFileProcessorManager(LoggingMixin):
 
             container_path = bundle_path / file_path.parts[0]
             if container_path.is_file() and zipfile.is_zipfile(container_path):
-                continue
+                if len(file_path.parts) == 1:
+                    continue
+                try:
+                    with zipfile.ZipFile(container_path) as archive:
+                        if archive.getinfo(Path(*file_path.parts[1:]).as_posix()):
+                            continue
+                except (KeyError, zipfile.BadZipFile):
+                    pass
+                return True
 
             if not container_path.exists():
                 return True

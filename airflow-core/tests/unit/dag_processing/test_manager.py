@@ -428,6 +428,26 @@ class TestDagFileProcessorManager:
 
         assert manager.has_missing_import_error_filelocs("testing", tmp_path) is False
 
+    @pytest.mark.usefixtures("clear_parse_import_errors")
+    def test_has_missing_import_error_filelocs_detects_missing_zip_inner_file(self, session, tmp_path):
+        zip_path = tmp_path / "test_zip.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("valid_dag.py", "print('ok')\n")
+
+        session.add(
+            ParseImportError(
+                filename="test_zip.zip/broken_dag.py",
+                bundle_name="testing",
+                timestamp=timezone.utcnow(),
+                stacktrace="zip import error",
+            )
+        )
+        session.flush()
+
+        manager = DagFileProcessorManager(max_runs=1)
+
+        assert manager.has_missing_import_error_filelocs("testing", tmp_path) is True
+
     def test_refresh_dag_bundles_calls_legacy_deactivate_deleted_dags_override(
         self, tmp_path, configure_dag_bundles
     ):
