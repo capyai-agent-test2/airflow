@@ -40,6 +40,8 @@ or AirflowSensorTimeout exception
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pendulum
 
 from airflow.providers.standard.operators.empty import EmptyOperator
@@ -52,7 +54,7 @@ with DAG(
     dag_id="example_external_task_marker_parent",
     start_date=start_date,
     catchup=False,
-    schedule=None,
+    schedule=timedelta(minutes=30),
     tags=["example", "example2"],
 ) as parent_dag:
     # [START howto_operator_external_task_marker]
@@ -66,7 +68,7 @@ with DAG(
 with DAG(
     dag_id="example_external_task_marker_child",
     start_date=start_date,
-    schedule=None,
+    schedule=timedelta(minutes=30),
     catchup=False,
     tags=["example", "example2"],
 ) as child_dag:
