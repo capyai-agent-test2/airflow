@@ -589,6 +589,21 @@ class TestDockerOperator:
         )
         assert raised_exception.value.logs == [log_line[0].rstrip(), log_line[1].decode("utf-8").rstrip()]
 
+    def test_execute_force_auto_remove_after_on_kill(self):
+        operator = DockerOperator(image="ubuntu", owner="unittest", task_id="unittest", auto_remove="force")
+
+        def kill_during_wait(*args, **kwargs):
+            operator.on_kill()
+            return {"StatusCode": 137}
+
+        self.client_mock.wait.side_effect = kill_during_wait
+
+        with pytest.raises(DockerContainerFailedException):
+            operator.execute(None)
+
+        self.client_mock.stop.assert_called_once_with("some_id")
+        self.client_mock.remove_container.assert_called_once_with("some_id", force=True)
+
     def test_auto_remove_container_fails(self):
         self.client_mock.wait.return_value = {"StatusCode": 1}
         operator = DockerOperator(image="ubuntu", owner="unittest", task_id="unittest", auto_remove="success")
