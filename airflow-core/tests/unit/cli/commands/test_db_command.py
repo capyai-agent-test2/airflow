@@ -1117,6 +1117,36 @@ class TestCLIDBClean:
             error_on_cleanup_failure=expected,
         )
 
+    @patch("airflow.cli.commands.db_command.run_cleanup")
+    @patch("airflow.cli.commands.db_command.timezone.utcnow")
+    def test_clean_all_expired_sessions(self, utcnow_mock, run_cleanup_mock):
+        now = pendulum.parse("2021-01-01 00:00:00Z")
+        utcnow_mock.return_value = now
+
+        args = self.parser.parse_args(
+            ["db", "clean-all-expired-sessions", "--dry-run", "--skip-archive", "-y"]
+        )
+        with patch.dict("airflow.cli.commands.db_command.config_dict", {"session": mock.sentinel.session}):
+            db_command.cleanup_expired_sessions(args)
+
+        run_cleanup_mock.assert_called_once_with(
+            table_names=["session"],
+            dry_run=True,
+            clean_before_timestamp=now,
+            verbose=False,
+            confirm=False,
+            skip_archive=True,
+            batch_size=None,
+            error_on_cleanup_failure=False,
+        )
+
+    def test_clean_all_expired_sessions_requires_database_session_backend(self):
+        args = self.parser.parse_args(["db", "clean-all-expired-sessions"])
+
+        with patch.dict("airflow.cli.commands.db_command.config_dict", {}, clear=True):
+            with pytest.raises(SystemExit, match="Session cleanup requires FabAuthManager"):
+                db_command.cleanup_expired_sessions(args)
+
     @patch("airflow.cli.commands.db_command.export_archived_records")
     @patch("airflow.cli.commands.db_command.os.path.isdir", return_value=True)
     def test_export_archived_records(self, os_mock, export_archived_mock):
