@@ -44,6 +44,7 @@
 
     Connection types <connections/kubernetes>
     Operators <operators>
+    Kubernetes RBAC <rbac>
     Secrets backends <secrets-backends/kubernetes-secrets-backend>
 
 .. toctree::
