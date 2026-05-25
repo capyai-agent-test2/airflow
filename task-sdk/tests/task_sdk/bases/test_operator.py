@@ -789,6 +789,18 @@ class TestBaseOperator:
         assert task.params["l"] == "2024-12-01"
         assert context["params"]["l"] == "2024-12-01"
 
+    def test_render_template_fields_raises_for_non_converging_task_params(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.a }}",
+            params={"a": "{{ params.a }}x"},
+        )
+
+        context = {"params": task.params.dump()}
+
+        with pytest.raises(ValueError, match="Task params templating did not converge"):
+            task.render_template_fields(context=context)
+
     @mock.patch("airflow.sdk.configuration.conf.getboolean", return_value=True)
     def test_render_template_fields_preserves_conf_literal_matching_raw_template(self, _mock_getboolean):
         task = MockOperator(

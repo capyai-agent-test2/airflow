@@ -1651,7 +1651,8 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
 
         rendered_task_params = raw_task_params
         seen_rendered_task_params: set[str] = set()
-        while True:
+        max_render_passes = len(raw_task_params) + 1
+        for _ in range(max_render_passes):
             rendered_task_params_key = json.dumps(rendered_task_params, sort_keys=True)
             if rendered_task_params_key in seen_rendered_task_params:
                 break
@@ -1670,6 +1671,10 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
             if next_rendered_task_params == rendered_task_params:
                 break
             rendered_task_params = next_rendered_task_params
+        else:
+            raise ValueError(
+                f"Task params templating did not converge after {max_render_passes} rendering passes"
+            )
 
         effective_task_params = {
             key: current_context_params[key]
