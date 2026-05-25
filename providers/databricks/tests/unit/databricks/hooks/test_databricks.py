@@ -17,6 +17,7 @@
 # under the License.
 from __future__ import annotations
 
+import base64
 import itertools
 import json
 import ssl
@@ -38,6 +39,7 @@ from airflow.providers.common.compat.sdk import AirflowException
 from airflow.providers.databricks.hooks.databricks import (
     GET_RUN_ENDPOINT,
     SUBMIT_RUN_ENDPOINT,
+    WORKSPACE_IMPORT_ENDPOINT,
     ClusterState,
     DatabricksHook,
     RunState,
@@ -976,6 +978,45 @@ class TestDatabricksHook:
             auth=HTTPBasicAuth(LOGIN, PASSWORD),
             headers=self.hook.user_agent_header,
             timeout=self.hook.timeout_seconds,
+        )
+
+    @mock.patch.object(DatabricksHook, "_do_api_call")
+    def test_create_notebook(self, mock_do_api_call):
+        self.hook.create_notebook(
+            path="/Users/airflow@example.com/demo_notebook",
+            content="print('hello')",
+            language="PYTHON",
+            overwrite=True,
+        )
+
+        mock_do_api_call.assert_called_once_with(
+            WORKSPACE_IMPORT_ENDPOINT,
+            {
+                "path": "/Users/airflow@example.com/demo_notebook",
+                "content": base64.b64encode(b"print('hello')").decode("utf-8"),
+                "language": "PYTHON",
+                "overwrite": True,
+                "format": "SOURCE",
+            },
+        )
+
+    @mock.patch.object(DatabricksHook, "_do_api_call")
+    def test_create_notebook_with_bytes_content(self, mock_do_api_call):
+        self.hook.create_notebook(
+            path="/Users/airflow@example.com/demo_notebook",
+            content=b"SELECT 1",
+            language="SQL",
+        )
+
+        mock_do_api_call.assert_called_once_with(
+            WORKSPACE_IMPORT_ENDPOINT,
+            {
+                "path": "/Users/airflow@example.com/demo_notebook",
+                "content": base64.b64encode(b"SELECT 1").decode("utf-8"),
+                "language": "SQL",
+                "overwrite": False,
+                "format": "SOURCE",
+            },
         )
 
     def test_is_oauth_token_valid_returns_true(self):

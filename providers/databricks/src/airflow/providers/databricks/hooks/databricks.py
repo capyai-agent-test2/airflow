@@ -28,6 +28,7 @@ or the ``api/2.2/jobs/runs/submit``
 
 from __future__ import annotations
 
+import base64
 import json
 from enum import Enum
 from typing import Any
@@ -66,6 +67,7 @@ LIST_PIPELINES_ENDPOINT = ("GET", "2.0/pipelines")
 LIST_SQL_ENDPOINTS_ENDPOINT = ("GET", "2.0/sql/warehouses")
 
 WORKSPACE_GET_STATUS_ENDPOINT = ("GET", "2.0/workspace/get-status")
+WORKSPACE_IMPORT_ENDPOINT = ("POST", "2.0/workspace/import")
 
 SPARK_VERSIONS_ENDPOINT = ("GET", "2.1/clusters/spark-versions")
 SQL_STATEMENTS_ENDPOINT = "2.0/sql/statements"
@@ -790,6 +792,35 @@ class DatabricksHook(BaseDatabricksHook):
         :return:
         """
         return self._do_api_call(CREATE_REPO_ENDPOINT, json)
+
+    def create_notebook(
+        self,
+        path: str,
+        content: str | bytes,
+        language: str,
+        overwrite: bool = False,
+        format: str = "SOURCE",
+    ) -> None:
+        """
+        Create a notebook in the Databricks workspace.
+
+        :param path: Absolute workspace path for the notebook.
+        :param content: Notebook source content as text or bytes.
+        :param language: Notebook language, for example ``PYTHON`` or ``SQL``.
+        :param overwrite: Whether to overwrite an existing notebook at ``path``.
+        :param format: Notebook import format. Defaults to ``SOURCE``.
+        """
+        if isinstance(content, str):
+            content = content.encode()
+
+        payload = {
+            "path": path,
+            "content": base64.b64encode(content).decode("utf-8"),
+            "language": language,
+            "overwrite": overwrite,
+            "format": format,
+        }
+        self._do_api_call(WORKSPACE_IMPORT_ENDPOINT, payload)
 
     def get_repo_by_path(self, path: str) -> str | None:
         """
