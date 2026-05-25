@@ -484,7 +484,10 @@ class TestTriggerer:
             show_only=["templates/triggerer/triggerer-deployment.yaml"],
         )
         command = jmespath.search("spec.template.spec.containers[0].livenessProbe.exec.command", docs[0])[-1]
-        assert "grep -qE '(^|[[:space:]])airflow triggerer($|[[:space:]])' /proc/1/cmdline" in command
+        assert (
+            "tr '\\000' ' ' < /proc/1/cmdline | grep -qE '(^|[[:space:]])airflow triggerer($|[[:space:]])'"
+            in command
+        )
         assert "airflow jobs check --job-type TriggererJob --local" in command
 
     @pytest.mark.parametrize(
