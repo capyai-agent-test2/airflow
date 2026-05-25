@@ -85,6 +85,21 @@ def _task_instance_to_labels(ti: TaskInstance | RuntimeTI) -> dict[str, str]:
     }
 
 
+def _event_to_ti_labels(event: dict[str, object]) -> dict[str, str]:
+    labels = {}
+
+    for label_key, event_key in (
+        (LABEL_TASK_ID, "task_id"),
+        (LABEL_DAG_ID, "dag_id"),
+        (LABEL_LOGICAL_DATE, LABEL_LOGICAL_DATE),
+        (LABEL_TRY_NUMBER, "try_number"),
+    ):
+        if value := event.get(event_key):
+            labels[label_key] = str(value)
+
+    return labels
+
+
 @attrs.define(kw_only=True)
 class StackdriverRemoteLogIO(LoggingMixin):  # noqa: D101
     base_log_folder: Path = attrs.field(converter=Path)
@@ -160,8 +175,7 @@ class StackdriverRemoteLogIO(LoggingMixin):  # noqa: D101
                 record.msecs = int((ct - int(ct)) * 1000) + 0.0
 
             labels = dict(self.labels or {})
-            if ti := getattr(record, "task_instance", None):
-                labels.update(_task_instance_to_labels(ti))
+            labels.update(_event_to_ti_labels(msg))
 
             transport.send(record, str(msg.get("event", "")), resource=self.resource, labels=labels)
             return event

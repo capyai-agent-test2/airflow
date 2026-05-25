@@ -74,7 +74,10 @@ class TestStackdriverRemoteLogIO:
         )
         mock_get_creds_and_project_id.return_value = ("creds", "project_id")
 
-        ti = mock.MagicMock()
+        ti_attrs = ["task_id", "dag_id", "try_number", "logical_date"]
+        if not AIRFLOW_V_3_0_PLUS:
+            ti_attrs.append("execution_date")
+        ti = mock.Mock(spec_set=ti_attrs)
         ti.task_id = "test_task"
         ti.dag_id = "test_dag"
         ti.try_number = 1
@@ -97,7 +100,10 @@ class TestStackdriverRemoteLogIO:
         )
         mock_get_creds_and_project_id.return_value = ("creds", "project_id")
 
-        ti = mock.MagicMock()
+        ti_attrs = ["task_id", "dag_id", "try_number", "logical_date"]
+        if not AIRFLOW_V_3_0_PLUS:
+            ti_attrs.append("execution_date")
+        ti = mock.Mock(spec_set=ti_attrs)
         ti.task_id = "test_task"
         ti.dag_id = "test_dag"
         ti.try_number = 1
@@ -247,6 +253,10 @@ class TestStackdriverRemoteLogIO:
                 "event": "hello world",
                 "logger_name": "airflow.task",
                 "timestamp": "2026-01-15T10:30:00+00:00",
+                "dag_id": "test_dag",
+                "task_id": "test_task",
+                "logical_date": "2026-01-15T10:30:00+00:00",
+                "try_number": 3,
             },
         )
 
@@ -255,6 +265,13 @@ class TestStackdriverRemoteLogIO:
         mock_transport.send.assert_called_once()
         record = mock_transport.send.call_args[0][0]
         assert record.levelno == logging.INFO
+        assert mock_transport.send.call_args.kwargs["labels"] == {
+            "env": "test",
+            "dag_id": "test_dag",
+            "task_id": "test_task",
+            "logical_date": "2026-01-15T10:30:00+00:00",
+            "try_number": "3",
+        }
 
     @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="airflow.sdk.log only exists in Airflow 3+")
     @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.get_credentials_and_project_id")
