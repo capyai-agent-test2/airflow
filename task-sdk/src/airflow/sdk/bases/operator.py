@@ -1631,6 +1631,8 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
     def _render_task_params(
         self, context: Context, jinja_env: jinja2.Environment | None = None
     ) -> dict[str, Any] | None:
+        from airflow.sdk.configuration import conf
+
         if not self.params:
             return None
         if not jinja_env:
@@ -1640,28 +1642,39 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         raw_task_params = task_params.dump()
         if not raw_task_params:
             return None
-        rendered_task_params = self.render_template(raw_task_params, context, jinja_env)
-
         current_context_params = context.get("params", {})
-        rendered_context_params = dict(current_context_params)
-        for key, value in rendered_task_params.items():
-            if rendered_context_params.get(key) == raw_task_params[key]:
-                rendered_context_params[key] = value
+        dag_run_conf = getattr(context.get("dag_run"), "conf", None) or {}
+        conf_override_keys: set[str] = set()
+        if conf.getboolean("core", "dag_run_conf_overrides_params") and isinstance(dag_run_conf, dict):
+            conf_override_keys = set(dag_run_conf)
 
-        rendered_task_params = self.render_template(
-            rendered_task_params,
-            {**context, "params": rendered_context_params},
-            jinja_env,
-        )
+        rendered_task_params = raw_task_params
+        max_render_passes = 10
+        for _ in range(max_render_passes):
+            rendered_context_params = dict(current_context_params)
+            for key, value in rendered_task_params.items():
+                if key not in conf_override_keys:
+                    rendered_context_params[key] = value
+
+            next_rendered_task_params = self.render_template(
+                rendered_task_params,
+                {**context, "params": rendered_context_params},
+                jinja_env,
+            )
+            if next_rendered_task_params == rendered_task_params:
+                break
+            rendered_task_params = next_rendered_task_params
+
         effective_task_params = {
-            key: current_context_params.get(key, value)
-            if current_context_params.get(key) != raw_task_params[key]
+            key: current_context_params[key]
+            if key in conf_override_keys and key in current_context_params
             else value
             for key, value in rendered_task_params.items()
         }
         self.params.update(effective_task_params)
-        for key, value in rendered_task_params.items():
-            if current_context_params.get(key) == raw_task_params[key]:
+        rendered_context_params = dict(current_context_params)
+        for key, value in effective_task_params.items():
+            if key not in conf_override_keys:
                 rendered_context_params[key] = value
         if "params" in context:
             context["params"] = rendered_context_params

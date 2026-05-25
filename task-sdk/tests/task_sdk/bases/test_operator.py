@@ -762,6 +762,45 @@ class TestBaseOperator:
         assert task.arg1 == "footemplated"
         assert task.params["path"] == "/tmp/footemplated.txt"
 
+    def test_render_template_fields_resolves_deep_task_param_chains(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.d }}",
+            params={
+                "a": "{{ ds }}",
+                "b": "{{ params.a }}",
+                "c": "{{ params.b }}",
+                "d": "{{ params.c }}",
+            },
+        )
+
+        context = {"ds": "2024-12-01", "params": task.params.dump()}
+        task.render_template_fields(context=context)
+
+        assert task.arg1 == "2024-12-01"
+        assert task.params["d"] == "2024-12-01"
+        assert context["params"]["d"] == "2024-12-01"
+
+    @mock.patch("airflow.sdk.configuration.conf.getboolean", return_value=True)
+    def test_render_template_fields_preserves_conf_literal_matching_raw_template(self, _mock_getboolean):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.path }}",
+            params={"path": "{{ ds }}"},
+        )
+
+        context = {
+            "dag_run": mock.Mock(conf={"path": "{{ ds }}"}),
+            "ds": "2024-12-01",
+            "params": {"path": "{{ ds }}"},
+        }
+
+        task.render_template_fields(context=context)
+
+        assert task.arg1 == "{{ ds }}"
+        assert task.params["path"] == "{{ ds }}"
+        assert context["params"]["path"] == "{{ ds }}"
+
     def test_render_template_fields_for_mapped_operator_uses_templated_task_params(self):
         with DAG("test-dag", schedule=None, start_date=DEFAULT_DATE):
             task = MockOperator.partial(
