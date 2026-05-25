@@ -813,6 +813,18 @@ class TestBaseOperator:
         with pytest.raises(ValueError, match="cyclic task param references"):
             task.render_template_fields(context=context)
 
+    def test_render_template_fields_raises_for_direct_self_referential_task_param(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.a }}",
+            params={"a": "{{ params.a }}"},
+        )
+
+        context = {"params": task.params.dump()}
+
+        with pytest.raises(ValueError, match="cyclic task param references"):
+            task.render_template_fields(context=context)
+
     def test_render_template_fields_cycle_detection_handles_mixed_dict_keys(self):
         task = MockOperator(
             task_id="op1",

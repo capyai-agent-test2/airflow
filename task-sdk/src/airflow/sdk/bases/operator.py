@@ -1684,10 +1684,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
                 jinja_env,
             )
             if next_rendered_task_params == rendered_task_params:
-                if (
-                    rendered_task_params != raw_task_params
-                    and _contains_unresolved_task_param_reference(rendered_task_params)
-                ):
+                if _contains_unresolved_task_param_reference(rendered_task_params):
                     raise ValueError("Task params templating did not converge due to cyclic task param references")
                 break
             rendered_task_params = next_rendered_task_params
