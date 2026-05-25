@@ -374,6 +374,60 @@ class TestDagFileProcessorManager:
         import_errors = session.scalars(select(ParseImportError)).all()
         assert import_errors == []
 
+    @pytest.mark.usefixtures("clear_parse_import_errors")
+    def test_refresh_dag_bundles_does_not_scan_when_skip_refresh_has_no_orphaned_import_errors(
+        self, session, tmp_path, configure_dag_bundles
+    ):
+        bundle_path = tmp_path / "bundleone"
+        bundle_path.mkdir()
+        (bundle_path / "broken_dag.py").write_text("from missing_module import nope\n")
+
+        session.add(
+            ParseImportError(
+                filename="broken_dag.py",
+                bundle_name="bundleone",
+                timestamp=timezone.utcnow(),
+                stacktrace="live import error",
+            )
+        )
+        session.flush()
+
+        with configure_dag_bundles({"bundleone": bundle_path}):
+            DagBundlesManager().sync_bundles_to_db()
+            bundle_model = session.get(DagBundleModel, "bundleone")
+            assert bundle_model is not None
+            bundle_model.last_refreshed = timezone.utcnow()
+            session.flush()
+
+            manager = DagFileProcessorManager(max_runs=1)
+            manager._dag_bundles = list(DagBundlesManager().get_all_dag_bundles())
+            manager._bundle_versions["bundleone"] = None
+            bundle = manager._dag_bundles[0]
+            bundle.refresh_interval = 300
+
+            with mock.patch.object(manager, "_find_files_in_bundle") as mock_find:
+                manager._refresh_dag_bundles({})
+                mock_find.assert_not_called()
+
+    @pytest.mark.usefixtures("clear_parse_import_errors")
+    def test_has_missing_import_error_filelocs_keeps_zip_inner_file_errors(self, session, tmp_path):
+        zip_path = tmp_path / "test_zip.zip"
+        _create_zip_bundle_with_valid_and_broken_dags(zip_path)
+
+        session.add(
+            ParseImportError(
+                filename="test_zip.zip/broken_dag.py",
+                bundle_name="testing",
+                timestamp=timezone.utcnow(),
+                stacktrace="zip import error",
+            )
+        )
+        session.flush()
+
+        manager = DagFileProcessorManager(max_runs=1)
+
+        assert manager.has_missing_import_error_filelocs("testing", tmp_path) is False
+
     def test_refresh_dag_bundles_calls_legacy_deactivate_deleted_dags_override(
         self, tmp_path, configure_dag_bundles
     ):
