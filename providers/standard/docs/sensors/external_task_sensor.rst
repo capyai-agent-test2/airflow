@@ -42,10 +42,14 @@ ExternalTaskSensor
 ^^^^^^^^^^^^^^^^^^
 
 Use the :class:`~airflow.providers.standard.sensors.external_task.ExternalTaskSensor` to make tasks on a Dag
-wait for another task on a different Dag for a specific ``execution_date``.
+wait for another task on a different Dag for a specific logical date.
 
 ExternalTaskSensor also provide options to set if the Task on a remote Dag succeeded or failed
 via ``allowed_states`` and ``failed_states`` parameters.
+
+When the dependency needs to follow a data interval instead of the current run's logical date,
+pass ``execution_date_fn`` and read ``data_interval_start`` or ``data_interval_end`` from the
+templating context keyword arguments.
 
 .. exampleinclude:: /../src/airflow/providers/standard/example_dags/example_external_task_marker_dag.py
     :language: python

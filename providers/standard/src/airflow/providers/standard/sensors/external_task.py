@@ -163,7 +163,8 @@ class ExternalTaskSensor(BaseSensorOperator):
         ExternalTaskSensor, but not both.
     :param execution_date_fn: function that receives the current execution's logical date as the first
         positional argument and optionally any number of keyword arguments available in the
-        context dictionary, and returns the desired logical dates to query.
+        context dictionary, including ``data_interval_start`` and ``data_interval_end``, and returns
+        the desired logical dates to query.
         Either execution_delta or execution_date_fn can be passed to ExternalTaskSensor,
         but not both.
     :param check_existence: Set to `True` to check if the external task exists (when

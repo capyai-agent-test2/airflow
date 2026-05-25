@@ -1166,6 +1166,27 @@ exit 0
         context = {"execution_date": DEFAULT_DATE}
         assert op._handle_execution_date_fn(context) == DEFAULT_DATE
 
+    def test_handle_execution_date_fn_with_data_interval(self):
+        data_interval = DataInterval(start=DEFAULT_DATE, end=DEFAULT_DATE + timedelta(hours=1))
+
+        def func(logical_date, data_interval_start, data_interval_end):
+            assert logical_date == DEFAULT_DATE
+            assert data_interval_start == data_interval.start
+            return data_interval_end
+
+        op = ExternalTaskSensor(
+            task_id="test_external_task_sensor_check",
+            external_dag_id="test_dag_parent",
+            external_task_id="test_task",
+            execution_date_fn=func,
+        )
+        context = {
+            "execution_date": DEFAULT_DATE,
+            "data_interval_start": data_interval.start,
+            "data_interval_end": data_interval.end,
+        }
+        assert op._handle_execution_date_fn(context) == data_interval.end
+
 
 @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Different test for AF 2")
 @pytest.mark.usefixtures("testing_dag_bundle")
@@ -1506,6 +1527,28 @@ class TestExternalTaskSensorV3:
         )
         context = {"logical_date": DEFAULT_DATE}
         assert op._handle_execution_date_fn(context) == DEFAULT_DATE
+
+    def test_handle_execution_date_fn_with_data_interval(self):
+        data_interval = DataInterval(start=DEFAULT_DATE, end=DEFAULT_DATE + timedelta(hours=1))
+
+        def func(logical_date, data_interval_start, data_interval_end):
+            assert logical_date == DEFAULT_DATE
+            assert data_interval_start == data_interval.start
+            return data_interval_end
+
+        op = ExternalTaskSensor(
+            task_id="test_external_task_sensor_check",
+            external_dag_id="test_dag_parent",
+            external_task_id="test_task",
+            execution_date_fn=func,
+        )
+        context = {
+            "execution_date": DEFAULT_DATE,
+            "logical_date": DEFAULT_DATE,
+            "data_interval_start": data_interval.start,
+            "data_interval_end": data_interval.end,
+        }
+        assert op._handle_execution_date_fn(context) == data_interval.end
 
 
 class TestExternalTaskAsyncSensor:
