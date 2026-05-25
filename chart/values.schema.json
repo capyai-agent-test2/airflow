@@ -8402,6 +8402,50 @@
                         }
                     }
                 },
+                "serviceMonitor": {
+                    "description": "StatsD ServiceMonitor configuration.",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "description": "Enable ServiceMonitor for StatsD.",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "interval": {
+                            "description": "Interval at which Prometheus scrapes StatsD metrics.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "scrapeTimeout": {
+                            "description": "Timeout for Prometheus StatsD scrape requests.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "labels": {
+                            "description": "Labels to add to the StatsD ServiceMonitor.",
+                            "type": "object",
+                            "default": {},
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        },
+                        "annotations": {
+                            "description": "Annotations to add to the StatsD ServiceMonitor.",
+                            "type": "object",
+                            "default": {},
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
                 "terminationGracePeriodSeconds": {
                     "description": "Grace period for statsd to finish after SIGTERM is sent from Kubernetes.",
                     "type": "integer",
@@ -9193,6 +9237,50 @@
                                 "null"
                             ],
                             "default": null
+                        }
+                    }
+                },
+                "serviceMonitor": {
+                    "description": "PgBouncer ServiceMonitor configuration.",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "description": "Enable ServiceMonitor for PgBouncer.",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "interval": {
+                            "description": "Interval at which Prometheus scrapes PgBouncer metrics.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "scrapeTimeout": {
+                            "description": "Timeout for Prometheus PgBouncer scrape requests.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "labels": {
+                            "description": "Labels to add to the PgBouncer ServiceMonitor.",
+                            "type": "object",
+                            "default": {},
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        },
+                        "annotations": {
+                            "description": "Annotations to add to the PgBouncer ServiceMonitor.",
+                            "type": "object",
+                            "default": {},
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 },

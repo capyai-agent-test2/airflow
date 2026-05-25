@@ -17,16 +17,48 @@
 from __future__ import annotations
 
 import base64
+import subprocess
+from tempfile import NamedTemporaryFile
 
 import jmespath
 import pytest
-from chart_utils.helm_template_generator import render_chart
+import yaml
+from chart_utils.helm_template_generator import CHART_DIR, render_chart
+
+
+def render_chart_without_k8s_schema_validation(values, show_only):
+    with NamedTemporaryFile() as tmp_file:
+        tmp_file.write(yaml.dump(values).encode())
+        tmp_file.flush()
+        result = subprocess.run(
+            [
+                "helm",
+                "template",
+                "release-name",
+                str(CHART_DIR),
+                "--values",
+                tmp_file.name,
+                "--kube-version",
+                "1.30.13",
+                "--namespace",
+                "default",
+                "--show-only",
+                show_only,
+            ],
+            check=True,
+            capture_output=True,
+            cwd=CHART_DIR,
+        )
+    return [k8s_object for k8s_object in yaml.full_load_all(result.stdout) if k8s_object]
 
 
 class TestPgbouncer:
     """Tests PgBouncer."""
 
-    @pytest.mark.parametrize("yaml_filename", ["pgbouncer-deployment", "pgbouncer-service"])
+    @pytest.mark.parametrize(
+        "yaml_filename",
+        ["pgbouncer-deployment", "pgbouncer-service", "pgbouncer-servicemonitor"],
+    )
     def test_pgbouncer_resources_not_created_by_default(self, yaml_filename):
         docs = render_chart(
             show_only=[f"templates/pgbouncer/{yaml_filename}.yaml"],
@@ -107,6 +139,44 @@ class TestPgbouncer:
         )
 
         assert jmespath.search("spec.clusterIP", docs[0]) == "10.10.10.10"
+
+    def test_should_create_pgbouncer_servicemonitor(self):
+        docs = render_chart_without_k8s_schema_validation(
+            values={"pgbouncer": {"enabled": True, "serviceMonitor": {"enabled": True}}},
+            show_only="templates/pgbouncer/pgbouncer-servicemonitor.yaml",
+        )
+
+        assert jmespath.search("apiVersion", docs[0]) == "monitoring.coreos.com/v1"
+        assert jmespath.search("kind", docs[0]) == "ServiceMonitor"
+        assert jmespath.search("metadata.name", docs[0]) == "release-name-pgbouncer"
+        assert jmespath.search("spec.selector.matchLabels", docs[0]) == {
+            "tier": "airflow",
+            "component": "pgbouncer",
+            "release": "release-name",
+        }
+        assert jmespath.search("spec.endpoints[0].port", docs[0]) == "pgb-metrics"
+
+    def test_pgbouncer_servicemonitor_optional_fields(self):
+        docs = render_chart_without_k8s_schema_validation(
+            values={
+                "pgbouncer": {
+                    "enabled": True,
+                    "serviceMonitor": {
+                        "enabled": True,
+                        "interval": "30s",
+                        "scrapeTimeout": "10s",
+                        "labels": {"monitoring": "enabled"},
+                        "annotations": {"team": "platform"},
+                    },
+                },
+            },
+            show_only="templates/pgbouncer/pgbouncer-servicemonitor.yaml",
+        )
+
+        assert jmespath.search("metadata.labels.monitoring", docs[0]) == "enabled"
+        assert jmespath.search("metadata.annotations.team", docs[0]) == "platform"
+        assert jmespath.search("spec.endpoints[0].interval", docs[0]) == "30s"
+        assert jmespath.search("spec.endpoints[0].scrapeTimeout", docs[0]) == "10s"
 
     @pytest.mark.parametrize(
         ("revision_history_limit", "global_revision_history_limit"),

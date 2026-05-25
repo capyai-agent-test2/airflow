@@ -3159,6 +3159,13 @@ statsd:
   service:
     extraAnnotations: {}
 
+  serviceMonitor:
+    enabled: false
+    interval: ~
+    scrapeTimeout: ~
+    labels: {}
+    annotations: {}
+
   # Select certain nodes for StatsD pods.
   nodeSelector: {}
   affinity: {}
@@ -3385,6 +3392,13 @@ pgbouncer:
   service:
     extraAnnotations: {}
     clusterIp: ~
+
+  serviceMonitor:
+    enabled: false
+    interval: ~
+    scrapeTimeout: ~
+    labels: {}
+    annotations: {}
 
   # https://www.pgbouncer.org/config.html
   verbose: 0
