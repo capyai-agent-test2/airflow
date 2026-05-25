@@ -138,7 +138,6 @@ class TestProjectStructure:
             "providers/fab/tests/unit/fab/www/test_security_manager.py",
             "providers/fab/tests/unit/fab/www/test_session.py",
             "providers/fab/tests/unit/fab/www/test_views.py",
-            "providers/google/tests/unit/google/cloud/fs/test_gcs.py",
             "providers/google/tests/unit/google/cloud/links/test_base.py",
             "providers/google/tests/unit/google/cloud/links/test_bigquery.py",
             "providers/google/tests/unit/google/cloud/links/test_bigquery_dts.py",
@@ -171,7 +170,6 @@ class TestProjectStructure:
             "providers/google/tests/unit/google/cloud/operators/vertex_ai/test_hyperparameter_tuning_job.py",
             "providers/google/tests/unit/google/cloud/operators/vertex_ai/test_model_service.py",
             "providers/google/tests/unit/google/cloud/operators/vertex_ai/test_pipeline_job.py",
-            "providers/google/tests/unit/google/cloud/operators/vertex_ai/test_ray.py",
             "providers/google/tests/unit/google/cloud/sensors/vertex_ai/test_feature_store.py",
             "providers/google/tests/unit/google/cloud/transfers/test_bigquery_to_sql.py",
             "providers/google/tests/unit/google/cloud/transfers/test_presto_to_gcs.py",
@@ -233,9 +231,8 @@ class TestProjectStructure:
                 for f in modules_files_set
             ]
         )
-        expected_test_files = set(expected_test_files) - set(
-            [pathlib.Path(test_file) for test_file in OVERLOOKED_TESTS]
-        )
+        overlooked_test_files = {pathlib.Path(test_file) for test_file in OVERLOOKED_TESTS}
+        expected_test_files = set(expected_test_files) - overlooked_test_files
 
         missing_tests_files = [
             file.as_posix()
@@ -244,7 +241,7 @@ class TestProjectStructure:
 
         assert missing_tests_files == [], "Detect missing tests in providers module - please add tests"
 
-        added_test_files = current_test_files.intersection(OVERLOOKED_TESTS)
+        added_test_files = current_test_files.intersection(overlooked_test_files)
         assert set() == added_test_files, (
             "Detect added tests in providers module - please remove the tests "
             "from OVERLOOKED_TESTS list above"
