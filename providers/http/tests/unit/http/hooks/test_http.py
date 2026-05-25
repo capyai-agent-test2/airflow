@@ -36,7 +36,12 @@ from requests.models import DEFAULT_REDIRECT_LIMIT
 
 from airflow.models import Connection
 from airflow.providers.common.compat.sdk import AirflowException
-from airflow.providers.http.hooks.http import HttpAsyncHook, HttpHook, _process_extra_options_from_connection
+from airflow.providers.http.exceptions import HttpSRVConfigException, HttpSRVResolutionException
+from airflow.providers.http.hooks.http import (
+    HttpAsyncHook,
+    HttpHook,
+    _process_extra_options_from_connection,
+)
 
 
 @pytest.fixture
@@ -456,6 +461,76 @@ class TestHttpHook:
         hook = HttpHook()
         hook.get_conn({})
         assert hook.base_url == "http://"
+
+    @mock.patch("airflow.providers.http.hooks.http._resolve_srv_record")
+    @mock.patch("airflow.providers.http.hooks.http.HttpHook.get_connection")
+    def test_srv_connection(self, mock_get_connection, mock_resolve_srv_record):
+        conn = Connection(
+            conn_id="http_default",
+            conn_type="http",
+            host="_service._tcp.example.com",
+            schema="https",
+            extra='{"srv": true}',
+        )
+        mock_get_connection.return_value = conn
+        mock_resolve_srv_record.return_value = ("resolved.example.com", 8443)
+
+        hook = HttpHook()
+        session = hook.get_conn({})
+
+        assert hook.base_url == "https://resolved.example.com:8443"
+        assert "srv" not in session.headers
+        mock_resolve_srv_record.assert_called_once_with("_service._tcp.example.com")
+
+    @mock.patch("airflow.providers.http.hooks.http.HttpHook.get_connection")
+    def test_srv_connection_rejects_port(self, mock_get_connection):
+        conn = Connection(
+            conn_id="http_default",
+            conn_type="http",
+            host="_service._tcp.example.com",
+            schema="https",
+            port=8443,
+            extra='{"srv": true}',
+        )
+        mock_get_connection.return_value = conn
+
+        hook = HttpHook()
+        with pytest.raises(HttpSRVConfigException, match="should not define a port"):
+            hook.get_conn({})
+
+    @mock.patch("airflow.providers.http.hooks.http.HttpHook.get_connection")
+    def test_srv_connection_rejects_host_with_scheme(self, mock_get_connection):
+        conn = Connection(
+            conn_id="http_default",
+            conn_type="http",
+            host="https://_service._tcp.example.com",
+            schema="https",
+            extra='{"srv": true}',
+        )
+        mock_get_connection.return_value = conn
+
+        hook = HttpHook()
+        with pytest.raises(HttpSRVConfigException, match="without a URL scheme"):
+            hook.get_conn({})
+
+    @mock.patch("airflow.providers.http.hooks.http._resolve_srv_record")
+    @mock.patch("airflow.providers.http.hooks.http.HttpHook.get_connection")
+    def test_srv_connection_resolution_failure(self, mock_get_connection, mock_resolve_srv_record):
+        conn = Connection(
+            conn_id="http_default",
+            conn_type="http",
+            host="_service._tcp.example.com",
+            schema="https",
+            extra='{"srv": true}',
+        )
+        mock_get_connection.return_value = conn
+        mock_resolve_srv_record.side_effect = HttpSRVResolutionException(
+            "Unable to resolve SRV record for _service._tcp.example.com"
+        )
+
+        hook = HttpHook()
+        with pytest.raises(HttpSRVResolutionException, match="Unable to resolve SRV record"):
+            hook.get_conn({})
 
     @pytest.mark.parametrize("method", ["GET", "POST"])
     def test_json_request(self, method, requests_mock):
