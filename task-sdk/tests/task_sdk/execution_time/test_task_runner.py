@@ -3963,6 +3963,36 @@ class TestDagParamRuntime:
         assert task.params["path"] == expected_path
         assert task.message == expected_path
 
+    def test_task_params_templating_preserves_dagrun_conf_precedence(
+        self, create_runtime_ti, mock_supervisor_comms, time_machine
+    ):
+        """Test that DagRun conf still overrides task params after task param templating."""
+
+        class CustomOperator(BaseOperator):
+            template_fields = ("message",)
+
+            def __init__(self, *, message, **kwargs):
+                super().__init__(**kwargs)
+                self.message = message
+
+        task = CustomOperator(
+            task_id="task_with_conf_override",
+            message="{{ params.path }}",
+            params={"path": "/tmp/{{ ds }}/{{ ds_nodash }}.txt"},
+        )
+        runtime_ti = create_runtime_ti(
+            task=task,
+            dag_id="dag_with_templated_task_params",
+            conf={"path": "/tmp/from-conf.txt"},
+        )
+        context = runtime_ti.get_template_context()
+
+        task.render_template_fields(context)
+
+        assert context["params"]["path"] == "/tmp/from-conf.txt"
+        assert task.params["path"] == "/tmp/from-conf.txt"
+        assert task.message == "/tmp/from-conf.txt"
+
     def test_dag_param_resolves(
         self, create_runtime_ti, mock_supervisor_comms, time_machine, make_ti_context
     ):
