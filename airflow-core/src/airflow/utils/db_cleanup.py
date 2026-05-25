@@ -241,6 +241,19 @@ def _do_delete(
         else:
             print("Performing Delete...")
 
+        if skip_archive:
+            metadata = reflect_tables([orm_model.name], session)
+            source_table = metadata.tables[orm_model.name]
+            pk_cols = list(source_table.primary_key.columns)
+            delete_rows = limited_query.subquery(name="delete_rows")
+            delete = source_table.delete().where(
+                tuple_(*pk_cols).in_(select(*[delete_rows.c[x.name] for x in pk_cols]))
+            )
+            logger.debug("delete statement:\n%s", delete.compile())
+            session.execute(delete)
+            session.commit()
+            continue
+
         # using bulk delete
         # create a new table and copy the rows there
         timestamp_str = re.sub(r"[^\d]", "", timezone.utcnow().isoformat())[:14]
@@ -344,8 +357,9 @@ def _build_query(
     **kwargs,
 ) -> Select:
     base_table_alias = "base"
-    base_table = aliased(orm_model, name=base_table_alias)
-    query = select(text(f"{base_table_alias}.*")).select_from(base_table)
+    source_table = reflect_tables([orm_model.name], session).tables[orm_model.name]
+    base_table = aliased(source_table, name=base_table_alias)
+    query = select(base_table).select_from(base_table)
     base_table_recency_col = base_table.c[recency_column.name]
     conditions = [base_table_recency_col < clean_before_timestamp]
 

@@ -26,10 +26,11 @@ from uuid import uuid4
 
 import pendulum
 import pytest
-from sqlalchemy import func, inspect, select, text
+from sqlalchemy import event, func, inspect, select, text
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
+import airflow.settings
 from airflow import DAG
 from airflow._shared.timezones import timezone
 from airflow.exceptions import AirflowException
@@ -506,6 +507,38 @@ class TestDBCleanup:
             pass
         archived_table_names = _get_archived_table_names(["dag_run"], session)
         assert len(archived_table_names) == 0
+
+    @pytest.mark.parametrize(("skip_archive", "expected_create_archive"), [(True, False), (False, True)])
+    def test_skip_archive_does_not_create_archive_table(self, skip_archive, expected_create_archive):
+        executed_statements: list[str] = []
+
+        def capture(_conn, _cursor, statement, _parameters, _context, _executemany):
+            executed_statements.append(statement.upper())
+
+        base_date = pendulum.DateTime(2022, 1, 1, tzinfo=pendulum.timezone("UTC"))
+        create_tis(base_date=base_date, num_tis=10)
+
+        event.listen(airflow.settings.engine, "before_cursor_execute", capture)
+        try:
+            with create_session() as session:
+                clean_before_date = base_date.add(days=5)
+                _cleanup_table(
+                    **config_dict["dag_run"].__dict__,
+                    clean_before_timestamp=clean_before_date,
+                    dry_run=False,
+                    session=session,
+                    table_names=["dag_run"],
+                    skip_archive=skip_archive,
+                )
+        finally:
+            event.remove(airflow.settings.engine, "before_cursor_execute", capture)
+
+        archive_table_creates = [
+            statement
+            for statement in executed_statements
+            if "CREATE TABLE _AIRFLOW_DELETED__DAG_RUN__" in statement
+        ]
+        assert bool(archive_table_creates) is expected_create_archive
 
     def test_no_models_missing(self):
         """
