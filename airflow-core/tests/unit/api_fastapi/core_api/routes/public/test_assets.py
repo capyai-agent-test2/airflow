@@ -1447,6 +1447,110 @@ class TestPostAssetEventsTeamResolution(TestAssets):
         assert call_kwargs["api_user_teams"] == expected_teams
 
 
+class TestPostAssetEventsDagAuthorization(TestAssets):
+    _ROUTE = "airflow.api_fastapi.core_api.routes.public.assets"
+
+    @pytest.fixture
+    def asset_with_related_dags(self, session, dag_maker):
+        (asset,) = self.create_assets(session, num=1)
+
+        with dag_maker("producer", schedule=None, session=session):
+            EmptyOperator(task_id="task")
+        with dag_maker("consumer_a", schedule=None, session=session):
+            EmptyOperator(task_id="task")
+        with dag_maker("consumer_b", schedule=None, session=session):
+            EmptyOperator(task_id="task")
+
+        session.add(TaskOutletAssetReference(asset_id=asset.id, dag_id="producer", task_id="task"))
+        session.add(DagScheduleAssetReference(asset_id=asset.id, dag_id="consumer_a"))
+        session.add(DagScheduleAssetReference(asset_id=asset.id, dag_id="consumer_b"))
+        session.commit()
+        return asset
+
+    @pytest.fixture
+    def asset_with_producer_dag_only(self, session, dag_maker):
+        (asset,) = self.create_assets(session, num=1)
+
+        with dag_maker("producer_only", schedule=None, session=session):
+            EmptyOperator(task_id="task")
+
+        session.add(TaskOutletAssetReference(asset_id=asset.id, dag_id="producer_only", task_id="task"))
+        session.commit()
+        return asset
+
+    @pytest.mark.usefixtures("time_freezer")
+    def test_should_respond_200_when_user_can_trigger_producer_dag(
+        self, test_client, asset_with_related_dags
+    ):
+        mock_auth_manager = mock.MagicMock()
+        mock_auth_manager.is_authorized_dag.side_effect = lambda *, details, **_: (
+            details == DagDetails(id="producer", team_name=None)
+        )
+
+        with mock.patch(f"{self._ROUTE}.get_auth_manager", return_value=mock_auth_manager):
+            response = test_client.post(
+                "/assets/events", json={"asset_id": asset_with_related_dags.id, "extra": {}}
+            )
+
+        assert response.status_code == 200
+
+    @pytest.mark.usefixtures("time_freezer")
+    def test_should_respond_200_when_user_can_trigger_all_consumer_dags(
+        self, test_client, asset_with_related_dags
+    ):
+        mock_auth_manager = mock.MagicMock()
+        mock_auth_manager.is_authorized_dag.side_effect = lambda *, details, **_: (
+            details.id
+            in {
+                "consumer_a",
+                "consumer_b",
+            }
+        )
+
+        with mock.patch(f"{self._ROUTE}.get_auth_manager", return_value=mock_auth_manager):
+            response = test_client.post(
+                "/assets/events", json={"asset_id": asset_with_related_dags.id, "extra": {}}
+            )
+
+        assert response.status_code == 200
+
+    def test_should_respond_403_when_user_cannot_trigger_producer_or_all_consumer_dags(
+        self, test_client, asset_with_related_dags
+    ):
+        mock_auth_manager = mock.MagicMock()
+        mock_auth_manager.is_authorized_dag.side_effect = lambda *, details, **_: (
+            details == DagDetails(id="consumer_a", team_name=None)
+        )
+
+        with mock.patch(f"{self._ROUTE}.get_auth_manager", return_value=mock_auth_manager):
+            response = test_client.post(
+                "/assets/events", json={"asset_id": asset_with_related_dags.id, "extra": {}}
+            )
+
+        assert response.status_code == 403
+        assert (
+            response.json()["detail"]
+            == "User is not authorized to create an asset event for the related Dags"
+        )
+
+    def test_should_respond_403_when_user_cannot_trigger_producer_of_producer_only_asset(
+        self, test_client, asset_with_producer_dag_only
+    ):
+        mock_auth_manager = mock.MagicMock()
+        mock_auth_manager.is_authorized_dag.return_value = False
+
+        with mock.patch(f"{self._ROUTE}.get_auth_manager", return_value=mock_auth_manager):
+            response = test_client.post(
+                "/assets/events", json={"asset_id": asset_with_producer_dag_only.id, "extra": {}}
+            )
+
+        assert response.status_code == 403
+        assert (
+            response.json()["detail"]
+            == "User is not authorized to create an asset event for the related Dags"
+        )
+
+
 @pytest.mark.need_serialized_dag
 class TestPostAssetMaterialize(TestAssets):
     DAG_ASSET1_ID = "test_dag_1"

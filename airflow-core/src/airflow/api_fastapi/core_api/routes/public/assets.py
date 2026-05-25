@@ -79,8 +79,10 @@ from airflow.models.asset import (
     AssetEvent,
     AssetModel,
     AssetWatcherModel,
+    DagScheduleAssetReference,
     TaskOutletAssetReference,
 )
+from airflow.models.dag import DagModel
 from airflow.typing_compat import Unpack
 from airflow.utils.state import DagRunState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
@@ -110,6 +112,56 @@ def _generate_queued_event_where_clause(
     if permitted_dag_ids is not None:
         where_clause.append(AssetDagRunQueue.target_dag_id.in_(permitted_dag_ids))
     return where_clause
+
+
+def _create_dag_details_by_id(dag_ids: set[str]) -> dict[str, DagDetails]:
+    dag_id_to_team_name = DagModel.get_dag_id_to_team_name_mapping(list(dag_ids))
+    return {dag_id: DagDetails(id=dag_id, team_name=dag_id_to_team_name.get(dag_id)) for dag_id in dag_ids}
+
+
+def _is_authorized_to_create_asset_event(*, asset_id: int, user: GetUserDep, session: SessionDep) -> bool:
+    producer_dag_ids = set(
+        session.scalars(
+            select(TaskOutletAssetReference.dag_id)
+            .where(TaskOutletAssetReference.asset_id == asset_id)
+            .distinct()
+        )
+    )
+    consumer_dag_ids = set(
+        session.scalars(
+            select(DagScheduleAssetReference.dag_id)
+            .where(DagScheduleAssetReference.asset_id == asset_id)
+            .distinct()
+        )
+    )
+
+    related_dag_ids = producer_dag_ids | consumer_dag_ids
+    if not related_dag_ids:
+        return True
+
+    dag_details_by_id = _create_dag_details_by_id(related_dag_ids)
+    auth_manager = get_auth_manager()
+
+    if any(
+        auth_manager.is_authorized_dag(
+            method="POST",
+            access_entity=DagAccessEntity.RUN,
+            details=dag_details_by_id[dag_id],
+            user=user,
+        )
+        for dag_id in producer_dag_ids
+    ):
+        return True
+
+    return bool(consumer_dag_ids) and all(
+        auth_manager.is_authorized_dag(
+            method="POST",
+            access_entity=DagAccessEntity.RUN,
+            details=dag_details_by_id[dag_id],
+            user=user,
+        )
+        for dag_id in consumer_dag_ids
+    )
 
 
 class OnlyActiveFilter(BaseParam[bool]):
@@ -371,6 +423,11 @@ def create_asset_event(
     asset_model = session.scalar(select(AssetModel).where(AssetModel.id == body.asset_id).limit(1))
     if not asset_model:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Asset with ID: `{body.asset_id}` was not found")
+    if not _is_authorized_to_create_asset_event(asset_id=asset_model.id, user=user, session=session):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "User is not authorized to create an asset event for the related Dags",
+        )
     timestamp = timezone.utcnow()
 
     api_user_teams: set[str] = set()
