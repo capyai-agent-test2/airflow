@@ -791,6 +791,15 @@ class DagFileProcessorManager(LoggingMixin):
                 previously_seen=previously_seen,
             ):
                 self.log.info("Not time to refresh bundle %s", bundle.name)
+                if self.has_missing_import_error_filelocs(bundle.name, bundle.path):
+                    found_files = {
+                        DagFileInfo(rel_path=p, bundle_name=bundle.name, bundle_path=bundle.path)
+                        for p in self._find_files_in_bundle(bundle)
+                    }
+                    self.clear_orphaned_import_errors(
+                        bundle_name=bundle.name,
+                        observed_filelocs=self._get_observed_filelocs(found_files),
+                    )
                 continue
 
             self.log.info("Refreshing bundle %s", bundle.name)
@@ -940,6 +949,41 @@ class DagFileProcessorManager(LoggingMixin):
                     session.delete(error)
         except Exception:
             self.log.exception("Error removing old import errors")
+
+    @provide_session
+    def has_missing_import_error_filelocs(
+        self, bundle_name: str, bundle_path: Path, *, session: Session = NEW_SESSION
+    ) -> bool:
+        """Check whether a bundle has persisted import errors for files that no longer exist."""
+        filenames = session.scalars(
+            select(ParseImportError.filename).where(ParseImportError.bundle_name == bundle_name).distinct()
+        )
+        for filename in filenames:
+            if filename is None:
+                return True
+            file_path = Path(filename)
+            absolute_path = bundle_path / file_path
+            if absolute_path.exists():
+                continue
+
+            container_path = bundle_path / file_path.parts[0]
+            if container_path.is_file() and zipfile.is_zipfile(container_path):
+                if len(file_path.parts) == 1:
+                    continue
+                try:
+                    with zipfile.ZipFile(container_path) as archive:
+                        if archive.getinfo(Path(*file_path.parts[1:]).as_posix()):
+                            continue
+                except (KeyError, zipfile.BadZipFile):
+                    pass
+                return True
+
+            if not container_path.exists():
+                return True
+
+            if not absolute_path.exists():
+                return True
+        return False
 
     def _log_file_processing_stats(self, known_files: dict[str, set[DagFileInfo]]):
         """
