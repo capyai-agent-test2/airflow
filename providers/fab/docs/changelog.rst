@@ -20,6 +20,14 @@
 Changelog
 ---------
 
+3.7.0
+.....
+
+Features
+~~~~~~~~
+
+* ``Add declarative custom FAB role definitions in airflow.cfg and webserver_config.py``
+
 3.6.4
 .....
 
