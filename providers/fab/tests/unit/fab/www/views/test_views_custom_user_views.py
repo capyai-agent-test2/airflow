@@ -25,6 +25,7 @@ from flask.sessions import SecureCookieSessionInterface
 from sqlalchemy import delete, func, select
 
 from airflow.api_fastapi.app import get_auth_manager
+from airflow.providers.fab.auth_manager.validation import HTML_UNSAFE_CHARACTER_MESSAGE
 from airflow.providers.fab.www import app as application
 from airflow.providers.fab.www.security import permissions
 
@@ -228,6 +229,42 @@ class TestSecurity:
 
         assert response.status_code == 200
         check_content_in_response("This field is required", response)
+
+    def test_user_creation_rejects_html_username(self, app, client):
+        create_user(
+            app,
+            username="has_access",
+            role_name="role_has_access",
+            permissions=[
+                (permissions.ACTION_CAN_READ, permissions.RESOURCE_WEBSITE),
+                (permissions.ACTION_CAN_CREATE, permissions.RESOURCE_USER),
+            ],
+        )
+
+        client = client_with_login(
+            app,
+            username="has_access",
+            password="has_access",
+        )
+
+        response = client.post(
+            "/users/add",
+            data={
+                "first_name": "Test",
+                "last_name": "User",
+                "username": "<script>alert(1)</script>",
+                "email": "test_new_user@example.com",
+                "password": "test_password",
+                "conf_password": "test_password",
+                "active": "y",
+                "roles": ["Admin"],
+            },
+            follow_redirects=True,
+        )
+
+        assert response.status_code == 200
+        check_content_in_response(HTML_UNSAFE_CHARACTER_MESSAGE, response)
+        assert get_auth_manager().security_manager.find_user(username="<script>alert(1)</script>") is None
 
 
 class TestResetUserSessions:

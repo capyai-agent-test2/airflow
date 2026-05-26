@@ -28,6 +28,7 @@ from flask_appbuilder.security.views import (
 )
 from wtforms.validators import DataRequired
 
+from airflow.providers.fab.auth_manager.validation import validate_html_safe_form_field
 from airflow.providers.fab.www.security import permissions
 
 
@@ -196,7 +197,13 @@ class CustomUserDBModelView(MultiResourceUserMixin, UserDBModelView):
         "roles",
     ]
 
-    validators_columns = {"roles": [DataRequired()]}
+    validators_columns = {
+        "email": [validate_html_safe_form_field],
+        "first_name": [validate_html_safe_form_field],
+        "last_name": [validate_html_safe_form_field],
+        "roles": [DataRequired()],
+        "username": [validate_html_safe_form_field],
+    }
 
     base_permissions = [
         permissions.ACTION_CAN_CREATE,
