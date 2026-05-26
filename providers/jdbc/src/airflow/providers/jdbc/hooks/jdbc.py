@@ -17,12 +17,13 @@
 # under the License.
 from __future__ import annotations
 
+import re
 import traceback
 import warnings
 from contextlib import contextmanager
 from threading import RLock
 from typing import TYPE_CHECKING, Any, cast
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse
 
 import jaydebeapi
 from sqlalchemy.engine import URL
@@ -88,6 +89,18 @@ class JdbcHook(DbApiHook):
 
     default_driver_path: str | None = None
     default_driver_class: str | None = None
+
+    _OPENLINEAGE_DIALECT_ALIASES = {
+        "mariadb": "mysql",
+        "postgresql": "postgres",
+        "sqlserver": "mssql",
+    }
+    _OPENLINEAGE_DEFAULT_PORTS = {
+        "mssql": 1433,
+        "mysql": 3306,
+        "oracle": 1521,
+        "postgres": 5432,
+    }
 
     def __init__(
         self,
@@ -262,3 +275,135 @@ class JdbcHook(DbApiHook):
                 uri = f"{uri}?{query_string}"
 
         return uri
+
+    def get_openlineage_database_info(self, connection):
+        """Return JDBC connection information for OpenLineage."""
+        from airflow.providers.openlineage.sqlparser import DatabaseInfo
+
+        dialect, authority, database = self._get_openlineage_connection_parts(connection)
+        database_info_kwargs: dict[str, Any] = {
+            "scheme": dialect,
+            "authority": authority,
+            "database": database,
+        }
+
+        if dialect == "mysql":
+            database_info_kwargs["information_schema_columns"] = [
+                "table_schema",
+                "table_name",
+                "column_name",
+                "ordinal_position",
+                "column_type",
+            ]
+            database_info_kwargs["normalize_name_method"] = lambda name: name.upper()
+        elif dialect == "mssql":
+            database_info_kwargs["information_schema_columns"] = [
+                "table_schema",
+                "table_name",
+                "column_name",
+                "ordinal_position",
+                "data_type",
+                "table_catalog",
+            ]
+            database_info_kwargs["is_information_schema_cross_db"] = True
+        elif dialect == "oracle":
+            database_info_kwargs["information_schema_table_name"] = "ALL_TAB_COLUMNS"
+            database_info_kwargs["information_schema_columns"] = [
+                "owner",
+                "table_name",
+                "column_name",
+                "column_id",
+                "data_type",
+            ]
+            database_info_kwargs["normalize_name_method"] = lambda name: name.upper()
+
+        return DatabaseInfo(**database_info_kwargs)
+
+    def get_openlineage_database_dialect(self, connection) -> str:
+        """Return database dialect for OpenLineage SQL parsing."""
+        dialect, _, _ = self._get_openlineage_connection_parts(connection)
+        return dialect
+
+    def get_openlineage_default_schema(self) -> str | None:
+        """Return JDBC default schema when it can be inferred safely."""
+        return None
+
+    def _get_openlineage_connection_parts(self, connection) -> tuple[str, str | None, str | None]:
+        jdbc_uri = cast("str | None", connection.host)
+        parsed_jdbc = self._parse_jdbc_uri(jdbc_uri) if jdbc_uri else None
+
+        dialect_source = self.connection_extra.get("sqlalchemy_scheme") or (
+            parsed_jdbc["subprotocol"] if parsed_jdbc else None
+        )
+        dialect = self._normalize_openlineage_dialect(dialect_source or self.dialect_name)
+        authority = parsed_jdbc["authority"] if parsed_jdbc else None
+        if authority is None and connection.host and not str(connection.host).startswith("jdbc:"):
+            default_port = self._OPENLINEAGE_DEFAULT_PORTS.get(dialect)
+            authority = self._build_openlineage_authority(
+                host=connection.host,
+                port=connection.port,
+                default_port=default_port,
+            )
+        database = connection.schema or (parsed_jdbc["database"] if parsed_jdbc else None)
+        return dialect, authority, database
+
+    def _normalize_openlineage_dialect(self, dialect: str) -> str:
+        dialect_name = dialect.split("+", 1)[0].lower()
+        return self._OPENLINEAGE_DIALECT_ALIASES.get(dialect_name, dialect_name)
+
+    def _parse_jdbc_uri(self, jdbc_uri: str) -> dict[str, str | None] | None:
+        if not jdbc_uri.startswith("jdbc:"):
+            return None
+
+        standard_uri = jdbc_uri.removeprefix("jdbc:")
+        if "://" in standard_uri:
+            parsed = urlparse(standard_uri)
+            params = dict(parse_qsl(parsed.query))
+            if parsed.scheme == "sqlserver" and ";" in standard_uri:
+                base_uri, _, properties = standard_uri.partition(";")
+                parsed = urlparse(base_uri)
+                params.update(
+                    key_value.split("=", 1)
+                    for key_value in properties.split(";")
+                    if "=" in key_value and key_value.split("=", 1)[0]
+                )
+            return {
+                "subprotocol": parsed.scheme,
+                "authority": self._build_openlineage_authority(
+                    host=parsed.hostname,
+                    port=parsed.port,
+                    default_port=self._OPENLINEAGE_DEFAULT_PORTS.get(
+                        self._normalize_openlineage_dialect(parsed.scheme)
+                    ),
+                ),
+                "database": parsed.path.lstrip("/") or params.get("database") or params.get("databaseName"),
+            }
+
+        oracle_match = re.match(
+            r"^oracle:[^@]*@(?://)?(?P<host>[^:/]+)(?::(?P<port>\d+))?(?:[:/](?P<database>[^/?;]+))?",
+            standard_uri,
+        )
+        if oracle_match:
+            return {
+                "subprotocol": "oracle",
+                "authority": self._build_openlineage_authority(
+                    host=oracle_match.group("host"),
+                    port=int(oracle_match.group("port")) if oracle_match.group("port") else None,
+                    default_port=self._OPENLINEAGE_DEFAULT_PORTS["oracle"],
+                ),
+                "database": oracle_match.group("database"),
+            }
+
+        subprotocol, _, _ = standard_uri.partition(":")
+        return {"subprotocol": subprotocol, "authority": None, "database": None}
+
+    @staticmethod
+    def _build_openlineage_authority(
+        host: str | None, port: int | None, default_port: int | None = None
+    ) -> str | None:
+        if not host:
+            return None
+        resolved_port = port or default_port
+        if resolved_port:
+            return f"{host}:{resolved_port}"
+        return host
