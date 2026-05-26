@@ -178,14 +178,11 @@ class PythonDagImporter(AbstractDagImporter):
 
         # Convert captured warnings to DagImportWarning
         for warn_msg in captured_warnings:
-            category = warn_msg.category.__name__
-            if (module := warn_msg.category.__module__) != "builtins":
-                category = f"{module}.{category}"
             result.warnings.append(
                 DagImportWarning(
                     file_path=warn_msg.filename,
                     message=str(warn_msg.message),
-                    warning_type=category,
+                    warning_type=warn_msg.category,
                     line_number=warn_msg.lineno,
                 )
             )

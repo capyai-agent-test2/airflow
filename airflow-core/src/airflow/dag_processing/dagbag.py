@@ -328,14 +328,17 @@ class DagBag(LoggingMixin):
 
         if result.warnings:
             formatted_warnings = [
-                f"{w.file_path}:{w.line_number}: {w.warning_type}: {w.message}" for w in result.warnings
+                f"{w.file_path}:{w.line_number}: {self._format_warning_type(w.warning_type)}: "
+                f"{self._format_warning_message(w.file_path, w.message, filepath)}"
+                for w in result.warnings
             ]
             self.captured_warnings[filepath] = tuple(formatted_warnings)
             # Re-emit warnings so they can be handled by Python's warning system
             for w in result.warnings:
+                warning_message = self._format_warning_message(w.file_path, w.message, filepath)
                 warnings.warn_explicit(
-                    message=w.message,
-                    category=UserWarning,
+                    message=warning_message,
+                    category=w.warning_type if isinstance(w.warning_type, type) else UserWarning,
                     filename=w.file_path,
                     lineno=w.line_number or 0,
                 )
@@ -399,6 +402,22 @@ class DagBag(LoggingMixin):
         if self.bundle_path:
             return str(Path(filepath).relative_to(self.bundle_path))
         return filepath
+
+    @staticmethod
+    def _format_warning_type(warning_type: type[Warning] | str) -> str:
+        """Format a warning type for display in captured warnings."""
+        if isinstance(warning_type, str):
+            return warning_type
+        warning_name = warning_type.__name__
+        if (module := warning_type.__module__) != "builtins":
+            warning_name = f"{module}.{warning_name}"
+        return warning_name
+
+    def _format_warning_message(self, warning_file_path: str, message: str, filepath: str) -> str:
+        """Append the parsed Dag file when the warning points somewhere else."""
+        if warning_file_path == filepath or warning_file_path.startswith(f"{filepath}/"):
+            return message
+        return f"{message} [dag file: {self._get_relative_fileloc(filepath)}]"
 
     def bag_dag(self, dag: DAG):
         """
