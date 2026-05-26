@@ -1201,7 +1201,6 @@ class KubernetesPodOperator(BaseOperator):
         if self._killed or not remote_pod:
             return
 
-        istio_enabled = self.is_istio_enabled(remote_pod)
         pod_phase = remote_pod.status.phase if hasattr(remote_pod, "status") else None
 
         # if the pod fails or success, but we don't want to delete it
@@ -1212,10 +1211,9 @@ class KubernetesPodOperator(BaseOperator):
         ):
             self.patch_already_checked(remote_pod, reraise=False)
 
-        if istio_enabled or self.do_xcom_push:
-            failed = not container_is_succeeded(remote_pod, self.base_container_name)
-        else:
-            failed = pod_phase != PodPhase.SUCCEEDED
+        failed = pod_phase != PodPhase.SUCCEEDED and not container_is_succeeded(
+            remote_pod, self.base_container_name
+        )
 
         if failed:
             if self.do_xcom_push and context:
