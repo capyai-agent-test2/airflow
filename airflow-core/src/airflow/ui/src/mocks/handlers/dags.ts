@@ -48,6 +48,7 @@ const successDag = {
   pending_actions: [],
   tags: [{ dag_id: "tutorial_taskflow_api_success", name: "example" }],
   timetable_description: "Never, external triggers only",
+  timetable_type: "NullTimetable",
 };
 
 const failedDag = {
@@ -70,7 +71,7 @@ const failedDag = {
       logical_date: "2025-01-13T04:33:58.396323Z",
       run_id: "manual__2025-01-13T04:33:58.387988+00:00",
       start_date: "2025-01-13T04:33:58.496197Z",
-      state: "success",
+      state: "failed",
     },
   ],
   max_active_runs: 16,
@@ -80,6 +81,7 @@ const failedDag = {
   pending_actions: [],
   tags: [{ dag_id: "tutorial_taskflow_api_failed", name: "example" }],
   timetable_description: "Never, external triggers only",
+  timetable_type: "NullTimetable",
 };
 
 const pausedDag = {
@@ -102,19 +104,35 @@ const pausedDag = {
   pending_actions: [],
   tags: [{ dag_id: "paused_dag", name: "example" }],
   timetable_description: "Never, external triggers only",
+  timetable_type: "CronTriggerTimetable",
 };
 
-const filterDagsByPaused = (paused: string | null) => {
+const filterDags = (paused: string | null, timetableTypes: Array<string>) => {
   const allDags = [successDag, failedDag, pausedDag];
+  const dagsByTimetableType =
+    timetableTypes.length === 0
+      ? allDags
+      : allDags.filter((dag) => timetableTypes.includes(dag.timetable_type));
 
   if (paused === "true") {
-    return allDags.filter((dag) => dag.is_paused);
+    return dagsByTimetableType.filter((dag) => dag.is_paused);
   }
   if (paused === "false") {
-    return allDags.filter((dag) => !dag.is_paused);
+    return dagsByTimetableType.filter((dag) => !dag.is_paused);
   }
 
-  return allDags;
+  return dagsByTimetableType;
+};
+
+const filterDagsByLastRunState = (dags: Array<typeof successDag>, lastDagRunState: string | null) => {
+  if (lastDagRunState === "success") {
+    return dags.filter((dag) => dag.latest_dag_runs.some((dagRun) => dagRun.state === "success"));
+  }
+  if (lastDagRunState === "failed") {
+    return dags.filter((dag) => dag.latest_dag_runs.some((dagRun) => dagRun.state === "failed"));
+  }
+
+  return dags;
 };
 
 export const handlers: Array<HttpHandler> = [
@@ -122,20 +140,8 @@ export const handlers: Array<HttpHandler> = [
     const url = new URL(request.url);
     const lastDagRunState = url.searchParams.get("last_dag_run_state");
     const paused = url.searchParams.get("paused");
-
-    if (lastDagRunState === "success") {
-      return HttpResponse.json({
-        dags: [successDag],
-        total_entries: 1,
-      });
-    } else if (lastDagRunState === "failed") {
-      return HttpResponse.json({
-        dags: [failedDag],
-        total_entries: 1,
-      });
-    }
-
-    const dags = filterDagsByPaused(paused);
+    const timetableTypes = url.searchParams.getAll("timetable_type");
+    const dags = filterDagsByLastRunState(filterDags(paused, timetableTypes), lastDagRunState);
 
     return HttpResponse.json({
       dags,

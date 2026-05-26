@@ -119,6 +119,10 @@ def get_dags(
     has_asset_schedule: QueryHasAssetScheduleFilter,
     asset_dependency: QueryAssetDependencyFilter,
     has_pending_actions: QueryPendingActionsFilter,
+    timetable_type: Annotated[
+        FilterParam[list[str] | None],
+        Depends(filter_param_factory(DagModel.timetable_type, list[str], FilterOptionEnum.IN)),
+    ],
     readable_dags_filter: ReadableDagsFilterDep,
     session: SessionDep,
     user: GetUserDep,
@@ -155,6 +159,7 @@ def get_dags(
             readable_dags_filter,
             bundle_name,
             bundle_version,
+            timetable_type,
         ],
         order_by=order_by,
         offset=offset,

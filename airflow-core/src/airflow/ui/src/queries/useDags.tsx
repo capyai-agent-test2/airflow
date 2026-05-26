@@ -40,6 +40,7 @@ export const useDags = ({
   pendingHitl,
   tags,
   tagsMatchMode,
+  timetableType,
 }: {
   advancedSearch?: boolean;
   dagDisplayNamePattern?: string;
@@ -56,6 +57,7 @@ export const useDags = ({
   pendingHitl?: boolean;
   tags?: Array<string>;
   tagsMatchMode?: "all" | "any";
+  timetableType?: Array<string>;
 }) => {
   const refetchInterval = useAutoRefresh({});
 
@@ -76,6 +78,7 @@ export const useDags = ({
       paused,
       tags,
       tagsMatchMode,
+      timetableType,
     },
     undefined,
     {
