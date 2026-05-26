@@ -754,6 +754,148 @@ class TestBaseOperator:
         task.render_template_fields({})
         assert task.arg2 == "foo_barbarbar"
 
+    def test_render_template_fields_with_task_params_and_minimal_context(self):
+        task = MockOperator(task_id="op1", arg1="{{ foo }}", params={"path": "/tmp/{{ foo }}.txt"})
+
+        task.render_template_fields(context={"foo": "footemplated"})
+
+        assert task.arg1 == "footemplated"
+        assert task.params["path"] == "/tmp/footemplated.txt"
+
+    def test_render_template_fields_resolves_deep_task_param_chains(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.l }}",
+            params={
+                "a": "{{ ds }}",
+                "b": "{{ params.a }}",
+                "c": "{{ params.b }}",
+                "d": "{{ params.c }}",
+                "e": "{{ params.d }}",
+                "f": "{{ params.e }}",
+                "g": "{{ params.f }}",
+                "h": "{{ params.g }}",
+                "i": "{{ params.h }}",
+                "j": "{{ params.i }}",
+                "k": "{{ params.j }}",
+                "l": "{{ params.k }}",
+            },
+        )
+
+        context = {"ds": "2024-12-01", "params": task.params.dump()}
+        task.render_template_fields(context=context)
+
+        assert task.arg1 == "2024-12-01"
+        assert task.params["l"] == "2024-12-01"
+        assert context["params"]["l"] == "2024-12-01"
+
+    def test_render_template_fields_raises_for_non_converging_task_params(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.a }}",
+            params={"a": "{{ params.a }}x"},
+        )
+
+        context = {"params": task.params.dump()}
+
+        with pytest.raises(ValueError, match="Task params templating did not converge"):
+            task.render_template_fields(context=context)
+
+    def test_render_template_fields_raises_for_cyclic_task_params(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.a }}",
+            params={"a": "{{ params.b }}", "b": "{{ params.a }}"},
+        )
+
+        context = {"params": task.params.dump()}
+
+        with pytest.raises(ValueError, match="cyclic task param references"):
+            task.render_template_fields(context=context)
+
+    def test_render_template_fields_raises_for_direct_self_referential_task_param(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.a }}",
+            params={"a": "{{ params.a }}"},
+        )
+
+        context = {"params": task.params.dump()}
+
+        with pytest.raises(ValueError, match="cyclic task param references"):
+            task.render_template_fields(context=context)
+
+    def test_render_template_fields_raises_for_bracket_style_self_referential_task_param(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1='{{ params["a"] }}',
+            params={"a": '{{ params["a"] }}'},
+        )
+
+        context = {"params": task.params.dump()}
+
+        with pytest.raises(ValueError, match="cyclic task param references"):
+            task.render_template_fields(context=context)
+
+    def test_render_template_fields_cycle_detection_handles_mixed_dict_keys(self):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ foo }}",
+            params={"payload": {"mixed": {1: "one", "2": "two"}}},
+        )
+
+        task.render_template_fields(context={"foo": "footemplated"})
+
+        assert task.arg1 == "footemplated"
+        assert task.params["payload"] == {"mixed": {1: "one", "2": "two"}}
+
+    @mock.patch("airflow.sdk.configuration.conf.getboolean", return_value=True)
+    def test_render_template_fields_preserves_conf_literal_matching_raw_template(self, _mock_getboolean):
+        task = MockOperator(
+            task_id="op1",
+            arg1="{{ params.path }}",
+            params={"path": "{{ ds }}"},
+        )
+
+        context = {
+            "dag_run": mock.Mock(conf={"path": "{{ ds }}"}),
+            "ds": "2024-12-01",
+            "params": {"path": "{{ ds }}"},
+        }
+
+        task.render_template_fields(context=context)
+
+        assert task.arg1 == "{{ ds }}"
+        assert task.params["path"] == "{{ ds }}"
+        assert context["params"]["path"] == "{{ ds }}"
+
+    def test_render_template_fields_for_mapped_operator_uses_templated_task_params(self):
+        with DAG("test-dag", schedule=None, start_date=DEFAULT_DATE):
+            task = MockOperator.partial(
+                task_id="op1",
+                params={"path": "/tmp/{{ ds }}/{{ ds_nodash }}.txt"},
+            ).expand(arg1=["unused"])
+
+        ti = mock.Mock(task=task)
+        context = {
+            "dag": task.dag,
+            "dag_run": mock.Mock(conf={}),
+            "ds": "2024-12-01",
+            "ds_nodash": "20241201",
+            "params": {"path": "/tmp/{{ ds }}/{{ ds_nodash }}.txt"},
+            "task": task,
+            "ti": ti,
+        }
+
+        with mock.patch.object(
+            task, "_expand_mapped_kwargs", return_value=({"arg1": "{{ params.path }}"}, set())
+        ):
+            task.render_template_fields(context)
+
+        assert context["task"].arg1 == "/tmp/2024-12-01/20241201.txt"
+        assert context["task"].params["path"] == "/tmp/2024-12-01/20241201.txt"
+        assert context["params"]["path"] == "/tmp/2024-12-01/20241201.txt"
+
     @pytest.mark.parametrize("content", [object(), uuid.uuid4()])
     def test_render_template_fields_no_change(self, content):
         """Tests if non-templatable types remain unchanged."""

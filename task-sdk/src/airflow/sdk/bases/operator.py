@@ -23,6 +23,7 @@ import collections.abc
 import contextlib
 import copy
 import inspect
+import json
 import sys
 import warnings
 from asyncio import AbstractEventLoop
@@ -1625,7 +1626,87 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         """
         if not jinja_env:
             jinja_env = self.get_template_env()
+        self._render_task_params(context, jinja_env)
         self._do_render_template_fields(self, self.template_fields, context, jinja_env, set())
+
+    def _render_task_params(
+        self, context: Context, jinja_env: jinja2.Environment | None = None
+    ) -> dict[str, Any] | None:
+        from airflow.sdk.configuration import conf
+
+        if not self.params:
+            return None
+        if not jinja_env:
+            jinja_env = self.get_template_env()
+
+        task_params = ParamsDict.filter_params_by_source(self.params, "task")
+        raw_task_params = task_params.dump()
+        if not raw_task_params:
+            return None
+        current_context_params = context.get("params", {})
+        dag_run_conf = getattr(context.get("dag_run"), "conf", None) or {}
+        conf_override_keys: set[str] = set()
+        if conf.getboolean("core", "dag_run_conf_overrides_params") and isinstance(dag_run_conf, dict):
+            conf_override_keys = set(dag_run_conf)
+
+        def _contains_unresolved_task_param_reference(value: Any) -> bool:
+            if isinstance(value, str):
+                return "{{" in value and ("params." in value or "params[" in value)
+            if isinstance(value, dict):
+                return any(
+                    _contains_unresolved_task_param_reference(key)
+                    or _contains_unresolved_task_param_reference(item)
+                    for key, item in value.items()
+                )
+            if isinstance(value, (list, tuple, set)):
+                return any(_contains_unresolved_task_param_reference(item) for item in value)
+            return False
+
+        rendered_task_params = raw_task_params
+        seen_rendered_task_params: set[str] = set()
+        max_render_passes = len(raw_task_params) + 1
+        for _ in range(max_render_passes):
+            rendered_task_params_key = json.dumps(rendered_task_params)
+            if rendered_task_params_key in seen_rendered_task_params:
+                raise ValueError(
+                    "Task params templating did not converge due to cyclic task param references"
+                )
+            seen_rendered_task_params.add(rendered_task_params_key)
+
+            rendered_context_params = dict(current_context_params)
+            for key, value in rendered_task_params.items():
+                if key not in conf_override_keys:
+                    rendered_context_params[key] = value
+
+            next_rendered_task_params = self.render_template(
+                rendered_task_params,
+                {**context, "params": rendered_context_params},
+                jinja_env,
+            )
+            if next_rendered_task_params == rendered_task_params:
+                if _contains_unresolved_task_param_reference(rendered_task_params):
+                    raise ValueError("Task params templating did not converge due to cyclic task param references")
+                break
+            rendered_task_params = next_rendered_task_params
+        else:
+            raise ValueError(
+                f"Task params templating did not converge after {max_render_passes} rendering passes"
+            )
+
+        effective_task_params = {
+            key: current_context_params[key]
+            if key in conf_override_keys and key in current_context_params
+            else value
+            for key, value in rendered_task_params.items()
+        }
+        self.params.update(effective_task_params)
+        rendered_context_params = dict(current_context_params)
+        for key, value in effective_task_params.items():
+            if key not in conf_override_keys:
+                rendered_context_params[key] = value
+        if "params" in context:
+            context["params"] = rendered_context_params
+        return effective_task_params
 
     def pre_execute(self, context: Any):
         """Execute right before self.execute() is called."""
