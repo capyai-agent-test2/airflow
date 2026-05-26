@@ -28,7 +28,7 @@ import warnings
 from asyncio import AbstractEventLoop
 from collections.abc import Callable, Collection, Generator, Iterable, Mapping, Sequence
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import total_ordering, wraps
@@ -1608,7 +1608,16 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
 
         :meta private:
         """
-        return self.start_trigger_args
+        if not self.start_trigger_args:
+            return None
+        if not self.start_trigger_args.trigger_kwargs:
+            return self.start_trigger_args
+
+        trigger_kwargs = self.start_trigger_args.trigger_kwargs.copy()
+        for field_name in self.template_fields:
+            if field_name in trigger_kwargs:
+                trigger_kwargs[field_name] = getattr(self, field_name)
+        return replace(self.start_trigger_args, trigger_kwargs=trigger_kwargs)
 
     def render_template_fields(
         self,

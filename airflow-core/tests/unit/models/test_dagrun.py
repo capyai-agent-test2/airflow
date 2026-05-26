@@ -2484,6 +2484,115 @@ def test_schedule_tis_start_trigger_kwargs_e2e(dag_maker, session):
     assert trigger_row.kwargs == {"delta": datetime.timedelta(seconds=2)}
 
 
+@pytest.mark.need_serialized_dag
+def test_schedule_tis_start_trigger_renders_templated_trigger_kwargs(dag_maker, session):
+    class TestOperator(BaseOperator):
+        template_fields = ("message",)
+        start_from_trigger = True
+
+        def __init__(self, *, message: str, **kwargs):
+            super().__init__(**kwargs)
+            self.message = message
+            self.start_trigger_args = StartTriggerArgs(
+                trigger_cls="airflow.triggers.testing.SuccessTrigger",
+                trigger_kwargs={"message": message},
+                next_method="execute_complete",
+                next_kwargs=None,
+                timeout=None,
+            )
+
+        def execute_complete(self):
+            pass
+
+    with dag_maker(session=session):
+        TestOperator(task_id="test_task", message="{{ dag_run.conf['message'] }}")
+
+    dr: DagRun = dag_maker.create_dagrun(conf={"message": "Hello from trigger"})
+    ti = dr.get_task_instance("test_task")
+    ti.task = dr.dag.get_task("test_task")
+
+    dr.schedule_tis((ti,), session=session)
+
+    assert ti.state == TaskInstanceState.DEFERRED
+
+    trigger_row = session.get(Trigger, ti.trigger_id)
+    assert trigger_row is not None
+    assert trigger_row.kwargs == {"message": "Hello from trigger"}
+
+
+@pytest.mark.need_serialized_dag
+def test_schedule_tis_start_trigger_does_not_leak_rendered_values_between_runs(dag_maker, session):
+    class TestOperator(BaseOperator):
+        template_fields = ("message",)
+        start_from_trigger = True
+
+        def __init__(self, *, message: str, **kwargs):
+            super().__init__(**kwargs)
+            self.message = message
+            self.start_trigger_args = StartTriggerArgs(
+                trigger_cls="airflow.triggers.testing.SuccessTrigger",
+                trigger_kwargs={"message": message},
+                next_method="execute_complete",
+                next_kwargs=None,
+                timeout=None,
+            )
+
+        def execute_complete(self):
+            pass
+
+    with dag_maker(session=session):
+        TestOperator(task_id="test_task", message="{{ dag_run.conf['message'] }}")
+
+    first_dr: DagRun = dag_maker.create_dagrun(run_id="first", conf={"message": "first value"})
+    first_ti = first_dr.get_task_instance("test_task")
+    first_ti.task = first_dr.dag.get_task("test_task")
+    first_dr.schedule_tis((first_ti,), session=session)
+    first_trigger = session.get(Trigger, first_ti.trigger_id)
+    assert first_trigger is not None
+    assert first_trigger.kwargs == {"message": "first value"}
+
+    second_dr: DagRun = dag_maker.create_dagrun(
+        run_id="second", logical_date=timezone.datetime(2016, 1, 2), conf={"message": "second value"}
+    )
+    second_ti = second_dr.get_task_instance("test_task")
+    second_ti.task = second_dr.dag.get_task("test_task")
+    second_dr.schedule_tis((second_ti,), session=session)
+    second_trigger = session.get(Trigger, second_ti.trigger_id)
+    assert second_trigger is not None
+    assert second_trigger.kwargs == {"message": "second value"}
+
+
+@pytest.mark.need_serialized_dag
+def test_schedule_tis_start_trigger_falls_back_when_ti_cannot_build_runtime_context(dag_maker, session):
+    class TestOperator(BaseOperator):
+        start_from_trigger = True
+        start_trigger_args = StartTriggerArgs(
+            trigger_cls="airflow.triggers.testing.SuccessTrigger",
+            trigger_kwargs={},
+            next_method="execute_complete",
+            timeout=None,
+        )
+
+        def execute_complete(self):
+            pass
+
+    with dag_maker(session=session):
+        TestOperator(task_id="test_task")
+
+    dr: DagRun = dag_maker.create_dagrun()
+    ti = dr.get_task_instance("test_task")
+    ti.task = dr.dag.get_task("test_task")
+    ti.dag_version_id = None
+
+    assert dr.schedule_tis((ti,), session=session) == 1
+    session.commit()
+    session.expire_all()
+
+    refreshed_ti = session.scalar(select(TI).where(TI.id == ti.id))
+    assert refreshed_ti is not None
+    assert refreshed_ti.state == TaskInstanceState.SCHEDULED
+
+
 def test_schedule_tis_empty_operator_try_number(dag_maker, session: Session):
     """
     When empty operator is not actually run, then we need to increment the try_number,

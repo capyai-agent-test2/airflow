@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import datetime
 import functools
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import methodtools
 
+from airflow.sdk.definitions._internal.templater import Templater, create_template_env
 from airflow.serialization.definitions.node import DAGNode
 from airflow.serialization.definitions.param import SerializedParamsDict
 from airflow.serialization.enums import DagAttributeTypes
@@ -58,7 +60,7 @@ DEFAULT_OPERATOR_DEPS: frozenset[BaseTIDep] = frozenset(
 )
 
 
-class SerializedBaseOperator(DAGNode):
+class SerializedBaseOperator(DAGNode, Templater):
     """
     Serialized representation of a BaseOperator instance.
 
@@ -310,7 +312,35 @@ class SerializedBaseOperator(DAGNode):
         return self._task_display_name or self.task_id
 
     def expand_start_trigger_args(self, *, context: Context) -> StartTriggerArgs | None:
-        return self.start_trigger_args
+        if not self.start_trigger_args:
+            return None
+        if not self.start_trigger_args.trigger_kwargs:
+            return self.start_trigger_args
+
+        trigger_kwargs = self.start_trigger_args.trigger_kwargs.copy()
+        trigger_kwargs_target = trigger_kwargs
+        if trigger_kwargs.get("__type") == DagAttributeTypes.DICT:
+            trigger_kwargs_target = trigger_kwargs["__var"].copy()
+            trigger_kwargs["__var"] = trigger_kwargs_target
+        for field_name in self.template_fields:
+            if field_name in trigger_kwargs_target:
+                trigger_kwargs_target[field_name] = getattr(self, field_name)
+        return replace(self.start_trigger_args, trigger_kwargs=trigger_kwargs)
+
+    def render_template_fields(self, context: Context) -> None:
+        if self.dag is not None:
+            jinja_env = create_template_env(
+                native=getattr(self.dag, "render_template_as_native_obj", False),
+                searchpath=list(self.dag.template_searchpath)
+                if getattr(self.dag, "template_searchpath", None)
+                else None,
+                jinja_environment_kwargs=getattr(self.dag, "jinja_environment_kwargs", None),
+                user_defined_macros=getattr(self.dag, "user_defined_macros", None),
+                user_defined_filters=getattr(self.dag, "user_defined_filters", None),
+            )
+        else:
+            jinja_env = self.get_template_env()
+        self._do_render_template_fields(self, self.template_fields, context, jinja_env, set())
 
     @property
     def weight_rule(self) -> PriorityWeightStrategy:
