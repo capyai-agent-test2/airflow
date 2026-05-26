@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import inspect
 import warnings
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, TypeGuard
@@ -58,7 +59,8 @@ if TYPE_CHECKING:
     import jinja2  # Slow import.
     import pendulum
 
-    from airflow.sdk import DAG, BaseOperator, BaseOperatorLink, Context, TaskGroup, TriggerRule, XComArg
+    from airflow.sdk import DAG, BaseOperatorLink, Context, TaskGroup, TriggerRule, XComArg
+    from airflow.sdk.bases.operator import BaseOperator
     from airflow.sdk.definitions._internal.expandinput import (
         ExpandInput,
         OperatorExpandArgument,
@@ -354,8 +356,26 @@ class MappedOperator(AbstractOperator):
             self.dag.add_task(self)
         XComArg.apply_upstream_relationship(self, self._get_specified_expand_input().value)
         for k, v in self.partial_kwargs.items():
-            if k in self.template_fields:
+            if k in self._get_template_fields():
                 XComArg.apply_upstream_relationship(self, v)
+
+    def _get_template_fields(self) -> tuple[str, ...]:
+        template_fields = list(self.template_fields)
+        if not self.partial_kwargs.get("template_all_fields", False):
+            return tuple(template_fields)
+
+        from airflow.sdk.bases.operator import BaseOperator
+
+        base_operator_fields = BaseOperator.__init__._BaseOperatorMeta__param_names
+        init_signature = inspect.signature(self.operator_class.__init__)
+        for field_name, parameter in init_signature.parameters.items():
+            if parameter.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                continue
+            if field_name in {"self", "default_args"} or field_name in base_operator_fields:
+                continue
+            if field_name not in template_fields and field_name in self.partial_kwargs:
+                template_fields.append(field_name)
+        return tuple(template_fields)
 
     @methodtools.lru_cache(maxsize=None)
     @classmethod
@@ -844,7 +864,7 @@ class MappedOperator(AbstractOperator):
         # it to customize the parsing of nested fields.
         unmapped_task._do_render_template_fields(
             parent=unmapped_task,
-            template_fields=self.template_fields,
+            template_fields=unmapped_task._get_template_fields(),
             context=context,
             jinja_env=jinja_env,
             seen_oids=seen_oids,
