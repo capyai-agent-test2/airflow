@@ -2435,6 +2435,7 @@ class TestDagFileProcessorManager:
         manager._processors = {MagicMock(): MagicMock()}
 
         ipc_serviced = threading.Event()
+        refresh_started = threading.Event()
 
         bundle = MagicMock(spec=BaseDagBundle)
         bundle.name = "testing"
@@ -2443,6 +2444,7 @@ class TestDagFileProcessorManager:
         bundle.supports_versioning = False
 
         def refresh():
+            refresh_started.set()
             assert ipc_serviced.wait(timeout=1)
 
         bundle.refresh.side_effect = refresh
@@ -2451,7 +2453,9 @@ class TestDagFileProcessorManager:
 
         with (
             mock.patch.object(
-                manager, "_service_processor_sockets", side_effect=lambda timeout: ipc_serviced.set()
+                manager,
+                "_service_processor_sockets",
+                side_effect=lambda timeout: ipc_serviced.set() if refresh_started.is_set() else None,
             ),
             mock.patch.object(
                 manager, "get_bundle_state", return_value=BundleState(last_refreshed=None, version=None)
