@@ -44,6 +44,7 @@ from airflow.sdk.api.datamodels._generated import (
     HITLDetailRequest,
     HITLDetailResponse,
     HITLUser,
+    TaskInstanceState,
     TaskStateResponse,
     TerminalTIState,
     VariableResponse,
@@ -404,6 +405,79 @@ class TestTaskInstanceOperations:
         client = make_client(transport=httpx.MockTransport(handle_request))
         client.task_instances.finish(
             ti_id, state=state, when="2024-10-31T12:00:00Z", rendered_map_index="test"
+        )
+
+    @pytest.mark.parametrize("previous_state", list(TerminalTIState))
+    def test_task_instance_finish_ignores_terminal_state_conflict(self, previous_state):
+        ti_id = uuid6.uuid7()
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            if request.url.path == f"/task-instances/{ti_id}/state":
+                return httpx.Response(
+                    409,
+                    json={
+                        "detail": {
+                            "reason": "invalid_state",
+                            "message": "TI was not in the running state so it cannot be updated",
+                            "previous_state": previous_state,
+                        }
+                    },
+                )
+            return httpx.Response(status_code=400, json={"detail": "Bad Request"})
+
+        client = make_client(transport=httpx.MockTransport(handle_request))
+        client.task_instances.finish(
+            ti_id, state=TerminalTIState.FAILED, when="2024-10-31T12:00:00Z", rendered_map_index="test"
+        )
+
+    def test_task_instance_finish_raises_for_non_terminal_state_conflict(self):
+        ti_id = uuid6.uuid7()
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            if request.url.path == f"/task-instances/{ti_id}/state":
+                return httpx.Response(
+                    409,
+                    json={
+                        "detail": {
+                            "reason": "invalid_state",
+                            "message": "TI was not in the running state so it cannot be updated",
+                            "previous_state": TaskInstanceState.RUNNING,
+                        }
+                    },
+                )
+            return httpx.Response(status_code=400, json={"detail": "Bad Request"})
+
+        client = make_client(transport=httpx.MockTransport(handle_request))
+        with pytest.raises(ServerResponseError):
+            client.task_instances.finish(
+                ti_id, state=TerminalTIState.FAILED, when="2024-10-31T12:00:00Z", rendered_map_index="test"
+            )
+
+    @pytest.mark.parametrize("previous_state", list(TerminalTIState))
+    def test_task_instance_succeed_ignores_terminal_state_conflict(self, previous_state):
+        ti_id = uuid6.uuid7()
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            if request.url.path == f"/task-instances/{ti_id}/state":
+                return httpx.Response(
+                    409,
+                    json={
+                        "detail": {
+                            "reason": "invalid_state",
+                            "message": "TI was not in the running state so it cannot be updated",
+                            "previous_state": previous_state,
+                        }
+                    },
+                )
+            return httpx.Response(status_code=400, json={"detail": "Bad Request"})
+
+        client = make_client(transport=httpx.MockTransport(handle_request))
+        client.task_instances.succeed(
+            ti_id,
+            when="2024-10-31T12:00:00Z",
+            task_outlets=[],
+            outlet_events=[],
+            rendered_map_index="test",
         )
 
     def test_task_instance_heartbeat(self):

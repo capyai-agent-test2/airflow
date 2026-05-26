@@ -65,6 +65,7 @@ from airflow.sdk.api.datamodels._generated import (
     TaskStateResponse,
     TaskStatesResponse,
     TerminalStateNonSuccess,
+    TerminalTIState,
     TIDeferredStatePayload,
     TIEnterRunningPayload,
     TIHeartbeatInfo,
@@ -259,6 +260,31 @@ class TaskInstanceOperations:
             raise
         return TIRunContext.model_validate_json(resp.read())
 
+    def _should_ignore_terminal_state_conflict(self, error: ServerResponseError) -> bool:
+        if error.response.status_code != HTTPStatus.CONFLICT:
+            return False
+        detail = error.detail
+        return (
+            isinstance(detail, dict)
+            and detail.get("reason") == "invalid_state"
+            and detail.get("previous_state") in {state.value for state in TerminalTIState}
+        )
+
+    def _patch_terminal_state(
+        self, id: uuid.UUID, body: TISuccessStatePayload | TITerminalStatePayload
+    ) -> None:
+        try:
+            self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
+        except ServerResponseError as e:
+            if self._should_ignore_terminal_state_conflict(e):
+                log.info(
+                    "Task instance already reached a terminal state; treating state update as idempotent",
+                    ti_id=id,
+                    previous_state=e.detail.get("previous_state") if isinstance(e.detail, dict) else None,
+                )
+                return
+            raise
+
     def finish(self, id: uuid.UUID, state: TerminalStateNonSuccess, when: datetime, rendered_map_index):
         """Tell the API server that this TI has reached a terminal state."""
         if state == TaskInstanceState.SUCCESS:
@@ -267,7 +293,7 @@ class TaskInstanceOperations:
         body = TITerminalStatePayload(
             end_date=when, state=TerminalStateNonSuccess(state), rendered_map_index=rendered_map_index
         )
-        self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
+        self._patch_terminal_state(id=id, body=body)
 
     def retry(
         self,
@@ -294,7 +320,7 @@ class TaskInstanceOperations:
             outlet_events=outlet_events,
             rendered_map_index=rendered_map_index,
         )
-        self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
+        self._patch_terminal_state(id=id, body=body)
 
     def defer(self, id: uuid.UUID, msg):
         """Tell the API server that this TI has been deferred."""
