@@ -51,6 +51,17 @@ def _parse_netloc_to_hostname(uri_parts):
     return hostname
 
 
+def _urlsplit_accepting_hostless_credentials(url: str, *, allow_hostless_credentials: bool = False):
+    """Parse URIs that omit ``@`` for ``login:password`` authorities with no host."""
+    uri_parts = urlsplit(url)
+    if allow_hostless_credentials and "@" not in uri_parts.netloc and ":" in uri_parts.netloc:
+        try:
+            uri_parts.port
+        except ValueError:
+            return urlsplit(url.replace(uri_parts.netloc, f"{uri_parts.netloc}@", 1))
+    return uri_parts
+
+
 def _prune_dict(val: Any, mode="strict"):
     """
     Given dict ``val``, returns new dict based on ``val`` with all empty elements removed.
@@ -359,7 +370,9 @@ class Connection:
             uri_splits = rest_of_the_url.split("://", 1)
             if "@" in uri_splits[0] or ":" in uri_splits[0]:
                 raise AirflowException(f"Invalid connection string: {uri}.")
-        uri_parts = urlsplit(rest_of_the_url)
+        uri_parts = _urlsplit_accepting_hostless_credentials(
+            rest_of_the_url, allow_hostless_credentials=normalized_conn_type == "azure"
+        )
         protocol = uri_parts.scheme if host_with_protocol else None
         host = _parse_netloc_to_hostname(uri_parts)
         parsed_host = cls._create_host(protocol, host)

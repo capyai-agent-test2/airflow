@@ -309,6 +309,20 @@ class TestConnectionFromUri:
         extra_dict = json.loads(conn.extra)
         assert extra_dict == {"charset": "utf8", "timeout": "30"}
 
+    def test_from_uri_with_hostless_credentials_and_query_params(self):
+        """Test URI parsing without ``@`` when credentials are present and host is omitted."""
+        uri = "azure://appid:super-secret?tenantId=tenant&subscriptionId=sub"
+        conn = Connection.from_uri(uri, conn_id="test_conn")
+
+        assert conn.conn_id == "test_conn"
+        assert conn.conn_type == "azure"
+        assert conn.host == ""
+        assert conn.login == "appid"
+        assert conn.password == "super-secret"
+        assert conn.port is None
+        assert conn.schema == ""
+        assert json.loads(conn.extra) == {"tenantId": "tenant", "subscriptionId": "sub"}
+
     def test_from_uri_with_extra_key(self):
         """Test URI parsing with __extra__ query parameter."""
         extra_value = json.dumps({"ssl_mode": "require", "connect_timeout": 10})
@@ -369,6 +383,12 @@ class TestConnectionFromUri:
         """Test that too many schemes in URI raises an error."""
         uri = "http://https://ftp://example.com"
         with pytest.raises(AirflowException, match="Invalid connection string"):
+            Connection.from_uri(uri, conn_id="test_conn")
+
+    def test_from_uri_preserves_invalid_port_error_for_non_azure(self):
+        """Test non-Azure invalid host:port authorities still fail fast."""
+        uri = "postgres://db.internal:notaport/db"
+        with pytest.raises(ValueError, match="Port could not be cast to integer value as 'notaport'"):
             Connection.from_uri(uri, conn_id="test_conn")
 
     def test_from_uri_invalid_protocol_host_error(self):

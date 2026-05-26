@@ -60,6 +60,7 @@ class TestConnection:
             "expected_schema",
             "expected_extra_dict",
             "expected_exception_message",
+            "expected_exception_type",
         ),
         [
             (
@@ -72,6 +73,7 @@ class TestConnection:
                 "schema",
                 {},
                 None,
+                None,
             ),
             (
                 "type://user:pass@host/schema",
@@ -82,6 +84,7 @@ class TestConnection:
                 None,
                 "schema",
                 {},
+                None,
                 None,
             ),
             (
@@ -94,6 +97,7 @@ class TestConnection:
                 "schema",
                 {"param1": "val1", "param2": "val2"},
                 None,
+                None,
             ),
             (
                 "type://host",
@@ -104,6 +108,7 @@ class TestConnection:
                 None,
                 "",
                 {},
+                None,
                 None,
             ),
             (
@@ -116,6 +121,7 @@ class TestConnection:
                 "",
                 {"deploy-mode": "cluster", "spark_binary": "command", "namespace": "kube namespace"},
                 None,
+                None,
             ),
             (
                 "spark://k8s://100.68.0.1:443?deploy-mode=cluster",
@@ -126,6 +132,7 @@ class TestConnection:
                 443,
                 "",
                 {"deploy-mode": "cluster"},
+                None,
                 None,
             ),
             (
@@ -138,6 +145,7 @@ class TestConnection:
                 "",
                 {"param": "value"},
                 None,
+                None,
             ),
             (  # Test password sanitisation
                 "type://user:pass@protocol://host:port?param=value",
@@ -149,6 +157,7 @@ class TestConnection:
                 None,
                 None,
                 r"Invalid connection string.",
+                AirflowException,
             ),
             (
                 "foo:pwd@host://://",
@@ -160,6 +169,7 @@ class TestConnection:
                 None,
                 None,
                 r"Invalid connection string.",
+                AirflowException,
             ),
             (
                 "type://:foo@host/://://",
@@ -171,6 +181,19 @@ class TestConnection:
                 None,
                 None,
                 r"Invalid connection string.",
+                AirflowException,
+            ),
+            (
+                "postgres://db.internal:notaport/db",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                r"Port could not be cast to integer value as 'notaport'",
+                ValueError,
             ),
             (
                 "type://host?int_param=123&bool_param=true&float_param=1.5&str_param=some_str",
@@ -182,6 +205,7 @@ class TestConnection:
                 "",
                 {"int_param": 123, "bool_param": True, "float_param": 1.5, "str_param": "some_str"},
                 None,
+                None,
             ),
             (
                 "type://host?__extra__=%7B%22foo%22%3A+%22bar%22%7D",
@@ -192,6 +216,19 @@ class TestConnection:
                 None,
                 "",
                 {"foo": "bar"},
+                None,
+                None,
+            ),
+            (
+                "azure://appid:super-secret?tenantId=tenant&subscriptionId=sub",
+                "azure",
+                "",
+                "appid",
+                "super-secret",
+                None,
+                "",
+                {"tenantId": "tenant", "subscriptionId": "sub"},
+                None,
                 None,
             ),
         ],
@@ -207,9 +244,10 @@ class TestConnection:
         expected_schema,
         expected_extra_dict,
         expected_exception_message,
+        expected_exception_type,
     ):
         if expected_exception_message is not None:
-            with pytest.raises(AirflowException, match=re.escape(expected_exception_message)):
+            with pytest.raises(expected_exception_type, match=re.escape(expected_exception_message)):
                 Connection(uri=uri)
         else:
             conn = Connection(uri=uri)
