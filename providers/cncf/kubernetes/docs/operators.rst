@@ -27,6 +27,8 @@ KubernetesPodOperator
 The :class:`~airflow.providers.cncf.kubernetes.operators.pod.KubernetesPodOperator` allows
 you to create and run Pods on a Kubernetes cluster.
 
+For the Kubernetes API permissions required by the operators on this page, see :doc:`rbac`.
+
 .. note::
   If you use a managed Kubernetes consider using a specialize KPO operator as it simplifies the Kubernetes authorization process :
 
