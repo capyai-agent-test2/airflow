@@ -25,12 +25,13 @@ from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, event, func, select
 from sqlalchemy.orm import Session
 
 from airflow import settings
 from airflow.assets.manager import AssetManager
 from airflow.models.asset import (
+    AssetActive,
     AssetAliasModel,
     AssetDagRunQueue,
     AssetEvent,
@@ -38,6 +39,7 @@ from airflow.models.asset import (
     AssetPartitionDagRun,
     DagScheduleAssetAliasReference,
     DagScheduleAssetReference,
+    asset_alias_asset_event_association_table,
 )
 from airflow.models.dag import DAG, DagModel
 from airflow.sdk.definitions.asset import Asset
@@ -161,6 +163,63 @@ class TestAssetManager:
             == 1
         )
         assert session.scalar(select(func.count()).select_from(AssetDagRunQueue)) == 2
+
+    @pytest.mark.usefixtures("clear_assets")
+    def test_register_asset_change_with_alias_does_not_lazy_load_asset_events(
+        self, session, dag_maker, mock_task_instance, testing_dag_bundle
+    ):
+        bundle_name = "testing"
+
+        consumer_dag = DagModel(
+            dag_id="consumer",
+            bundle_name=bundle_name,
+            is_stale=False,
+            fileloc="dag.py",
+        )
+        session.add(consumer_dag)
+
+        asset_model = AssetModel(uri="test://asset1/", name="test_asset_uri", group="asset")
+        asset_active = AssetActive.for_asset(asset_model)
+        asset_alias = AssetAliasModel(name="test_alias_name", group="test")
+        session.add_all([asset_model, asset_active, asset_alias])
+        session.flush()
+
+        existing_event = AssetEvent(asset_id=asset_model.id, extra={})
+        session.add(existing_event)
+        session.flush()
+
+        session.execute(
+            asset_alias_asset_event_association_table.insert().values(
+                alias_id=asset_alias.id,
+                event_id=existing_event.id,
+            )
+        )
+        asset_alias.scheduled_dags = [
+            DagScheduleAssetAliasReference(alias_id=asset_alias.id, dag_id=consumer_dag.dag_id)
+        ]
+        session.flush()
+
+        captured_statements: list[str] = []
+
+        def capture_statement(*args):
+            captured_statements.append(args[2])
+
+        event.listen(settings.engine, "before_cursor_execute", capture_statement)
+        try:
+            AssetManager().register_asset_change(
+                task_instance=mock_task_instance,
+                asset=Asset(uri="test://asset1", name="test_asset_uri"),
+                source_alias_names=["test_alias_name"],
+                session=session,
+            )
+            session.flush()
+        finally:
+            event.remove(settings.engine, "before_cursor_execute", capture_statement)
+
+        assert not any(
+            statement.lstrip().upper().startswith("SELECT") and "asset_alias_asset_event" in statement
+            for statement in captured_statements
+        )
 
     def test_register_asset_change_no_downstreams(self, session, mock_task_instance):
         asset_manager = AssetManager()
