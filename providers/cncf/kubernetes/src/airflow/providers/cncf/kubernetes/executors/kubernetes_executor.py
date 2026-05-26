@@ -77,6 +77,7 @@ class KubernetesExecutor(BaseExecutor):
     """Executor for Kubernetes."""
 
     RUNNING_POD_LOG_LINES = 100
+    RUNNING_POD_LOG_LINES_CONFIG = "running_pod_log_lines"
     supports_ad_hoc_ti_run: bool = True
     supports_multi_team: bool = True
 
@@ -114,6 +115,13 @@ class KubernetesExecutor(BaseExecutor):
         self.task_publish_max_retries = self.conf.getint(
             "kubernetes_executor", "task_publish_max_retries", fallback=0
         )
+        self.running_pod_log_lines = self.conf.getint(
+            "kubernetes_executor",
+            self.RUNNING_POD_LOG_LINES_CONFIG,
+            fallback=self.RUNNING_POD_LOG_LINES,
+        )
+        if self.running_pod_log_lines <= 0:
+            self.running_pod_log_lines = None
         self.completed: set[KubernetesResults] = set()
         self.create_pods_after: datetime | None = None
 
@@ -540,7 +548,7 @@ class KubernetesExecutor(BaseExecutor):
                 namespace=namespace,
                 container="base",
                 follow=False,
-                tail_lines=self.RUNNING_POD_LOG_LINES,
+                tail_lines=self.running_pod_log_lines,
                 _preload_content=False,
             )
             for line in res:

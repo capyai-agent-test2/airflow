@@ -154,6 +154,13 @@ def get_provider_info():
                         "example": None,
                         "default": "False",
                     },
+                    "running_pod_log_lines": {
+                        "description": "Number of log lines to fetch from a running KubernetesExecutor worker pod when viewing\ntask logs. Set to ``0`` or a negative value to disable the limit and fetch all available\nlines.\n",
+                        "version_added": None,
+                        "type": "integer",
+                        "example": None,
+                        "default": "100",
+                    },
                     "pod_template_file": {
                         "description": "Path to the YAML pod file that forms the basis for KubernetesExecutor workers.\n",
                         "version_added": None,
