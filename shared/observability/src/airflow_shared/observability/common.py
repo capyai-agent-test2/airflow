@@ -50,6 +50,7 @@ def get_otel_data_exporter(
     otel_env_config: OtelEnvConfig,
     host: str | None = None,
     port: int | None = None,
+    path: str | None = None,
     ssl_active: bool = False,
 ) -> SpanExporter | MetricExporter:
     protocol = "https" if ssl_active else "http"
@@ -119,9 +120,12 @@ def get_otel_data_exporter(
         # where protocol isn't specified, and it's always http/protobuf.
         # In that case it should default to the full 'url_path' and set it directly.
 
-        endpoint_suffix = "traces" if otel_env_config.data_type == OtelDataType.TRACES else "metrics"
+        if otel_env_config.data_type == OtelDataType.TRACES:
+            endpoint_path = "/v1/traces"
+        else:
+            endpoint_path = path or "/v1/metrics"
 
-        endpoint_str = f"{protocol}://{_format_url_host(host)}:{port}/v1/{endpoint_suffix}"
+        endpoint_str = f"{protocol}://{_format_url_host(host)}:{port}{endpoint_path}"
         if otel_env_config.data_type == OtelDataType.TRACES:
             exporter = OTLPSpanExporter(endpoint=endpoint_str)
         else:

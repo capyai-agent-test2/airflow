@@ -421,6 +421,7 @@ def get_otel_logger(
     *,
     host: str | None = None,
     port: int | None = None,
+    path: str | None = None,
     prefix: str | None = None,
     ssl_active: bool = False,
     conf_interval: float | None = None,
@@ -453,6 +454,7 @@ def get_otel_logger(
         otel_env_config=otel_env_config,
         host=host,
         port=port,
+        path=path,
         ssl_active=ssl_active,
     )
 
