@@ -82,10 +82,11 @@ class AfterWorkdayTimetable(Timetable):
         last_automated_data_interval: DataInterval | None,
         restriction: TimeRestriction,
     ) -> DagRunInfo | None:
-        if last_automated_data_interval is not None:  # There was a previous run on the regular schedule.
+        # Airflow has already computed at least one automated run.
+        if last_automated_data_interval is not None:
             last_start = last_automated_data_interval.start
             next_start = DateTime.combine((last_start + timedelta(days=1)).date(), Time.min)
-        # Otherwise this is the first ever run on the regular schedule...
+        # Otherwise Airflow is computing the first automated run for this Dag...
         elif (earliest := restriction.earliest) is None:
             return None  # No start_date. Don't schedule.
         elif not restriction.catchup:

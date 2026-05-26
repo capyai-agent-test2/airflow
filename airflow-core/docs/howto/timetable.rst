@@ -126,9 +126,13 @@ Next is the implementation of ``next_dagrun_info``:
 
 This method accepts two arguments. ``last_automated_data_interval`` is a
 :class:`~airflow.timetables.base.DataInterval` instance indicating the data
-interval of this Dag's previous non-manually-triggered run, or ``None`` if this
-is the first time ever the Dag is being scheduled. ``restriction`` encapsulates
-how the Dag and its tasks specify the schedule, and contains three attributes:
+interval of this Dag's previous non-manually-triggered run. For the very first
+automated run, Airflow calculates the next Dag run while parsing the Dag and
+stores it on the Dag model before any Dag run exists. This means
+``next_dagrun_info`` is often called with a non-``None`` value when the
+scheduler is deciding what to run next, even though the Dag has only created
+its first automated run so far. ``restriction`` encapsulates how the Dag and
+its tasks specify the schedule, and contains three attributes:
 
 * ``earliest``: The earliest time the Dag may be scheduled. This is a
   ``pendulum.DateTime`` calculated from all the ``start_date`` arguments from
@@ -148,7 +152,8 @@ If there was a run scheduled previously, we should now schedule for the next
 non-holiday weekday by looping through subsequent days to find one that is not
 a Saturday, Sunday, or US holiday. If there was not a previous scheduled run,
 however, we pick the next non-holiday workday's midnight after
-``restriction.earliest``.
+``restriction.earliest``. That ``None`` case is used when Airflow computes the
+first automated run for a Dag, before the scheduler creates any Dag run rows.
 ``restriction.catchup`` also needs to be considered---if it's ``False``, we
 can't schedule before the current time, even if ``start_date`` values are in the
 past. Finally, if our calculated data interval is later than
