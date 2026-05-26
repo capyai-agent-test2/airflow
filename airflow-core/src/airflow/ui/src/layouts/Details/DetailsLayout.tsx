@@ -93,7 +93,7 @@ type Props = {
 
 export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
   const { t: translate } = useTranslation();
-  const { dagId = "", runId } = useParams();
+  const { dagId = "", groupId, runId, taskId } = useParams();
   const navigate = useNavigate();
   const { data: dag } = useDagServiceGetDag({ dagId });
   const [dagView, setDagView] = useLocalStorage<DagView>(DEFAULT_DAG_VIEW_KEY, "grid");
@@ -169,7 +169,7 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
   useEffect(() => {
     const latestRunId = initialGridRuns?.[0]?.run_id;
 
-    if (dagView !== "graph" || latestRunId === undefined || Boolean(runId)) {
+    if (dagView !== "graph" || latestRunId === undefined || Boolean(runId) || Boolean(groupId) || Boolean(taskId)) {
       return;
     }
 
@@ -182,7 +182,7 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
         { replace: true },
       ),
     );
-  }, [dagId, dagView, initialGridRuns, navigate, runId, search]);
+  }, [dagId, dagView, groupId, initialGridRuns, navigate, runId, search, taskId]);
 
   // Whether the selected run is absent from the initial grid page and we don't
   // yet have a ceiling set. Only true once initialGridRuns has loaded.

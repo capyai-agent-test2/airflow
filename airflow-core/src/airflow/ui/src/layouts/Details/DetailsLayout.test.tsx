@@ -140,4 +140,22 @@ describe("DetailsLayout", () => {
 
     expect(mockNavigate).not.toHaveBeenCalled();
   });
+
+  it("does not navigate from task routes without a selected Dag run", () => {
+    mockNavigate.mockClear();
+    mockParams = { dagId: "example_dag", taskId: "example_task" };
+    mockSearchParams = new URLSearchParams("view=graph");
+    vi.mocked(useGridRuns).mockReturnValue({
+      data: [{ run_after: "2025-01-01T00:00:00Z", run_id: "latest_run", state: "success" }],
+    } as ReturnType<typeof useGridRuns>);
+
+    render(
+      <DetailsLayout tabs={[]}>
+        <div />
+      </DetailsLayout>,
+      { wrapper: BaseWrapper },
+    );
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
 });
