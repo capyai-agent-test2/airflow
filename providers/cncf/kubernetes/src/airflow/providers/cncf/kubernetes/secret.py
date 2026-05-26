@@ -126,3 +126,23 @@ class Secret(K8SModel):
 
     def __repr__(self):
         return f"Secret({self.deploy_type}, {self.deploy_target}, {self.secret}, {self.key})"
+
+
+class KubernetesConnectionSecret(Secret):
+    """Kubernetes secret backed by an Airflow connection."""
+
+    def __init__(self, deploy_type, deploy_target, conn_id, key=None, items=None):
+        super().__init__(deploy_type, deploy_target, None, key=key, items=items)
+        self.conn_id = conn_id
+
+    def __eq__(self, other):
+        return super().__eq__(other) and self.conn_id == other.conn_id
+
+    def __hash__(self):
+        return hash((self.deploy_type, self.deploy_target, self.secret, self.key, self.conn_id))
+
+    def __repr__(self):
+        return (
+            f"KubernetesConnectionSecret("
+            f"{self.deploy_type}, {self.deploy_target}, {self.conn_id}, {self.secret}, {self.key})"
+        )

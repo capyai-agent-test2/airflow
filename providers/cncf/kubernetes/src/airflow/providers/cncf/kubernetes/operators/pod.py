@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import hashlib
 import inspect
 import json
 import logging
@@ -64,6 +65,7 @@ from airflow.providers.cncf.kubernetes.kubernetes_helper_functions import (
     generic_api_retry,
 )
 from airflow.providers.cncf.kubernetes.pod_generator import PodGenerator
+from airflow.providers.cncf.kubernetes.secret import KubernetesConnectionSecret
 from airflow.providers.cncf.kubernetes.triggers.pod import ContainerState, KubernetesPodTrigger
 from airflow.providers.cncf.kubernetes.utils import xcom_sidecar
 from airflow.providers.cncf.kubernetes.utils.container import (
@@ -103,7 +105,7 @@ if TYPE_CHECKING:
     from pendulum import DateTime
 
     from airflow.providers.cncf.kubernetes.hooks.kubernetes import PodOperatorHookProtocol
-    from airflow.providers.cncf.kubernetes.secret import Secret
+    from airflow.providers.cncf.kubernetes.secret import KubernetesConnectionSecret, Secret
     from airflow.sdk import Context
 
 log = logging.getLogger(__name__)
@@ -166,6 +168,7 @@ class KubernetesPodOperator(BaseOperator):
     :param env_from: (Optional) List of sources to populate environment variables in the container. (templated)
     :param secrets: Kubernetes secrets to inject in the container.
         They can be exposed as environment vars or files in a volume.
+    :param connection_secrets: Connection-backed secrets to create in Kubernetes at task runtime.
     :param in_cluster: run kubernetes client with in_cluster configuration.
     :param cluster_context: context that points to kubernetes cluster.
         Ignored when in_cluster is True. If None, current-context is used. (templated)
@@ -315,6 +318,7 @@ class KubernetesPodOperator(BaseOperator):
         env_vars: list[k8s.V1EnvVar] | dict[str, str] | None = None,
         env_from: list[k8s.V1EnvFromSource] | None = None,
         secrets: list[Secret] | None = None,
+        connection_secrets: list[KubernetesConnectionSecret] | None = None,
         in_cluster: bool | None = None,
         cluster_context: str | None = None,
         labels: dict | None = None,
@@ -403,6 +407,8 @@ class KubernetesPodOperator(BaseOperator):
         volumes = [convert_volume(volume) for volume in volumes] if volumes else []
         self.volumes = volumes
         self.secrets = secrets or []
+        self.connection_secrets = connection_secrets or []
+        self._connection_secrets_prepared = False
         self.in_cluster = in_cluster
         self.cluster_context = cluster_context
         self.reattach_on_restart = reattach_on_restart
@@ -693,6 +699,7 @@ class KubernetesPodOperator(BaseOperator):
     def execute_sync(self, context: Context):
         result = None
         try:
+            self.prepare_connection_secrets(context)
             if self.pod_request_obj is None:
                 self.pod_request_obj = self.build_pod_request_obj(context)
             for callback in self.callbacks:
@@ -715,6 +722,7 @@ class KubernetesPodOperator(BaseOperator):
 
             # get remote pod for use in cleanup methods
             self.remote_pod = self.find_pod(self.pod.metadata.namespace, context=context)
+            self.set_connection_secret_owner_references(self.remote_pod)
             for callback in self.callbacks:
                 callback.on_pod_creation(
                     pod=self.remote_pod,
@@ -838,6 +846,7 @@ class KubernetesPodOperator(BaseOperator):
         del self.pod_manager
 
     def execute_async(self, context: Context) -> None:
+        self.prepare_connection_secrets(context)
         if self.pod_request_obj is None:
             self.pod_request_obj = self.build_pod_request_obj(context)
         for callback in self.callbacks:
@@ -853,12 +862,13 @@ class KubernetesPodOperator(BaseOperator):
                 pod_request_obj=self.pod_request_obj,
                 context=context,
             )
+        remote_pod = self.find_pod(self.pod.metadata.namespace, context=context)
+        self.set_connection_secret_owner_references(remote_pod)
 
         if self.callbacks:
-            pod = self.find_pod(self.pod.metadata.namespace, context=context)
             for callback in self.callbacks:
                 callback.on_pod_creation(
-                    pod=pod,
+                    pod=remote_pod,
                     client=self.client,
                     mode=ExecutionMode.SYNC,
                     context=context,
@@ -1187,6 +1197,116 @@ class KubernetesPodOperator(BaseOperator):
                 pod=pod, client=self.client, mode=ExecutionMode.SYNC, operator=self, context=context
             )
 
+    def _get_connection_secret_namespace(self) -> str:
+        hook_namespace = self.hook.get_namespace()
+        return self.namespace or hook_namespace or self._incluster_namespace or "default"
+
+    def _build_connection_secret_name(
+        self, secret: KubernetesConnectionSecret, context: Context, index: int
+    ) -> str:
+        digest = hashlib.sha1(
+            (
+                f"{context['run_id']}:{context['ti'].try_number}:{context['ti'].map_index}:"
+                f"{secret.conn_id}:{secret.deploy_target}:{secret.key}:{index}"
+            ).encode()
+        ).hexdigest()[:8]
+        base_name = create_unique_id(
+            dag_id=context["dag"].dag_id,
+            task_id=f"{context['ti'].task_id}-{index}",
+            max_length=244,
+            unique=False,
+        )
+        return f"{base_name}-{digest}"
+
+    @staticmethod
+    def _build_connection_secret_string_data(connection) -> dict[str, str]:
+        secret_data = prune_dict(
+            {
+                "conn_type": connection.conn_type,
+                "host": connection.host,
+                "login": connection.login,
+                "password": connection.password,
+                "schema": connection.schema,
+                "port": str(connection.port) if connection.port is not None else None,
+                "extra": connection.extra,
+            },
+            mode="strict",
+        )
+        return {key: str(value) for key, value in secret_data.items()}
+
+    def prepare_connection_secrets(self, context: Context) -> None:
+        if self._connection_secrets_prepared or not self.connection_secrets:
+            return
+
+        namespace = self._get_connection_secret_namespace()
+        labels = self._get_ti_pod_labels(context)
+
+        for index, secret in enumerate(self.connection_secrets):
+            secret.secret = self._build_connection_secret_name(secret, context, index)
+            connection = BaseHook.get_connection(secret.conn_id)
+            secret_body = k8s.V1Secret(
+                metadata=k8s.V1ObjectMeta(name=secret.secret, namespace=namespace, labels=labels),
+                string_data=self._build_connection_secret_string_data(connection),
+                type="Opaque",
+            )
+
+            @generic_api_retry
+            def _create_secret_with_retry():
+                self.client.create_namespaced_secret(namespace=namespace, body=secret_body)
+
+            try:
+                _create_secret_with_retry()
+            except ApiException as exc:
+                if exc.status != 409:
+                    raise
+
+            self.secrets.append(secret)
+
+        self._connection_secrets_prepared = True
+
+    def set_connection_secret_owner_references(self, pod: k8s.V1Pod | None) -> None:
+        if not pod or not self.connection_secrets or not pod.metadata or not pod.metadata.uid:
+            return
+
+        owner_reference = k8s.V1OwnerReference(
+            api_version=pod.api_version or "v1",
+            kind=pod.kind or "Pod",
+            name=pod.metadata.name,
+            uid=pod.metadata.uid,
+            controller=False,
+            block_owner_deletion=False,
+        )
+
+        for secret in self.connection_secrets:
+            if not secret.secret:
+                continue
+
+            @generic_api_retry
+            def _patch_secret_with_retry():
+                self.client.patch_namespaced_secret(
+                    name=secret.secret,
+                    namespace=pod.metadata.namespace,
+                    body=k8s.V1Secret(
+                        metadata=k8s.V1ObjectMeta(owner_references=[owner_reference]),
+                    ),
+                )
+
+            _patch_secret_with_retry()
+
+    def cleanup_connection_secrets(self, pod: k8s.V1Pod | None = None, *, reraise=True) -> None:
+        namespace = (
+            pod.metadata.namespace
+            if pod and pod.metadata and pod.metadata.namespace
+            else self._get_connection_secret_namespace()
+        )
+
+        with _optionally_suppress(reraise=reraise):
+            for secret in self.connection_secrets:
+                if not secret.secret:
+                    continue
+                self.log.info("Deleting connection-backed secret: %s", secret.secret)
+                self.client.delete_namespaced_secret(name=secret.secret, namespace=namespace)
+
     def cleanup(
         self,
         pod: k8s.V1Pod,
@@ -1194,6 +1314,7 @@ class KubernetesPodOperator(BaseOperator):
         xcom_result: dict | None = None,
         context: Context | None = None,
     ) -> None:
+        self.cleanup_connection_secrets(pod=remote_pod or pod, reraise=False)
         # Skip cleaning the pod in the following scenarios.
         # 1. If a task got marked as failed, "on_kill" method would be called and the pod will be cleaned up
         # there. Cleaning it up again will raise an exception (which might cause retry).
@@ -1405,6 +1526,7 @@ class KubernetesPodOperator(BaseOperator):
 
     def on_kill(self) -> None:
         self._killed = True
+        self.cleanup_connection_secrets(pod=self.pod, reraise=False)
         if self.on_kill_action == OnKillAction.KEEP_POD:
             self.log.info(
                 "Skipping pod deletion since on_kill_action is set to %r.", self.on_kill_action.value
