@@ -1580,7 +1580,7 @@
             }
         },
         "fernetKey": {
-            "description": "The Fernet key used to encrypt passwords (can only be set during install, not upgrade).",
+            "description": "The Fernet key used to encrypt passwords. Set it explicitly to keep the same key across reinstalls or upgrades. For rotation, first set it to \"new-key,old-key\", run `airflow rotate-fernet-key`, then update it again to just \"new-key\".",
             "type": [
                 "string",
                 "null"

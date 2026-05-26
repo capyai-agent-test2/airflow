@@ -736,6 +736,16 @@ flower Basic Auth using the ``_CMD`` or ``_SECRET`` variant without disabling th
 | ``<RELEASE_NAME>-flower``                             | ``.Values.flower.secretName``            | ``AIRFLOW__CELERY__FLOWER_BASIC_AUTH``         |
 +-------------------------------------------------------+------------------------------------------+------------------------------------------------+
 
+A generated Fernet key is convenient for the first install, but it is not ideal if you later need to
+reinstall the release or rotate the key. For production deployments, set ``.Values.fernetKey``
+explicitly or provide your own secret via ``.Values.fernetKeySecretName``.
+
+To rotate the Fernet key with the chart-managed secret:
+
+1. Update ``.Values.fernetKey`` to ``new-key,old-key`` and run ``helm upgrade``.
+2. Run ``airflow rotate-fernet-key`` in your Airflow deployment.
+3. Update ``.Values.fernetKey`` again to ``new-key`` and run ``helm upgrade``.
+
 A secret named ``<RELEASE_NAME>-registry`` is also created when ``.Values.registry.connection`` is
 defined and neither ``.Values.registry.secretName`` nor ``.Values.imagePullSecrets`` is set. However,
 this behavior is deprecated in favor of explicitly defining ``.Values.imagePullSecrets``.
