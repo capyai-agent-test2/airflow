@@ -26,6 +26,7 @@ import re
 import shutil
 import signal
 import textwrap
+import threading
 import time
 import zipfile
 from collections import defaultdict, deque
@@ -2428,6 +2429,44 @@ class TestDagFileProcessorManager:
                 manager.run()
             sync_mock.assert_not_called()
             assert [b.name for b in manager._dag_bundles] == ["testing"]
+
+    def test_refresh_dag_bundles_services_ipc_while_refreshing(self, tmp_path):
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._processors = {MagicMock(): MagicMock()}
+
+        ipc_serviced = threading.Event()
+
+        bundle = MagicMock(spec=BaseDagBundle)
+        bundle.name = "testing"
+        bundle.path = tmp_path
+        bundle.is_initialized = True
+        bundle.supports_versioning = False
+
+        def refresh():
+            assert ipc_serviced.wait(timeout=1)
+
+        bundle.refresh.side_effect = refresh
+
+        manager._dag_bundles = [bundle]
+
+        with (
+            mock.patch.object(
+                manager, "_service_processor_sockets", side_effect=lambda timeout: ipc_serviced.set()
+            ),
+            mock.patch.object(
+                manager, "get_bundle_state", return_value=BundleState(last_refreshed=None, version=None)
+            ),
+            mock.patch.object(manager, "should_skip_refresh", return_value=False),
+            mock.patch.object(manager, "_find_files_in_bundle", return_value=[]),
+            mock.patch.object(manager, "deactivate_deleted_dags"),
+            mock.patch.object(manager, "clear_orphaned_import_errors"),
+            mock.patch.object(manager, "handle_removed_files"),
+            mock.patch.object(manager, "_resort_file_queue"),
+            mock.patch.object(manager, "_add_new_files_to_queue"),
+        ):
+            manager._refresh_dag_bundles(known_files={})
+
+        bundle.refresh.assert_called_once_with()
 
     def test_purge_inactive_dag_warnings_delegates_to_dagwarning(self):
         """Default `purge_inactive_dag_warnings` calls `DagWarning.purge_inactive_dag_warnings`."""

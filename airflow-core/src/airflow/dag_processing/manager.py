@@ -29,6 +29,7 @@ import random
 import selectors
 import signal
 import sys
+import threading
 import time
 import zipfile
 from collections import defaultdict, deque
@@ -736,125 +737,150 @@ class DagFileProcessorManager(LoggingMixin):
 
     def _refresh_dag_bundles(self, known_files: dict[str, set[DagFileInfo]]):
         """Refresh DAG bundles, if required."""
-        now = timezone.utcnow()
+        with self._ipc_service_thread():
+            now = timezone.utcnow()
 
-        # we don't need to check if it's time to refresh every loop - that is way too often
-        next_check = self._bundles_last_refreshed + self.bundle_refresh_check_interval
-        now_seconds = time.monotonic()
-        if now_seconds < next_check and not self._force_refresh_bundles:
-            self.log.debug(
-                "Not time to check if DAG Bundles need refreshed yet - skipping. Next check in %.2f seconds",
-                next_check - now_seconds,
-            )
+            # we don't need to check if it's time to refresh every loop - that is way too often
+            next_check = self._bundles_last_refreshed + self.bundle_refresh_check_interval
+            now_seconds = time.monotonic()
+            if now_seconds < next_check and not self._force_refresh_bundles:
+                self.log.debug(
+                    "Not time to check if DAG Bundles need refreshed yet - skipping. Next check in %.2f seconds",
+                    next_check - now_seconds,
+                )
+                return
+
+            self._bundles_last_refreshed = now_seconds
+
+            any_refreshed = False
+            for bundle in self._dag_bundles:
+                # TODO: AIP-66 handle errors in the case of incomplete cloning? And test this.
+                #  What if the cloning/refreshing took too long(longer than the dag processor timeout)
+                if not bundle.is_initialized:
+                    try:
+                        bundle.initialize()
+                        any_refreshed = True
+                    except AirflowException as e:
+                        self.log.exception("Error initializing bundle %s: %s", bundle.name, e)
+                        continue
+                # TODO: AIP-66 test to make sure we get a fresh record from the db and it's not cached
+                try:
+                    bundle_state = self.get_bundle_state(bundle.name)
+                except Exception:
+                    self.log.exception("Error fetching state for bundle %s", bundle.name)
+                    continue
+                if bundle_state is None:
+                    self.log.warning("Bundle model not found for %s", bundle.name)
+                    continue
+                elapsed_time_since_refresh = (
+                    now - (bundle_state.last_refreshed or utc_epoch())
+                ).total_seconds()
+                if bundle.supports_versioning:
+                    # we will also check the version of the bundle to see if another DAG processor has seen
+                    # a new version
+                    pre_refresh_version = self._bundle_versions.get(bundle.name)
+                    # Use `is None` (not falsy) so an empty-string version is treated as a valid cached value.
+                    if pre_refresh_version is None:
+                        pre_refresh_version, _ = unpack_bundle_version(bundle.get_current_version(), bundle)
+                    current_version_matches_db = pre_refresh_version == bundle_state.version
+                else:
+                    # With no versioning, it always "matches"
+                    current_version_matches_db = True
+
+                previously_seen = bundle.name in self._bundle_versions
+                if self.should_skip_refresh(
+                    bundle=bundle,
+                    elapsed_time_since_refresh=elapsed_time_since_refresh,
+                    current_version_matches_db=current_version_matches_db,
+                    previously_seen=previously_seen,
+                ):
+                    self.log.info("Not time to refresh bundle %s", bundle.name)
+                    continue
+
+                self.log.info("Refreshing bundle %s", bundle.name)
+
+                try:
+                    bundle.refresh()
+                    any_refreshed = True
+                except Exception:
+                    self.log.exception("Error refreshing bundle %s", bundle.name)
+                    continue
+
+                self._force_refresh_bundles.discard(bundle.name)
+
+                if bundle.supports_versioning:
+                    # We can short-circuit the rest of this if (1) bundle was seen before by
+                    # this dag processor and (2) the version of the bundle did not change
+                    # after refreshing it
+                    version_after_refresh, version_data_after_refresh = unpack_bundle_version(
+                        bundle.get_current_version(), bundle
+                    )
+                    if previously_seen and pre_refresh_version == version_after_refresh:
+                        self.log.debug(
+                            "Bundle %s version not changed after refresh: %s",
+                            bundle.name,
+                            version_after_refresh,
+                        )
+                        try:
+                            self.update_bundle_state(bundle.name, last_refreshed=now, version=None)
+                        except Exception:
+                            self.log.exception("Error persisting state for bundle %s", bundle.name)
+                        continue
+
+                    self.log.info(
+                        "Version changed for %s, new version: %s", bundle.name, version_after_refresh
+                    )
+                else:
+                    version_after_refresh = None
+                    version_data_after_refresh = None
+
+                # Persistence failure must not skip file scanning (bundle is already refreshed locally).
+                # _bundle_versions is only advanced on success to stay consistent with the DB.
+                try:
+                    self.update_bundle_state(bundle.name, last_refreshed=now, version=version_after_refresh)
+                except Exception:
+                    self.log.exception("Error persisting state for bundle %s", bundle.name)
+                else:
+                    self._bundle_versions[bundle.name] = version_after_refresh
+                    self._bundle_version_data[bundle.name] = version_data_after_refresh
+
+                found_files = {
+                    DagFileInfo(rel_path=p, bundle_name=bundle.name, bundle_path=bundle.path)
+                    for p in self._find_files_in_bundle(bundle)
+                }
+
+                known_files[bundle.name] = found_files
+
+                self.deactivate_deleted_dags(bundle_name=bundle.name, present=found_files)
+                self.clear_orphaned_import_errors(
+                    bundle_name=bundle.name,
+                    observed_filelocs=self._get_observed_filelocs(found_files),
+                )
+
+            if any_refreshed:
+                self.handle_removed_files(known_files=known_files)
+                self._resort_file_queue()
+                self._add_new_files_to_queue(known_files=known_files)
+
+    @contextlib.contextmanager
+    def _ipc_service_thread(self):
+        if not self._processors:
+            yield
             return
 
-        self._bundles_last_refreshed = now_seconds
+        stop_event = threading.Event()
 
-        any_refreshed = False
-        for bundle in self._dag_bundles:
-            # TODO: AIP-66 handle errors in the case of incomplete cloning? And test this.
-            #  What if the cloning/refreshing took too long(longer than the dag processor timeout)
-            if not bundle.is_initialized:
-                try:
-                    bundle.initialize()
-                    any_refreshed = True
-                except AirflowException as e:
-                    self.log.exception("Error initializing bundle %s: %s", bundle.name, e)
-                    continue
-            # TODO: AIP-66 test to make sure we get a fresh record from the db and it's not cached
-            try:
-                bundle_state = self.get_bundle_state(bundle.name)
-            except Exception:
-                self.log.exception("Error fetching state for bundle %s", bundle.name)
-                continue
-            if bundle_state is None:
-                self.log.warning("Bundle model not found for %s", bundle.name)
-                continue
-            elapsed_time_since_refresh = (now - (bundle_state.last_refreshed or utc_epoch())).total_seconds()
-            if bundle.supports_versioning:
-                # we will also check the version of the bundle to see if another DAG processor has seen
-                # a new version
-                pre_refresh_version = self._bundle_versions.get(bundle.name)
-                # Use `is None` (not falsy) so an empty-string version is treated as a valid cached value.
-                if pre_refresh_version is None:
-                    pre_refresh_version, _ = unpack_bundle_version(bundle.get_current_version(), bundle)
-                current_version_matches_db = pre_refresh_version == bundle_state.version
-            else:
-                # With no versioning, it always "matches"
-                current_version_matches_db = True
+        def run() -> None:
+            while not stop_event.is_set():
+                self._service_processor_sockets(timeout=0.1)
 
-            previously_seen = bundle.name in self._bundle_versions
-            if self.should_skip_refresh(
-                bundle=bundle,
-                elapsed_time_since_refresh=elapsed_time_since_refresh,
-                current_version_matches_db=current_version_matches_db,
-                previously_seen=previously_seen,
-            ):
-                self.log.info("Not time to refresh bundle %s", bundle.name)
-                continue
-
-            self.log.info("Refreshing bundle %s", bundle.name)
-
-            try:
-                bundle.refresh()
-                any_refreshed = True
-            except Exception:
-                self.log.exception("Error refreshing bundle %s", bundle.name)
-                continue
-
-            self._force_refresh_bundles.discard(bundle.name)
-
-            if bundle.supports_versioning:
-                # We can short-circuit the rest of this if (1) bundle was seen before by
-                # this dag processor and (2) the version of the bundle did not change
-                # after refreshing it
-                version_after_refresh, version_data_after_refresh = unpack_bundle_version(
-                    bundle.get_current_version(), bundle
-                )
-                if previously_seen and pre_refresh_version == version_after_refresh:
-                    self.log.debug(
-                        "Bundle %s version not changed after refresh: %s",
-                        bundle.name,
-                        version_after_refresh,
-                    )
-                    try:
-                        self.update_bundle_state(bundle.name, last_refreshed=now, version=None)
-                    except Exception:
-                        self.log.exception("Error persisting state for bundle %s", bundle.name)
-                    continue
-
-                self.log.info("Version changed for %s, new version: %s", bundle.name, version_after_refresh)
-            else:
-                version_after_refresh = None
-                version_data_after_refresh = None
-
-            # Persistence failure must not skip file scanning (bundle is already refreshed locally).
-            # _bundle_versions is only advanced on success to stay consistent with the DB.
-            try:
-                self.update_bundle_state(bundle.name, last_refreshed=now, version=version_after_refresh)
-            except Exception:
-                self.log.exception("Error persisting state for bundle %s", bundle.name)
-            else:
-                self._bundle_versions[bundle.name] = version_after_refresh
-                self._bundle_version_data[bundle.name] = version_data_after_refresh
-
-            found_files = {
-                DagFileInfo(rel_path=p, bundle_name=bundle.name, bundle_path=bundle.path)
-                for p in self._find_files_in_bundle(bundle)
-            }
-
-            known_files[bundle.name] = found_files
-
-            self.deactivate_deleted_dags(bundle_name=bundle.name, present=found_files)
-            self.clear_orphaned_import_errors(
-                bundle_name=bundle.name,
-                observed_filelocs=self._get_observed_filelocs(found_files),
-            )
-
-        if any_refreshed:
-            self.handle_removed_files(known_files=known_files)
-            self._resort_file_queue()
-            self._add_new_files_to_queue(known_files=known_files)
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            stop_event.set()
+            thread.join()
 
     def _find_files_in_bundle(self, bundle: BaseDagBundle) -> list[Path]:
         """Get relative paths for dag files from bundle dir."""
