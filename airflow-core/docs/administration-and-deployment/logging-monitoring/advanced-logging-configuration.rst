@@ -40,6 +40,41 @@ and you can see the loggers and handlers used there.
 See :ref:`Configuring local settings <set-config:configuring-local-settings>` for details on how to
 configure local settings.
 
+Default loggers in the shipped configuration
+--------------------------------------------
+
+The default configuration defines a small number of named loggers. Standard-library loggers follow
+normal Python propagation rules, while many Airflow components emit logs through structlog:
+
+* ``root`` uses the ``console`` handler. This is the default destination for standard-library
+  loggers that propagate to root, including additional third-party loggers that you attach through
+  the default config.
+* ``airflow.task`` uses the ``task`` handler. This writes one log per task instance try under
+  :ref:`config:logging__base_log_folder` and can be extended with remote task logging.
+* ``flask_appbuilder`` uses the ``console`` handler with
+  :ref:`config:logging__fab_logging_level`, which defaults to ``WARNING`` to reduce UI noise.
+
+The default config also includes separate Dag processor settings outside those three loggers:
+
+* :ref:`config:logging__dag_processor_log_target` controls whether Dag parser child-process logs are
+  also forwarded to stdout (``stdout``) or kept only in their per-file logs (``file``).
+* :ref:`config:logging__dag_processor_child_process_log_directory` controls where those per-file
+  logs are written.
+
+The most commonly used ways to influence the default behavior are:
+
+* :ref:`config:logging__logging_level` for the default level of Airflow component logs.
+* :ref:`config:logging__namespace_levels` to change levels for specific logger names without
+  replacing the whole logging config.
+* :ref:`config:logging__extra_logger_names` to attach additional third-party loggers to the default
+  console handler.
+* :ref:`config:logging__logging_config_class` when you need to replace handlers, formatters, or
+  propagation rules directly.
+
+During task execution, Airflow also redirects the root logger to the task log so that standard
+Python loggers that propagate to root are visible in the task log. See
+:doc:`/administration-and-deployment/logging-monitoring/logging-tasks` for task-specific details.
+
 Except the custom loggers and handlers configurable there via the ``airflow.cfg``, the logging methods in Airflow follow the usual Python logging convention,
 that Python objects log to loggers that follow naming convention of ``<package>.<module_name>``.
 
