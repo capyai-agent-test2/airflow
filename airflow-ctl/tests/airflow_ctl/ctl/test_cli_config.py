@@ -412,6 +412,32 @@ class TestCommandFactory:
         assert limit_arg.flags == ("--limit",)
         assert limit_arg.kwargs["type"] is int
 
+    def test_command_factory_clear_commands_include_output_and_env(self, tmp_path):
+        """Clear commands return data, so they need output and environment args."""
+        temp_file = self._save_temp_operations_py(
+            tmp_path=tmp_path,
+            file_content="""
+                class TaskInstancesOperations(BaseOperations):
+                    def clear(
+                        self, dag_id: str, clear_task_instances: ClearTaskInstancesBody
+                    ) -> ClearTaskInstanceCollectionResponse | ServerResponseError:
+                        return ClearTaskInstanceCollectionResponse(task_instances=[], total_entries=0)
+            """,
+        )
+
+        command_factory = CommandFactory(file_path=str(temp_file))
+        clear_args = []
+        for generated_group_command in command_factory.group_commands:
+            if generated_group_command.name != "taskinstances":
+                continue
+            for sub_command in generated_group_command.subcommands:
+                if sub_command.name == "clear":
+                    clear_args = list(sub_command.args)
+                    break
+
+        assert any(arg.flags == ("--output", "-o") for arg in clear_args)
+        assert any(arg.flags == ("-e", "--env") for arg in clear_args)
+
 
 class TestCliConfigMethods:
     @pytest.mark.parametrize(

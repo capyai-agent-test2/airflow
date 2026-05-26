@@ -39,6 +39,8 @@ from airflowctl.api.datamodels.generated import (
     BulkBodyPoolBody,
     BulkBodyVariableBody,
     BulkResponse,
+    ClearTaskInstanceCollectionResponse,
+    ClearTaskInstancesBody,
     Config,
     ConnectionBody,
     ConnectionCollectionResponse,
@@ -68,6 +70,10 @@ from airflowctl.api.datamodels.generated import (
     ProviderCollectionResponse,
     QueuedEventCollectionResponse,
     QueuedEventResponse,
+    TaskCollectionResponse,
+    TaskInstanceCollectionResponse,
+    TaskInstanceResponse,
+    TaskResponse,
     TriggerDAGRunPostBody,
     VariableBody,
     VariableCollectionResponse,
@@ -723,6 +729,89 @@ class ProvidersOperations(BaseOperations):
     def list(self) -> ProviderCollectionResponse | ServerResponseError:
         """List all providers."""
         return super().execute_list(path="providers", data_model=ProviderCollectionResponse)
+
+
+class TasksOperations(BaseOperations):
+    """Task operations."""
+
+    def get(self, dag_id: str, task_id: str) -> TaskResponse | ServerResponseError:
+        """Get a task."""
+        try:
+            self.response = self.client.get(f"dags/{dag_id}/tasks/{task_id}")
+            return TaskResponse.model_validate_json(self.response.content)
+        except ServerResponseError as e:
+            raise e
+
+    def list(self, dag_id: str, order_by: str = "task_id") -> TaskCollectionResponse | ServerResponseError:
+        """List tasks for a Dag."""
+        try:
+            self.response = self.client.get(f"dags/{dag_id}/tasks", params={"order_by": order_by})
+            return TaskCollectionResponse.model_validate_json(self.response.content)
+        except ServerResponseError as e:
+            raise e
+
+
+class TaskInstancesOperations(BaseOperations):
+    """Task instance operations."""
+
+    def get(
+        self, dag_id: str, dag_run_id: str, task_id: str, map_index: int | None = None
+    ) -> TaskInstanceResponse | ServerResponseError:
+        """Get a task instance."""
+        try:
+            if map_index is None:
+                self.response = self.client.get(f"dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{task_id}")
+            else:
+                self.response = self.client.get(
+                    f"dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{task_id}/{map_index}"
+                )
+            return TaskInstanceResponse.model_validate_json(self.response.content)
+        except ServerResponseError as e:
+            raise e
+
+    def list(
+        self,
+        dag_id: str = "~",
+        dag_run_id: str = "~",
+        task_id: str | None = None,
+        state: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str = "map_index",
+        cursor: str | None = None,
+    ) -> TaskInstanceCollectionResponse | ServerResponseError:
+        """List task instances."""
+        params: dict[str, Any] = {
+            "limit": limit,
+            "offset": offset,
+            "order_by": order_by,
+        }
+        if task_id is not None:
+            params["task_id"] = task_id
+        if state is not None:
+            params["state"] = state
+        if cursor is not None:
+            params["cursor"] = cursor
+        try:
+            self.response = self.client.get(
+                f"dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances", params=params
+            )
+            return TaskInstanceCollectionResponse.model_validate_json(self.response.content)
+        except ServerResponseError as e:
+            raise e
+
+    def clear(
+        self, dag_id: str, clear_task_instances: ClearTaskInstancesBody
+    ) -> ClearTaskInstanceCollectionResponse | ServerResponseError:
+        """Clear task instances."""
+        try:
+            self.response = self.client.post(
+                f"dags/{dag_id}/clearTaskInstances",
+                json=clear_task_instances.model_dump(mode="json", exclude_none=True),
+            )
+            return ClearTaskInstanceCollectionResponse.model_validate_json(self.response.content)
+        except ServerResponseError as e:
+            raise e
 
 
 class VariablesOperations(BaseOperations):
