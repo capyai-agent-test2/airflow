@@ -717,6 +717,32 @@ class TestGKEKubernetesHookJob:
         return self.credentials
 
 
+class TestGKEKubernetesHookScopes:
+    def test_default_scopes_include_userinfo_email(self):
+        with mock.patch(
+            BASE_STRING.format("GoogleBaseHook.__init__"), new=mock_base_gcp_hook_default_project_id
+        ):
+            gke_hook = GKEKubernetesHook(gcp_conn_id="test", ssl_ca_cert=None, cluster_url=None)
+
+        assert gke_hook.scopes == (
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/userinfo.email",
+        )
+
+    def test_connection_scopes_are_preserved_when_adding_required_gke_scopes(self):
+        with mock.patch(
+            BASE_STRING.format("GoogleBaseHook.__init__"), new=mock_base_gcp_hook_default_project_id
+        ):
+            gke_hook = GKEKubernetesHook(gcp_conn_id="test", ssl_ca_cert=None, cluster_url=None)
+        gke_hook.extras = {"scope": "https://www.googleapis.com/auth/devstorage.read_only"}
+
+        assert gke_hook.scopes == (
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/userinfo.email",
+        )
+
+
 class TestGKEKubernetesHookCustomResources:
     def setup_method(self):
         with mock.patch(
