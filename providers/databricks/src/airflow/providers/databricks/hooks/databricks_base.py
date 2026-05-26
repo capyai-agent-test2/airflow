@@ -1116,6 +1116,8 @@ class BaseDatabricksHook(BaseHook):
             request_func = requests.get
         elif method == "POST":
             request_func = requests.post
+        elif method == "PUT":
+            request_func = requests.put
         elif method == "PATCH":
             request_func = requests.patch
         elif method == "DELETE":
@@ -1135,7 +1137,7 @@ class BaseDatabricksHook(BaseHook):
                     )
                     response = request_func(
                         url,
-                        json=json if method in ("POST", "PATCH") else None,
+                        json=json if method in ("POST", "PUT", "PATCH") else None,
                         params=json if method == "GET" else None,
                         auth=auth,
                         headers=headers,
@@ -1183,6 +1185,8 @@ class BaseDatabricksHook(BaseHook):
             request_func = self._session.get
         elif method == "POST":
             request_func = self._session.post
+        elif method == "PUT":
+            request_func = self._session.put
         elif method == "PATCH":
             request_func = self._session.patch
         else:
