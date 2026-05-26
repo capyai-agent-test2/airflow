@@ -46,6 +46,20 @@ class TestClient:
         config.load_kube_config.assert_called()
 
     @mock.patch("airflow.providers.cncf.kubernetes.kube_client.config")
+    def test_load_file_config_uses_custom_conf_source(self, config):
+        conf_source = mock.MagicMock()
+        conf_source.getboolean.side_effect = [False, True, True, True]
+        conf_source.getjson.return_value = {"total": 3, "backoff_factor": 0.5}
+        conf_source.get.side_effect = ["team-context", "/tmp/team-kubeconfig", None]
+
+        get_kube_client(conf_source=conf_source)
+
+        config.load_kube_config.assert_called_once()
+        _, kwargs = config.load_kube_config.call_args
+        assert kwargs["context"] == "team-context"
+        assert kwargs["config_file"] == "/tmp/team-kubeconfig"
+
+    @mock.patch("airflow.providers.cncf.kubernetes.kube_client.config")
     @mock.patch("airflow.providers.cncf.kubernetes.kube_client.conf")
     def test_load_config_disable_ssl(self, conf, config):
         conf.getboolean.return_value = False
@@ -78,6 +92,20 @@ class TestClient:
 
         assert HTTPConnection.default_socket_options == expected_http_connection_options
         assert HTTPSConnection.default_socket_options == expected_https_connection_options
+
+    @mock.patch("urllib3.connection.HTTPSConnection")
+    @mock.patch("urllib3.connection.HTTPConnection")
+    def test_enable_tcp_keepalive_uses_custom_conf_source(self, mock_http_connection, mock_https_connection):
+        conf_source = mock.MagicMock()
+        conf_source.getint.side_effect = [111, 222, 333]
+        mock_http_connection.default_socket_options = []
+        mock_https_connection.default_socket_options = []
+
+        _enable_tcp_keepalive(conf_source=conf_source)
+
+        conf_source.getint.assert_any_call("kubernetes_executor", "tcp_keep_idle")
+        conf_source.getint.assert_any_call("kubernetes_executor", "tcp_keep_intvl")
+        conf_source.getint.assert_any_call("kubernetes_executor", "tcp_keep_cnt")
 
     def test_disable_verify_ssl(self):
         configuration = Configuration()

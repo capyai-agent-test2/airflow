@@ -51,7 +51,7 @@ except ImportError as e:
     _import_err = e
 
 
-def _enable_tcp_keepalive() -> None:
+def _enable_tcp_keepalive(conf_source=None) -> None:
     """
     Enable TCP keepalive mechanism.
 
@@ -66,9 +66,12 @@ def _enable_tcp_keepalive() -> None:
 
     from urllib3.connection import HTTPConnection, HTTPSConnection
 
-    tcp_keep_idle = conf.getint("kubernetes_executor", "tcp_keep_idle")
-    tcp_keep_intvl = conf.getint("kubernetes_executor", "tcp_keep_intvl")
-    tcp_keep_cnt = conf.getint("kubernetes_executor", "tcp_keep_cnt")
+    if conf_source is None:
+        conf_source = conf
+
+    tcp_keep_idle = conf_source.getint("kubernetes_executor", "tcp_keep_idle")
+    tcp_keep_intvl = conf_source.getint("kubernetes_executor", "tcp_keep_intvl")
+    tcp_keep_cnt = conf_source.getint("kubernetes_executor", "tcp_keep_cnt")
 
     socket_options = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
 
@@ -104,6 +107,7 @@ def get_kube_client(
     in_cluster: bool | None = None,
     cluster_context: str | None = None,
     config_file: str | None = None,
+    conf_source=None,
 ) -> client.CoreV1Api:
     """
     Retrieve Kubernetes client.
@@ -113,20 +117,23 @@ def get_kube_client(
     :param config_file: configuration file
     :return: kubernetes client
     """
+    if conf_source is None:
+        conf_source = conf
+
     if in_cluster is None:
-        in_cluster = conf.getboolean("kubernetes_executor", "in_cluster")
+        in_cluster = conf_source.getboolean("kubernetes_executor", "in_cluster")
     if not has_kubernetes:
         raise _import_err
 
-    if conf.getboolean("kubernetes_executor", "enable_tcp_keepalive"):
-        _enable_tcp_keepalive()
+    if conf_source.getboolean("kubernetes_executor", "enable_tcp_keepalive"):
+        _enable_tcp_keepalive(conf_source=conf_source)
 
     configuration = _get_default_configuration()
-    api_client_retry_configuration = conf.getjson(
+    api_client_retry_configuration = conf_source.getjson(
         "kubernetes_executor", "api_client_retry_configuration", fallback={}
     )
 
-    if not conf.getboolean("kubernetes_executor", "verify_ssl"):
+    if not conf_source.getboolean("kubernetes_executor", "verify_ssl"):
         _disable_verify_ssl()
 
     if isinstance(api_client_retry_configuration, dict):
@@ -138,17 +145,17 @@ def get_kube_client(
         config.load_incluster_config(client_configuration=configuration)
     else:
         if cluster_context is None:
-            cluster_context = conf.get("kubernetes_executor", "cluster_context", fallback=None)
+            cluster_context = conf_source.get("kubernetes_executor", "cluster_context", fallback=None)
         if config_file is None:
-            config_file = conf.get("kubernetes_executor", "config_file", fallback=None)
+            config_file = conf_source.get("kubernetes_executor", "config_file", fallback=None)
         config.load_kube_config(
             config_file=config_file, context=cluster_context, client_configuration=configuration
         )
 
-    if not conf.getboolean("kubernetes_executor", "verify_ssl"):
+    if not conf_source.getboolean("kubernetes_executor", "verify_ssl"):
         configuration.verify_ssl = False
 
-    ssl_ca_cert = conf.get("kubernetes_executor", "ssl_ca_cert")
+    ssl_ca_cert = conf_source.get("kubernetes_executor", "ssl_ca_cert")
     if ssl_ca_cert:
         configuration.ssl_ca_cert = ssl_ca_cert
 

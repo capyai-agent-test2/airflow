@@ -88,7 +88,7 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
         if TYPE_CHECKING:
             assert self.scheduler_job_id
 
-        kube_client: client.CoreV1Api = get_kube_client()
+        kube_client: client.CoreV1Api = get_kube_client(conf_source=self.kube_config._conf)
         while True:
             try:
                 self.resource_version = self._run(
