@@ -159,6 +159,7 @@ def setup(request, dag_maker, session=None):
     dag_run1.note = (DAG1_RUN1_NOTE, "not_test")
     # Set end_date for testing duration filter
     dag_run1.end_date = dag_run1.start_date + timedelta(seconds=101)
+    dag_run1.updated_at = LOGICAL_DATE1
     # Set conf for testing conf_contains filter (values ordered for predictable sorting)
     dag_run1.conf = {"env": "development", "version": "1.0"}
 
@@ -180,6 +181,7 @@ def setup(request, dag_maker, session=None):
     dag_run2.triggering_user_name = "bob_service"
     # Set end_date for testing duration filter
     dag_run2.end_date = dag_run2.start_date + timedelta(seconds=201)
+    dag_run2.updated_at = LOGICAL_DATE2
     # Set conf for testing conf_contains filter
     dag_run2.conf = {"env": "production", "debug": True}
 
@@ -205,6 +207,7 @@ def setup(request, dag_maker, session=None):
     dag_run3.triggering_user_name = "service_account"
     # Set end_date for testing duration filter
     dag_run3.end_date = dag_run3.start_date + timedelta(seconds=51)
+    dag_run3.updated_at = LOGICAL_DATE3
     # Set conf for testing conf_contains filter
     dag_run3.conf = {"env": "staging", "test_mode": True}
 
@@ -219,6 +222,7 @@ def setup(request, dag_maker, session=None):
     dag_run4.triggering_user_name = None
     # Set end_date for testing duration filter
     dag_run4.end_date = dag_run4.start_date + timedelta(seconds=150)
+    dag_run4.updated_at = LOGICAL_DATE4
     # Set conf for testing conf_contains filter
     dag_run4.conf = {"env": "testing", "mode": "ci"}
 
@@ -278,6 +282,7 @@ def get_dag_run_dict(run: DagRun):
         "start_date": from_datetime_to_zulu_without_ms(run.start_date) if run.start_date else None,
         "end_date": from_datetime_to_zulu_without_ms(run.end_date) if run.end_date else None,
         "duration": run.duration,
+        "updated_at": from_datetime_to_zulu_without_ms(run.updated_at),
         "data_interval_start": from_datetime_to_zulu_without_ms(run.data_interval_start)
         if run.data_interval_start
         else None,
@@ -1231,6 +1236,13 @@ class TestListDagRunsBatch:
                 [DAG2_RUN1_ID, DAG2_RUN2_ID],
             ),
             (
+                {
+                    "updated_at_gte": START_DATE2.isoformat(),
+                    "updated_at_lte": (datetime.now(tz=timezone.utc) + timedelta(days=1)).isoformat(),
+                },
+                [DAG2_RUN1_ID, DAG2_RUN2_ID],
+            ),
+            (
                 {"states": [DagRunState.SUCCESS.value]},
                 [DAG1_RUN1_ID, DAG2_RUN1_ID, DAG2_RUN2_ID],
             ),
@@ -1263,9 +1275,11 @@ class TestListDagRunsBatch:
             "logical_date_gte": "invalid",
             "start_date_gte": "invalid",
             "end_date_gte": "invalid",
+            "updated_at_gte": "invalid",
             "logical_date_lte": "invalid",
             "start_date_lte": "invalid",
             "end_date_lte": "invalid",
+            "updated_at_lte": "invalid",
             "dag_ids": "invalid",
         }
         expected_detail = [
@@ -1313,6 +1327,20 @@ class TestListDagRunsBatch:
             {
                 "type": "datetime_from_date_parsing",
                 "loc": ["body", "end_date_lte"],
+                "msg": "Input should be a valid datetime or date, input is too short",
+                "input": "invalid",
+                "ctx": {"error": "input is too short"},
+            },
+            {
+                "type": "datetime_from_date_parsing",
+                "loc": ["body", "updated_at_gte"],
+                "msg": "Input should be a valid datetime or date, input is too short",
+                "input": "invalid",
+                "ctx": {"error": "input is too short"},
+            },
+            {
+                "type": "datetime_from_date_parsing",
+                "loc": ["body", "updated_at_lte"],
                 "msg": "Input should be a valid datetime or date, input is too short",
                 "input": "invalid",
                 "ctx": {"error": "input is too short"},
