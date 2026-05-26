@@ -216,9 +216,6 @@ labelPRBasedOnFilePath:
   provider:openai:
     - providers/openai/**
 
-  provider:openfaas:
-    - providers/openfaas/**
-
   provider:openlineage:
     - providers/openlineage/**
 

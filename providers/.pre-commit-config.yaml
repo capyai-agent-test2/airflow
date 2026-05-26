@@ -124,7 +124,6 @@ repos:
             ^neo4j/.*\.py$|
             ^odbc/.*\.py$|
             ^openai/.*\.py$|
-            ^openfaas/.*\.py$|
             ^opsgenie/.*\.py$|
             ^oracle/.*\.py$|
             ^pagerduty/.*\.py$|

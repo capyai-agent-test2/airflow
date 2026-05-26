@@ -56,7 +56,6 @@ apache-airflow = false
 apache-airflow-shared-observability = false
 apache-airflow-dev = false
 apache-airflow-providers-dbt-cloud = false
-apache-airflow-providers-openfaas = false
 apache-airflow-devel-common = false
 apache-airflow-providers-apache-cassandra = false
 apache-airflow-providers-asana = false
@@ -101,9 +100,9 @@ apache-airflow-providers-mongo = false
 apache-airflow-providers-apprise = false
 apache-airflow-providers-apache-impala = false
 apache-airflow-ctl = false
+apache-airflow-providers-zendesk = false
 apache-airflow-providers-github = false
 apache-airflow-providers-snowflake = false
-apache-airflow-providers-zendesk = false
 apache-airflow-providers-presto = false
 apache-airflow-providers-airbyte = false
 apache-airflow-providers-apache-hive = false
@@ -234,7 +233,6 @@ members = [
     "apache-airflow-providers-neo4j",
     "apache-airflow-providers-odbc",
     "apache-airflow-providers-openai",
-    "apache-airflow-providers-openfaas",
     "apache-airflow-providers-openlineage",
     "apache-airflow-providers-opensearch",
     "apache-airflow-providers-opsgenie",
@@ -1049,7 +1047,6 @@ all = [
     { name = "apache-airflow-providers-neo4j" },
     { name = "apache-airflow-providers-odbc" },
     { name = "apache-airflow-providers-openai" },
-    { name = "apache-airflow-providers-openfaas" },
     { name = "apache-airflow-providers-openlineage" },
     { name = "apache-airflow-providers-opensearch" },
     { name = "apache-airflow-providers-opsgenie" },
@@ -1322,9 +1319,6 @@ odbc = [
 ]
 openai = [
     { name = "apache-airflow-providers-openai" },
-]
-openfaas = [
-    { name = "apache-airflow-providers-openfaas" },
 ]
 openlineage = [
     { name = "apache-airflow-providers-openlineage" },
@@ -1673,8 +1667,6 @@ requires-dist = [
     { name = "apache-airflow-providers-odbc", marker = "extra == 'odbc'", editable = "providers/odbc" },
     { name = "apache-airflow-providers-openai", marker = "extra == 'all'", editable = "providers/openai" },
     { name = "apache-airflow-providers-openai", marker = "extra == 'openai'", editable = "providers/openai" },
-    { name = "apache-airflow-providers-openfaas", marker = "extra == 'all'", editable = "providers/openfaas" },
-    { name = "apache-airflow-providers-openfaas", marker = "extra == 'openfaas'", editable = "providers/openfaas" },
     { name = "apache-airflow-providers-openlineage", marker = "extra == 'all'", editable = "providers/openlineage" },
     { name = "apache-airflow-providers-openlineage", marker = "extra == 'openlineage'", editable = "providers/openlineage" },
     { name = "apache-airflow-providers-opensearch", marker = "extra == 'all'", editable = "providers/opensearch" },
@@ -1753,7 +1745,7 @@ requires-dist = [
     { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.30.0" },
     { name = "uv", marker = "extra == 'uv'", specifier = ">=0.11.15" },
 ]
-provides-extras = ["all-core", "async", "graphviz", "gunicorn", "kerberos", "memray", "otel", "statsd", "all-task-sdk", "airbyte", "akeyless", "alibaba", "amazon", "apache-cassandra", "apache-drill", "apache-druid", "apache-flink", "apache-hdfs", "apache-hive", "apache-iceberg", "apache-impala", "apache-kafka", "apache-kylin", "apache-livy", "apache-pig", "apache-pinot", "apache-spark", "apache-tinkerpop", "apprise", "arangodb", "asana", "atlassian-jira", "celery", "cloudant", "cncf-kubernetes", "cohere", "common-ai", "common-compat", "common-io", "common-messaging", "common-sql", "databricks", "datadog", "dbt-cloud", "dingding", "discord", "docker", "edge3", "elasticsearch", "exasol", "fab", "facebook", "ftp", "git", "github", "google", "grpc", "hashicorp", "http", "imap", "influxdb", "informatica", "jdbc", "jenkins", "keycloak", "microsoft-azure", "microsoft-mssql", "microsoft-psrp", "microsoft-winrm", "mongo", "mysql", "neo4j", "odbc", "openai", "openfaas", "openlineage", "opensearch", "opsgenie", "oracle", "pagerduty", "papermill", "pgvector", "pinecone", "postgres", "presto", "qdrant", "redis", "salesforce", "samba", "segment", "sendgrid", "sftp", "singularity", "slack", "smtp", "snowflake", "sqlite", "ssh", "standard", "tableau", "telegram", "teradata", "trino", "vertica", "vespa", "weaviate", "yandex", "ydb", "zendesk", "all", "aiobotocore", "apache-atlas", "apache-webhdfs", "amazon-aws-auth", "cloudpickle", "github-enterprise", "google-auth", "ldap", "pandas", "polars", "rabbitmq", "sentry", "s3fs", "uv"]
+provides-extras = ["all-core", "async", "graphviz", "gunicorn", "kerberos", "memray", "otel", "statsd", "all-task-sdk", "airbyte", "akeyless", "alibaba", "amazon", "apache-cassandra", "apache-drill", "apache-druid", "apache-flink", "apache-hdfs", "apache-hive", "apache-iceberg", "apache-impala", "apache-kafka", "apache-kylin", "apache-livy", "apache-pig", "apache-pinot", "apache-spark", "apache-tinkerpop", "apprise", "arangodb", "asana", "atlassian-jira", "celery", "cloudant", "cncf-kubernetes", "cohere", "common-ai", "common-compat", "common-io", "common-messaging", "common-sql", "databricks", "datadog", "dbt-cloud", "dingding", "discord", "docker", "edge3", "elasticsearch", "exasol", "fab", "facebook", "ftp", "git", "github", "google", "grpc", "hashicorp", "http", "imap", "influxdb", "informatica", "jdbc", "jenkins", "keycloak", "microsoft-azure", "microsoft-mssql", "microsoft-psrp", "microsoft-winrm", "mongo", "mysql", "neo4j", "odbc", "openai", "openlineage", "opensearch", "opsgenie", "oracle", "pagerduty", "papermill", "pgvector", "pinecone", "postgres", "presto", "qdrant", "redis", "salesforce", "samba", "segment", "sendgrid", "sftp", "singularity", "slack", "smtp", "snowflake", "sqlite", "ssh", "standard", "tableau", "telegram", "teradata", "trino", "vertica", "vespa", "weaviate", "yandex", "ydb", "zendesk", "all", "aiobotocore", "apache-atlas", "apache-webhdfs", "amazon-aws-auth", "cloudpickle", "github-enterprise", "google-auth", "ldap", "pandas", "polars", "rabbitmq", "sentry", "s3fs", "uv"]
 
 [package.metadata.requires-dev]
 ci-image = [
@@ -6440,41 +6432,6 @@ requires-dist = [
     { name = "apache-airflow", editable = "." },
     { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
     { name = "openai", extras = ["datalib"], specifier = ">=1.66.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "apache-airflow", editable = "." },
-    { name = "apache-airflow-devel-common", editable = "devel-common" },
-    { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
-    { name = "apache-airflow-task-sdk", editable = "task-sdk" },
-]
-docs = [{ name = "apache-airflow-devel-common", extras = ["docs"], editable = "devel-common" }]
-
-[[package]]
-name = "apache-airflow-providers-openfaas"
-version = "3.9.4"
-source = { editable = "providers/openfaas" }
-dependencies = [
-    { name = "apache-airflow" },
-    { name = "apache-airflow-providers-common-compat" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "apache-airflow" },
-    { name = "apache-airflow-devel-common" },
-    { name = "apache-airflow-providers-common-compat" },
-    { name = "apache-airflow-task-sdk" },
-]
-docs = [
-    { name = "apache-airflow-devel-common", extra = ["docs"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "apache-airflow", editable = "." },
-    { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
 ]
 
 [package.metadata.requires-dev]
