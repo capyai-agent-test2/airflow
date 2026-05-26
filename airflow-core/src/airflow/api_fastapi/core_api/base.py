@@ -17,8 +17,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar, Union, get_args, get_origin
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, Union, get_args, get_origin
 
+from fastapi import HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, create_model
 
 if TYPE_CHECKING:
@@ -67,6 +70,88 @@ def make_partial_model(model: type[PydanticBaseModel]) -> type[PydanticBaseModel
         __base__=model,
         **field_overrides,
     )
+
+
+def split_requested_fields(fields: list[str] | None) -> list[str] | None:
+    """Normalize repeated or comma-separated field selectors."""
+    if not fields:
+        return None
+    normalized_fields: list[str] = []
+    for field_group in fields:
+        for field in field_group.split(","):
+            normalized_field = field.strip()
+            if normalized_field:
+                normalized_fields.append(normalized_field)
+    return normalized_fields or None
+
+
+def validate_requested_fields(
+    fields: list[str] | None,
+    model: type[PydanticBaseModel],
+) -> list[str] | None:
+    """Validate response field selectors against a response model."""
+    normalized_fields = split_requested_fields(fields)
+    if not normalized_fields:
+        return None
+
+    valid_fields = set(model.model_fields) | set(getattr(model, "model_computed_fields", {}))
+    invalid_fields = sorted(set(normalized_fields) - valid_fields)
+    if invalid_fields:
+        valid_field_list = ", ".join(sorted(valid_fields))
+        invalid_field_list = ", ".join(invalid_fields)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown field selector(s): {invalid_field_list}. Valid fields: {valid_field_list}",
+        )
+    return normalized_fields
+
+
+def dump_selected_fields(
+    value: Any,
+    model: type[PydanticBaseModel],
+    fields: list[str],
+) -> dict[str, Any]:
+    """Serialize a response object and keep only the requested top-level fields."""
+    return model.model_validate(value).model_dump(mode="json", include=set(fields))
+
+
+def build_selective_json_response(
+    value: Any,
+    model: type[PydanticBaseModel],
+    fields: list[str] | None,
+) -> JSONResponse | None:
+    """Build a JSON response for partial field selection when requested."""
+    validated_fields = validate_requested_fields(fields, model)
+    if not validated_fields:
+        return None
+    return JSONResponse(content=dump_selected_fields(value, model, validated_fields))
+
+
+def dump_selected_collection(
+    values: Iterable[Any],
+    model: type[PydanticBaseModel],
+    fields: list[str],
+) -> list[dict[str, Any]]:
+    """Serialize a collection of response objects with top-level field selection."""
+    return [dump_selected_fields(value, model, fields) for value in values]
+
+
+def build_selective_collection_response(
+    values: Iterable[Any],
+    item_model: type[PydanticBaseModel],
+    wrapper_payload: dict[str, Any],
+    fields: list[str] | None,
+) -> JSONResponse | None:
+    """Build a JSON response for a collection with selective item fields."""
+    validated_fields = validate_requested_fields(fields, item_model)
+    if not validated_fields:
+        return None
+    payload = dict(wrapper_payload)
+    collection_key = next(
+        key for key, value in payload.items() if isinstance(value, Iterable) and not isinstance(value, str)
+    )
+    payload[collection_key] = dump_selected_collection(values, item_model, validated_fields)
+    return JSONResponse(content=payload)
 
 
 class OrmClause(Generic[T], ABC):

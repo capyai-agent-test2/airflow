@@ -58,6 +58,10 @@ from airflow.api_fastapi.common.parameters import (
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.compat import HTTP_422_UNPROCESSABLE_CONTENT
+from airflow.api_fastapi.core_api.base import (
+    build_selective_collection_response,
+    build_selective_json_response,
+)
 from airflow.api_fastapi.core_api.datamodels.dags import (
     DAGCollectionResponse,
     DAGDetailsResponse,
@@ -136,6 +140,7 @@ def get_dags(
         FilterParam[list[str] | None],
         Depends(filter_param_factory(DagModel.timetable_type, list[str], FilterOptionEnum.IN)),
     ],
+    fields: Annotated[list[str] | None, Query()] = None,
 ) -> DAGCollectionResponse:
     """Get all Dags."""
     query = generate_dag_with_latest_run_query(
@@ -176,6 +181,13 @@ def get_dags(
     )
 
     dags = session.scalars(dags_select)
+    if selective_response := build_selective_collection_response(
+        dags,
+        DAGResponse,
+        {"dags": dags, "total_entries": total_entries},
+        fields,
+    ):
+        return selective_response
 
     return DAGCollectionResponse(
         dags=dags,
@@ -198,6 +210,7 @@ def get_dag(
     dag_id: str,
     session: SessionDep,
     dag_bag: DagBagDep,
+    fields: Annotated[list[str] | None, Query()] = None,
 ) -> DAGResponse:
     """Get basic information about a Dag."""
     dag = get_latest_version_of_dag(dag_bag, dag_id, session)
@@ -209,6 +222,8 @@ def get_dag(
         if not key.startswith("_") and not hasattr(dag_model, key):
             setattr(dag_model, key, value)
 
+    if selective_response := build_selective_json_response(dag_model, DAGResponse, fields):
+        return selective_response
     return dag_model
 
 
