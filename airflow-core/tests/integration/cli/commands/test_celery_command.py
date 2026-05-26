@@ -24,9 +24,10 @@ import pytest
 
 from airflow.cli import cli_parser
 from airflow.executors import executor_loader
-from airflow.providers.celery.cli import celery_command
 
 from tests_common.test_utils.config import conf_vars
+
+celery_command = pytest.importorskip("airflow.providers.celery.cli.celery_command")
 
 
 @pytest.mark.integration("celery")

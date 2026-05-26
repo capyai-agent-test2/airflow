@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import logging
 import os
 import re
@@ -43,6 +44,35 @@ from airflow.configuration import AIRFLOW_HOME
 from airflow.executors import executor_loader
 
 from tests_common.test_utils.config import conf_vars
+
+
+def _build_executor_test_cases() -> list[tuple[str, list[str]]]:
+    def _has_provider_module(module_name: str) -> bool:
+        try:
+            return importlib.util.find_spec(module_name) is not None
+        except ModuleNotFoundError:
+            return False
+
+    test_cases: list[tuple[str, list[str]]] = [
+        ("LocalExecutor", []),
+        ("custom_executor.CustomLocalExecutor", []),
+    ]
+    if _has_provider_module("airflow.providers.celery.executors.celery_executor"):
+        test_cases.extend(
+            [
+                ("CeleryExecutor", ["celery"]),
+                ("custom_executor.CustomCeleryExecutor", ["celery"]),
+            ]
+        )
+    if _has_provider_module("airflow.providers.cncf.kubernetes.executors.kubernetes_executor"):
+        test_cases.extend(
+            [
+                ("KubernetesExecutor", ["kubernetes"]),
+                ("custom_executor.CustomKubernetesExecutor", ["kubernetes"]),
+            ]
+        )
+    return test_cases
+
 
 pytestmark = pytest.mark.db_test
 
@@ -532,15 +562,7 @@ class TestCli:
 
     @pytest.mark.parametrize(
         ("executor", "expected_args"),
-        [
-            ("CeleryExecutor", ["celery"]),
-            ("KubernetesExecutor", ["kubernetes"]),
-            ("LocalExecutor", []),
-            # custom executors are mapped to the regular ones in `conftest.py`
-            ("custom_executor.CustomLocalExecutor", []),
-            ("custom_executor.CustomCeleryExecutor", ["celery"]),
-            ("custom_executor.CustomKubernetesExecutor", ["kubernetes"]),
-        ],
+        _build_executor_test_cases(),
     )
     def test_cli_parser_executors(self, executor, expected_args):
         """Test that CLI commands for the configured executor are present"""
