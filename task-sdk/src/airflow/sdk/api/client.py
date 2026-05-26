@@ -922,8 +922,8 @@ class DagRunOperations:
         return True
 
     def _trigger_dag_run(self, dag_id: str, run_id: str, body: TriggerDAGRunPayload) -> None:
-        post = self.client.request.__wrapped__
-        saw_ambiguous_request_error = False
+        request = getattr(type(self.client).request, "__wrapped__", type(self.client).request)
+        saw_missing_dag_run_after_ambiguous_error = False
 
         for attempt in Retrying(
             retry=retry_if_exception(_should_retry_api_request),
@@ -934,25 +934,20 @@ class DagRunOperations:
         ):
             with attempt:
                 try:
-                    post(
+                    request(
                         self.client,
                         "POST",
                         f"dag-runs/{dag_id}/{run_id}",
                         content=body.model_dump_json(exclude_defaults=True),
                     )
                 except httpx.RequestError:
-                    saw_ambiguous_request_error = True
-                    if self._does_dag_run_exist(dag_id=dag_id, run_id=run_id):
-                        log.info(
-                            "Dag Run exists after ambiguous trigger request; treating request as successful.",
-                            dag_id=dag_id,
-                            run_id=run_id,
-                        )
-                        return
+                    saw_missing_dag_run_after_ambiguous_error = not self._does_dag_run_exist(
+                        dag_id=dag_id, run_id=run_id
+                    )
                     raise
                 except ServerResponseError as e:
                     if (
-                        saw_ambiguous_request_error
+                        saw_missing_dag_run_after_ambiguous_error
                         and e.response.status_code == HTTPStatus.CONFLICT
                         and self._does_dag_run_exist(dag_id=dag_id, run_id=run_id)
                     ):
