@@ -417,8 +417,6 @@ pre-installed when Airflow is installed.
 +---------------------+-----------------------------------------------------+--------------------------------------+--------------+
 | opensearch          | ``pip install 'apache-airflow[opensearch]'``        | Opensearch hooks and operators       |              |
 +---------------------+-----------------------------------------------------+--------------------------------------+--------------+
-| papermill           | ``pip install 'apache-airflow[papermill]'``         | Papermill hooks and operators        |              |
-+---------------------+-----------------------------------------------------+--------------------------------------+--------------+
 | sftp                | ``pip install 'apache-airflow[sftp]'``              | SFTP hooks, operators and sensors    |              |
 +---------------------+-----------------------------------------------------+--------------------------------------+--------------+
 | smtp                | ``pip install 'apache-airflow[smtp]'``              | SMTP hooks and operators             |              |
