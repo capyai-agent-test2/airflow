@@ -25,10 +25,12 @@ import pytest
 from airflow_breeze.utils.docker_command_utils import (
     autodetect_docker_context,
     bring_all_compose_projects_down,
+    check_container_engine,
     check_docker_compose_version,
     check_docker_version,
     discover_running_compose_projects,
     is_known_breeze_compose_project,
+    perform_environment_checks,
 )
 
 
@@ -218,6 +220,58 @@ def test_check_docker_compose_version_ok(mock_console_print, mock_run_command):
         dry_run_override=False,
     )
     mock_console_print.assert_called_with("[success]Good version of docker-compose: 2.20.2[/]")
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_container_engine_detects_docker(mock_console_print, mock_run_command):
+    mock_run_command.return_value = mock.Mock(returncode=0, stdout="Client:\n Version:    26.1.4\n")
+
+    assert check_container_engine() == "docker"
+
+    mock_console_print.assert_called_with("[success]Docker container engine detected.[/]")
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_container_engine_detects_podman(mock_console_print, mock_run_command):
+    mock_run_command.return_value = mock.Mock(returncode=0, stdout="Client: Podman Engine\nVersion: 5.4.2\n")
+
+    assert check_container_engine() == "podman"
+
+    mock_console_print.assert_called_with(
+        "[warning]Podman container engine detected.[/]\n"
+        "[warning]Using podman through the Docker-compatible CLI path in breeze.[/]"
+    )
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_uv_version")
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_executable_entrypoint_permissions")
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_windows_filesystem_mount")
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_docker_compose_version")
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_docker_version")
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_container_engine")
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_docker_is_running")
+def test_perform_environment_checks_skips_docker_specific_version_checks_for_podman(
+    mock_check_docker_is_running,
+    mock_check_container_engine,
+    mock_check_docker_version,
+    mock_check_docker_compose_version,
+    mock_check_windows_filesystem_mount,
+    mock_check_executable_entrypoint_permissions,
+    mock_check_uv_version,
+):
+    mock_check_container_engine.return_value = "podman"
+
+    perform_environment_checks(quiet=True)
+
+    mock_check_docker_is_running.assert_called_once_with()
+    mock_check_container_engine.assert_called_once_with(True)
+    mock_check_docker_version.assert_not_called()
+    mock_check_docker_compose_version.assert_not_called()
+    mock_check_windows_filesystem_mount.assert_called_once_with(True)
+    mock_check_executable_entrypoint_permissions.assert_called_once_with(True)
+    mock_check_uv_version.assert_called_once_with(True)
 
 
 def _fake_ctx_output(*names: str) -> str:
