@@ -39,6 +39,13 @@ vi.mock("src/queries/useConfig", () => ({
 }));
 
 describe("Paused filter with hide_paused_dags_by_default enabled", () => {
+  it("renders owner and import error filters", async () => {
+    render(<AppWrapper initialEntries={["/dags"]} />);
+
+    await waitFor(() => expect(screen.getByTestId("owner-filter")).toBeInTheDocument());
+    expect(screen.getByTestId("import-errors-filter")).toBeInTheDocument();
+  });
+
   it("defaults to showing only active dags", async () => {
     render(<AppWrapper initialEntries={["/dags"]} />);
 

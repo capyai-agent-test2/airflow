@@ -30,6 +30,7 @@ export const useDags = ({
   dagIdPattern,
   dagRunsLimit,
   excludeStale = true,
+  hasImportErrors,
   isFavorite,
   lastDagRunState,
   limit,
@@ -46,6 +47,7 @@ export const useDags = ({
   dagIdPattern?: string;
   dagRunsLimit: number;
   excludeStale?: boolean;
+  hasImportErrors?: boolean;
   isFavorite?: boolean;
   lastDagRunState?: DagRunState;
   limit?: number;
@@ -66,6 +68,7 @@ export const useDags = ({
         : { dagDisplayNamePrefixPattern: dagDisplayNamePattern, dagIdPrefixPattern: dagIdPattern }),
       dagRunsLimit,
       excludeStale,
+      hasImportErrors,
       hasPendingActions: pendingHitl,
       isFavorite,
       lastDagRunState,

@@ -15,6 +15,14 @@
       "favorite": "Favorite",
       "unfavorite": "Unfavorite"
     },
+    "importErrors": {
+      "all": "All",
+      "with": "Import Errors",
+      "without": "No Import Errors"
+    },
+    "owner": {
+      "placeholder": "Owner"
+    },
     "paused": {
       "active": "Active",
       "all": "All",

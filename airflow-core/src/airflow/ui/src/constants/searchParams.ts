@@ -51,6 +51,7 @@ export enum SearchParamsKeys {
   GRAPH_OPERATOR = "graph-operator",
   GRAPH_TASK_GROUP = "graph-task_group",
   GRAPH_TASK_STATE = "graph-task_state",
+  HAS_IMPORT_ERRORS = "has_import_errors",
   HOSTNAME = "hostname",
   INCLUDED_EVENTS = "included_events",
   JOB_STATE = "job_state",
