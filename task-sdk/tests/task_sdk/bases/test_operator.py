@@ -105,15 +105,16 @@ class MockOperator(BaseOperator):
 
     template_fields = ("arg1", "arg2")
 
-    def __init__(self, arg1: str = "", arg2: str = "", **kwargs):
+    def __init__(self, arg1: str = "", arg2: str = "", arg3: str = "", **kwargs):
         super().__init__(**kwargs)
         self.arg1 = arg1
         self.arg2 = arg2
+        self.arg3 = arg3
         if self.start_from_trigger:
             self.start_trigger_args = StartTriggerArgs(
                 trigger_cls="trigger_cls",
                 next_method="next_method",
-                trigger_kwargs={"arg1": arg1, "arg2": arg2},
+                trigger_kwargs={"arg1": arg1, "arg2": arg2, "arg3": arg3},
             )
 
 
@@ -321,6 +322,14 @@ class TestBaseOperator:
         with DAG("xcomargs_test", schedule=None):
             op1 = BaseOperator(task_id="op1")
             op2 = MockOperator(task_id="op2", arg1=op1.output)
+
+        assert op1.task_id in op2.upstream_task_ids
+        assert op2.task_id in op1.downstream_task_ids
+
+    def test_upstream_is_set_when_non_template_field_is_xcomarg_and_template_all_fields_enabled(self):
+        with DAG("xcomargs_test", schedule=None):
+            op1 = BaseOperator(task_id="op1")
+            op2 = MockOperator(task_id="op2", template_all_fields=True, arg3=op1.output)
 
         assert op1.task_id in op2.upstream_task_ids
         assert op2.task_id in op1.downstream_task_ids
@@ -729,6 +738,17 @@ class TestBaseOperator:
         task.render_template_fields(context={"foo": "footemplated", "bar": "bartemplated"})
         assert task.arg1 == "footemplated"
         assert task.arg2 == "bartemplated"
+
+    def test_render_template_fields_when_all_operator_fields_are_enabled(self):
+        task = MockOperator(task_id="op1", template_all_fields=True, arg1="{{ foo }}", arg3="{{ bar }}")
+
+        assert task.arg1 == "{{ foo }}"
+        assert task.arg3 == "{{ bar }}"
+
+        task.render_template_fields(context={"foo": "footemplated", "bar": "bartemplated"})
+
+        assert task.arg1 == "footemplated"
+        assert task.arg3 == "bartemplated"
 
     def test_render_template_fields_func_using_context(self):
         """Verify if operator attributes are correctly templated."""

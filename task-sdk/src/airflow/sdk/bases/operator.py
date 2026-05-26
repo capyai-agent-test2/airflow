@@ -323,6 +323,7 @@ if TYPE_CHECKING:
         task_display_name: str | None = ...,
         logger_name: str | None = ...,
         allow_nested_operators: bool = True,
+        template_all_fields: bool = False,
         **kwargs,
     ) -> OperatorPartial: ...
 else:
@@ -919,6 +920,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
     logger_name: str | None = None
     allow_nested_operators: bool = True
     render_template_as_native_obj: bool | None = None
+    template_all_fields: bool = False
 
     is_setup: bool = False
     is_teardown: bool = False
@@ -1077,6 +1079,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         logger_name: str | None = None,
         allow_nested_operators: bool = True,
         render_template_as_native_obj: bool | None = None,
+        template_all_fields: bool = False,
         **kwargs: Any,
     ):
         # Note: Metaclass handles passing in the Dag/TaskGroup from active context manager, if any
@@ -1206,6 +1209,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         self.allow_nested_operators = allow_nested_operators
 
         self.render_template_as_native_obj = render_template_as_native_obj
+        self.template_all_fields = template_all_fields
 
         self._logger_name = logger_name
 
@@ -1426,7 +1430,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
     def _set_xcomargs_dependencies(self) -> None:
         from airflow.sdk.definitions.xcom_arg import XComArg
 
-        for f in self.template_fields:
+        for f in self._get_template_fields():
             arg = getattr(self, f, NOTSET)
             if arg is not NOTSET:
                 XComArg.apply_upstream_relationship(self, arg)
@@ -1455,9 +1459,25 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         """
         from airflow.sdk.definitions.xcom_arg import XComArg
 
-        if field not in self.template_fields:
+        if field not in self._get_template_fields():
             return
         XComArg.apply_upstream_relationship(self, newvalue)
+
+    def _get_template_fields(self) -> tuple[str, ...]:
+        template_fields = list(self.template_fields)
+        if not self.template_all_fields:
+            return tuple(template_fields)
+
+        base_operator_fields = BaseOperator.__init__._BaseOperatorMeta__param_names
+        init_signature = inspect.signature(self.__class__.__init__)
+        for field_name, parameter in init_signature.parameters.items():
+            if parameter.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                continue
+            if field_name in {"self", "default_args"} or field_name in base_operator_fields:
+                continue
+            if field_name not in template_fields and hasattr(self, field_name):
+                template_fields.append(field_name)
+        return tuple(template_fields)
 
     def _validate_start_from_trigger_kwargs(self):
         if self.start_from_trigger and self.start_trigger_args and self.start_trigger_args.trigger_kwargs:
@@ -1625,7 +1645,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         """
         if not jinja_env:
             jinja_env = self.get_template_env()
-        self._do_render_template_fields(self, self.template_fields, context, jinja_env, set())
+        self._do_render_template_fields(self, self._get_template_fields(), context, jinja_env, set())
 
     def pre_execute(self, context: Any):
         """Execute right before self.execute() is called."""

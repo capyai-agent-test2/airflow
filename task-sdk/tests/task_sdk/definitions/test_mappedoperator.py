@@ -303,6 +303,33 @@ def test_mapped_render_nested_template_fields(create_runtime_ti, mock_supervisor
     assert ti.task.arg2.field_2 == "value_2"
 
 
+def test_mapped_render_template_fields_when_all_operator_fields_are_enabled(create_runtime_ti):
+    class MyOperator(BaseOperator):
+        template_fields = ("arg1",)
+
+        def __init__(self, arg1, arg3="", **kwargs):
+            super().__init__(**kwargs)
+            self.arg1 = arg1
+            self.arg3 = arg3
+
+        def execute(self, context):
+            pass
+
+    with DAG("test_dag"):
+        mapped = MyOperator.partial(task_id="a", template_all_fields=True, arg3="{{ ti.task_id }}").expand(
+            arg1=["x"]
+        )
+
+    ti = create_runtime_ti(task=mapped, map_index=0)
+    assert isinstance(ti.task, MappedOperator)
+
+    ti.task.render_template_fields(context=ti.get_template_context())
+
+    assert isinstance(ti.task, MyOperator)
+    assert ti.task.arg1 == "x"
+    assert ti.task.arg3 == "a"
+
+
 @pytest.mark.parametrize(
     ("map_index", "expected"),
     [
