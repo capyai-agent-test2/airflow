@@ -51,8 +51,8 @@ const TestWrapper = ({ children }: PropsWithChildren) => (
   </Wrapper>
 );
 
-// Shared time range: 10:00 → 10:10 UTC on 2024-03-14
-const MIN_MS = new Date("2024-03-14T10:00:00Z").getTime();
+// Shared time range: 09:58 → 10:10 UTC on 2024-03-14
+const MIN_MS = new Date("2024-03-14T09:58:00Z").getTime();
 const MAX_MS = new Date("2024-03-14T10:10:00Z").getTime();
 
 const BASE_NODE: GridTask = {
@@ -68,6 +68,29 @@ const makeScrollRef = (): RefObject<HTMLDivElement | null> => {
   (ref as { current: HTMLDivElement | null }).current = document.createElement("div");
 
   return ref;
+};
+
+const stubResizeObserver = (setObserverCallback: (callback: ResizeObserverCallback) => void) => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class MockResizeObserver {
+      public constructor(cb: ResizeObserverCallback) {
+        setObserverCallback(cb);
+      }
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      public disconnect() {
+        /* empty */
+      }
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      public observe() {
+        /* empty */
+      }
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      public unobserve() {
+        /* empty */
+      }
+    },
+  );
 };
 
 const defaultProps = {
@@ -261,26 +284,9 @@ describe("GanttTimeline segment bars", () => {
 
     let observerCallback: ResizeObserverCallback | undefined;
 
-    vi.stubGlobal(
-      "ResizeObserver",
-      class MockResizeObserver {
-        public constructor(cb: ResizeObserverCallback) {
-          observerCallback = cb;
-        }
-        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-        public disconnect() {
-          /* empty */
-        }
-        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-        public observe() {
-          /* empty */
-        }
-        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-        public unobserve() {
-          /* empty */
-        }
-      },
-    );
+    stubResizeObserver((cb) => {
+      observerCallback = cb;
+    });
 
     const scheduledSegment: GanttDataItem = {
       queued_when: new Date(MIN_MS + 2000).toISOString(),
@@ -330,6 +336,40 @@ describe("GanttTimeline segment bars", () => {
     });
 
     // Only the execution bar should be rendered; scheduled and queued are too narrow.
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("keeps a zero-duration segment visible at the selected end boundary", () => {
+    let observerCallback: ResizeObserverCallback | undefined;
+
+    stubResizeObserver((cb) => {
+      observerCallback = cb;
+    });
+
+    const boundarySegment: GanttDataItem = {
+      queued_when: null,
+      scheduled_when: null,
+      state: "success",
+      taskId: "task_1",
+      tryNumber: 1,
+      x: [MAX_MS, MAX_MS],
+      y: "task_1",
+    };
+
+    render(
+      <GanttTimeline
+        {...defaultProps}
+        ganttDataItems={[boundarySegment]}
+        rowSegments={[[boundarySegment]]}
+        scrollContainerRef={makeScrollRef()}
+      />,
+      { wrapper: TestWrapper },
+    );
+
+    act(() => {
+      observerCallback?.([{ contentRect: { width: 1000 } } as ResizeObserverEntry], {} as ResizeObserver);
+    });
+
     expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 });

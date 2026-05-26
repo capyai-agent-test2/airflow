@@ -227,6 +227,21 @@ export const buildGanttRowSegments = (
   return flatNodes.map((node) => byTaskId.get(node.id) ?? []);
 };
 
+export const getGanttSegmentBoundsInRange = (
+  segment: GanttDataItem,
+  minMs: number,
+  maxMs: number,
+): [number, number] | undefined => {
+  if (segment.x[1] < minMs || segment.x[0] > maxMs) {
+    return undefined;
+  }
+
+  const startMs = Math.max(segment.x[0], minMs);
+  const endMs = Math.min(segment.x[1], maxMs);
+
+  return [startMs, endMs];
+};
+
 export const computeGanttTimeRangeMs = ({
   ganttItems,
   selectedRun,
@@ -272,6 +287,47 @@ export const computeGanttTimeRangeMs = ({
     maxMs: maxTime + totalDuration * 0.05,
     minMs: minTime - totalDuration * 0.02,
   };
+};
+
+export const computeSelectedGanttTimeRangeMs = ({
+  defaultTimeRange,
+  ganttEndDate,
+  ganttStartDate,
+}: {
+  defaultTimeRange: { maxMs: number; minMs: number };
+  ganttEndDate?: string;
+  ganttStartDate?: string;
+}): { maxMs: number; minMs: number } => {
+  const parsedStartMs = ganttStartDate === undefined ? undefined : dayjs(ganttStartDate).valueOf();
+  const parsedEndMs = ganttEndDate === undefined ? undefined : dayjs(ganttEndDate).valueOf();
+  const hasValidStart = parsedStartMs !== undefined && Number.isFinite(parsedStartMs);
+  const hasValidEnd = parsedEndMs !== undefined && Number.isFinite(parsedEndMs);
+
+  if (!hasValidStart && !hasValidEnd) {
+    return defaultTimeRange;
+  }
+
+  const minMs = hasValidStart ? parsedStartMs : defaultTimeRange.minMs;
+  const maxMs = hasValidEnd ? parsedEndMs : defaultTimeRange.maxMs;
+
+  if (minMs < maxMs) {
+    return { maxMs, minMs };
+  }
+
+  if (hasValidStart && hasValidEnd) {
+    return {
+      maxMs: Math.max(parsedStartMs, parsedEndMs) + 1,
+      minMs: Math.min(parsedStartMs, parsedEndMs),
+    };
+  }
+
+  if (hasValidStart) {
+    return { maxMs: parsedStartMs + 1, minMs: parsedStartMs };
+  }
+
+  const endMs = parsedEndMs ?? defaultTimeRange.maxMs;
+
+  return { maxMs: endMs, minMs: endMs - 1 };
 };
 
 /**

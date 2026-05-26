@@ -27,7 +27,9 @@ import {
   buildGanttRowSegments,
   buildGanttTimeAxisTicks,
   buildMaxTryByTaskId,
+  computeSelectedGanttTimeRangeMs,
   GANTT_TIME_AXIS_TICK_COUNT,
+  getGanttSegmentBoundsInRange,
   gridSummariesToTaskIdMap,
   transformGanttData,
 } from "./utils";
@@ -115,6 +117,59 @@ describe("buildGanttRowSegments", () => {
     expect(segments).toHaveLength(2);
     expect(segments[0]?.map((segment) => segment.taskId)).toEqual(["t1"]);
     expect(segments[1]?.map((segment) => segment.taskId)).toEqual(["t2"]);
+  });
+});
+
+describe("getGanttSegmentBoundsInRange", () => {
+  it("clips a segment to the selected time range", () => {
+    const item: GanttDataItem = { taskId: "t1", x: [10, 30], y: "t1" };
+
+    expect(getGanttSegmentBoundsInRange(item, 20, 40)).toEqual([20, 30]);
+  });
+
+  it("keeps zero-duration segments that fall inside the selected time range", () => {
+    const item: GanttDataItem = { taskId: "t1", x: [20, 20], y: "t1" };
+
+    expect(getGanttSegmentBoundsInRange(item, 10, 30)).toEqual([20, 20]);
+  });
+
+  it("returns undefined when a segment falls entirely outside the selected time range", () => {
+    const item: GanttDataItem = { taskId: "t1", x: [10, 20], y: "t1" };
+
+    expect(getGanttSegmentBoundsInRange(item, 25, 40)).toBeUndefined();
+    expect(getGanttSegmentBoundsInRange(item, 0, 5)).toBeUndefined();
+  });
+});
+
+describe("computeSelectedGanttTimeRangeMs", () => {
+  const defaultTimeRange = { maxMs: 20, minMs: 10 };
+
+  it("uses explicit bounds when they define a valid range", () => {
+    expect(
+      computeSelectedGanttTimeRangeMs({
+        defaultTimeRange,
+        ganttEndDate: dayjs(18).toISOString(),
+        ganttStartDate: dayjs(12).toISOString(),
+      }),
+    ).toEqual({ maxMs: 18, minMs: 12 });
+  });
+
+  it("keeps a single out-of-range start bound instead of falling back to the default range", () => {
+    expect(
+      computeSelectedGanttTimeRangeMs({
+        defaultTimeRange,
+        ganttStartDate: dayjs(30).toISOString(),
+      }),
+    ).toEqual({ maxMs: 31, minMs: 30 });
+  });
+
+  it("keeps a single out-of-range end bound instead of falling back to the default range", () => {
+    expect(
+      computeSelectedGanttTimeRangeMs({
+        defaultTimeRange,
+        ganttEndDate: dayjs(5).toISOString(),
+      }),
+    ).toEqual({ maxMs: 5, minMs: 4 });
   });
 });
 

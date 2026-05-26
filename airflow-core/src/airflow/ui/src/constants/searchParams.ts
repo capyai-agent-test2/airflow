@@ -46,6 +46,8 @@ export enum SearchParamsKeys {
   EXECUTOR_CLASS = "executor_class",
   FAVORITE = "favorite",
   GANTT = "gantt",
+  GANTT_END_DATE = "gantt_end_date",
+  GANTT_START_DATE = "gantt_start_date",
   GRAPH_DURATION_GTE = "graph-duration_gte",
   GRAPH_MAP_INDEX = "graph-map_index",
   GRAPH_OPERATOR = "graph-operator",

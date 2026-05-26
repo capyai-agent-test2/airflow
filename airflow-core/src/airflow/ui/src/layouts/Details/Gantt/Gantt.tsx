@@ -16,12 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, Flex } from "@chakra-ui/react";
+import { Box, Button, Flex, HStack, Text } from "@chakra-ui/react";
 import { useRef } from "react";
 import type { RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { useGanttServiceGetGanttData } from "openapi/queries";
+import { DateTimeInput } from "src/components/DateTimeInput";
+import { SearchParamsKeys } from "src/constants/searchParams";
 import type { DagRunState, DagRunType } from "openapi/requests/types.gen";
 import { useGroups } from "src/context/groups";
 import { useHover } from "src/context/hover";
@@ -39,7 +42,12 @@ import { useGridTiSummariesStream } from "src/queries/useGridTISummaries";
 import { isStatePending, useAutoRefresh } from "src/utils";
 
 import { GanttTimeline } from "./GanttTimeline";
-import { buildGanttRowSegments, computeGanttTimeRangeMs, transformGanttData } from "./utils";
+import {
+  buildGanttRowSegments,
+  computeGanttTimeRangeMs,
+  computeSelectedGanttTimeRangeMs,
+  transformGanttData,
+} from "./utils";
 
 const GANTT_STANDALONE_VIRTUALIZER_PADDING_START_PX = GANTT_TOP_PADDING_PX + GANTT_AXIS_HEIGHT_PX;
 
@@ -64,13 +72,14 @@ export const Gantt = ({
   sharedScrollContainerRef,
   triggeringUser,
 }: Props) => {
+  const { t: translate } = useTranslation(["common"]);
   const standaloneScrollRef = useRef<HTMLDivElement | null>(null);
   const usesSharedScroll = sharedScrollContainerRef !== undefined;
 
   const scrollContainerRef = usesSharedScroll ? sharedScrollContainerRef : standaloneScrollRef;
 
   const { dagId = "", runId = "" } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { openGroupIds, toggleGroupId } = useGroups();
   const { selectedTimezone } = useTimezone();
   const { setHoveredTaskId } = useHover();
@@ -139,11 +148,37 @@ export const Gantt = ({
 
   const rowSegments = buildGanttRowSegments(flatNodes, ganttDataItems);
 
-  const { maxMs, minMs } = computeGanttTimeRangeMs({
+  const defaultTimeRange = computeGanttTimeRangeMs({
     ganttItems: ganttDataItems,
     selectedRun,
     selectedTimezone,
   });
+  const ganttStartDate = searchParams.get(SearchParamsKeys.GANTT_START_DATE) ?? undefined;
+  const ganttEndDate = searchParams.get(SearchParamsKeys.GANTT_END_DATE) ?? undefined;
+  const hasCustomTimeRange = ganttStartDate !== undefined || ganttEndDate !== undefined;
+  const { maxMs, minMs } = computeSelectedGanttTimeRangeMs({
+    defaultTimeRange,
+    ganttEndDate,
+    ganttStartDate,
+  });
+  const updateTimeRangeParam = (
+    key: SearchParamsKeys.GANTT_END_DATE | SearchParamsKeys.GANTT_START_DATE,
+    value: string,
+  ) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+
+        if (value === "") {
+          next.delete(key);
+        } else {
+          next.set(key, value);
+        }
+
+        return next;
+      },
+      { replace: true },
+    );
 
   const virtualizerScrollPaddingStart = usesSharedScroll
     ? GANTT_ROW_OFFSET_PX
@@ -157,21 +192,79 @@ export const Gantt = ({
     setHoveredTaskId(undefined);
   };
 
+  const resetTimeRange = () =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+
+        next.delete(SearchParamsKeys.GANTT_START_DATE);
+        next.delete(SearchParamsKeys.GANTT_END_DATE);
+
+        return next;
+      },
+      { replace: true },
+    );
+
   const timeline =
     Boolean(selectedRun) && dagId ? (
-      <GanttTimeline
-        dagId={dagId}
-        flatNodes={flatNodes}
-        ganttDataItems={ganttDataItems}
-        gridSummaries={gridSummaries}
-        maxMs={maxMs}
-        minMs={minMs}
-        onSegmentClick={() => setMode(NavigationModes.TI)}
-        rowSegments={rowSegments}
-        runId={runId}
-        scrollContainerRef={scrollContainerRef}
-        virtualizerScrollPaddingStart={virtualizerScrollPaddingStart}
-      />
+      <>
+        <HStack
+          alignItems="end"
+          bg="bg"
+          flexWrap="wrap"
+          gap={2}
+          justifyContent="space-between"
+          px={2}
+          py={2}
+          w="100%"
+        >
+          <HStack alignItems="end" flexWrap="wrap" gap={2}>
+            <Box minW="220px">
+              <Text fontSize="xs" fontWeight="medium" mb={1}>
+                {translate("common:startDate")}
+              </Text>
+              <DateTimeInput
+                aria-label={translate("common:startDate")}
+                onChange={(event) => updateTimeRangeParam(SearchParamsKeys.GANTT_START_DATE, event.target.value)}
+                size="sm"
+                value={ganttStartDate ?? ""}
+              />
+            </Box>
+            <Box minW="220px">
+              <Text fontSize="xs" fontWeight="medium" mb={1}>
+                {translate("common:endDate")}
+              </Text>
+              <DateTimeInput
+                aria-label={translate("common:endDate")}
+                onChange={(event) => updateTimeRangeParam(SearchParamsKeys.GANTT_END_DATE, event.target.value)}
+                size="sm"
+                value={ganttEndDate ?? ""}
+              />
+            </Box>
+          </HStack>
+          <Button
+            disabled={!hasCustomTimeRange}
+            onClick={resetTimeRange}
+            size="sm"
+            variant="outline"
+          >
+            {translate("common:reset")}
+          </Button>
+        </HStack>
+        <GanttTimeline
+          dagId={dagId}
+          flatNodes={flatNodes}
+          ganttDataItems={ganttDataItems}
+          gridSummaries={gridSummaries}
+          maxMs={maxMs}
+          minMs={minMs}
+          onSegmentClick={() => setMode(NavigationModes.TI)}
+          rowSegments={rowSegments}
+          runId={runId}
+          scrollContainerRef={scrollContainerRef}
+          virtualizerScrollPaddingStart={virtualizerScrollPaddingStart}
+        />
+      </>
     ) : undefined;
 
   if (usesSharedScroll) {
