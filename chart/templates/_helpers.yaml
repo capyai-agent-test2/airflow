@@ -839,17 +839,30 @@ Priority of values are from left to right, meaning if first value is not empty, 
   {{- $ := last . }}
   {{- $result := dict }}
   {{- range . }}
-    {{- if and (hasKey . "securityContexts") (hasKey .securityContexts "pod") .securityContexts.pod }}
-      {{- $result = .securityContexts.pod }}
+    {{- if and (hasKey . "securityContexts") (hasKey .securityContexts "pod") (gt (len .securityContexts.pod) 0) }}
+      {{- $result = deepCopy .securityContexts.pod }}
       {{- break }}
     {{- end }}
-    {{- if and (hasKey . "securityContext") .securityContext }}
-      {{- $result = .securityContext }}
+    {{- if and (hasKey . "securityContext") (gt (len .securityContext) 0) }}
+      {{- $result = deepCopy .securityContext }}
       {{- break }}
     {{- end }}
   {{- end }}
   {{- if $result }}
+    {{- if and (hasKey $result "runAsUser") (eq (get $result "runAsUser") nil) }}
+      {{- $_ := unset $result "runAsUser" }}
+    {{- end }}
+    {{- if and (hasKey $result "fsGroup") (eq (get $result "fsGroup") nil) }}
+      {{- $_ := unset $result "fsGroup" }}
+    {{- end }}
+    {{- if and (hasKey $result "runAsGroup") (eq (get $result "runAsGroup") nil) }}
+      {{- $_ := unset $result "runAsGroup" }}
+    {{- end }}
+    {{- if gt (len $result) 0 }}
     {{- toYaml $result | print }}
+    {{- else }}
+{}
+    {{- end }}
   {{- else }}
 runAsUser: {{ $.uid }}
 fsGroup: {{ $.gid }}
@@ -870,10 +883,38 @@ The template can be called like so:
 It is important to pass the local variables scope to this template as it is used to determine the local node value for uid.
 */}}
 {{- define "localPodSecurityContext" -}}
-  {{- if .securityContexts.pod -}}
-    {{ toYaml .securityContexts.pod | print }}
-  {{- else if .securityContext -}}
-    {{ toYaml .securityContext | print }}
+  {{- if and (hasKey . "securityContexts") (hasKey .securityContexts "pod") (gt (len .securityContexts.pod) 0) -}}
+    {{- $result := deepCopy .securityContexts.pod -}}
+    {{- if and (hasKey $result "runAsUser") (eq (get $result "runAsUser") nil) -}}
+      {{- $_ := unset $result "runAsUser" -}}
+    {{- end -}}
+    {{- if and (hasKey $result "fsGroup") (eq (get $result "fsGroup") nil) -}}
+      {{- $_ := unset $result "fsGroup" -}}
+    {{- end -}}
+    {{- if and (hasKey $result "runAsGroup") (eq (get $result "runAsGroup") nil) -}}
+      {{- $_ := unset $result "runAsGroup" -}}
+    {{- end -}}
+    {{- if gt (len $result) 0 -}}
+      {{ toYaml $result | print }}
+    {{- else -}}
+{}
+    {{- end -}}
+  {{- else if and (hasKey . "securityContext") (gt (len .securityContext) 0) -}}
+    {{- $result := deepCopy .securityContext -}}
+    {{- if and (hasKey $result "runAsUser") (eq (get $result "runAsUser") nil) -}}
+      {{- $_ := unset $result "runAsUser" -}}
+    {{- end -}}
+    {{- if and (hasKey $result "fsGroup") (eq (get $result "fsGroup") nil) -}}
+      {{- $_ := unset $result "fsGroup" -}}
+    {{- end -}}
+    {{- if and (hasKey $result "runAsGroup") (eq (get $result "runAsGroup") nil) -}}
+      {{- $_ := unset $result "runAsGroup" -}}
+    {{- end -}}
+    {{- if gt (len $result) 0 -}}
+      {{ toYaml $result | print }}
+    {{- else -}}
+{}
+    {{- end -}}
   {{- else -}}
 runAsUser: {{ .uid }}
   {{- end -}}
@@ -893,10 +934,32 @@ The template can be called like so:
 It is important to pass the local variables scope to this template as it is used to determine the local node value for uid.
 */}}
 {{- define "localContainerSecurityContext" -}}
-  {{- if .securityContexts.container -}}
-    {{ toYaml .securityContexts.container | print }}
-  {{- else if .securityContext -}}
-    {{ toYaml .securityContext | print }}
+  {{- if and (hasKey . "securityContexts") (hasKey .securityContexts "container") (gt (len .securityContexts.container) 0) -}}
+    {{- $result := deepCopy .securityContexts.container -}}
+    {{- if and (hasKey $result "runAsUser") (eq (get $result "runAsUser") nil) -}}
+      {{- $_ := unset $result "runAsUser" -}}
+    {{- end -}}
+    {{- if and (hasKey $result "runAsGroup") (eq (get $result "runAsGroup") nil) -}}
+      {{- $_ := unset $result "runAsGroup" -}}
+    {{- end -}}
+    {{- if gt (len $result) 0 -}}
+      {{ toYaml $result | print }}
+    {{- else -}}
+{}
+    {{- end -}}
+  {{- else if and (hasKey . "securityContext") (gt (len .securityContext) 0) -}}
+    {{- $result := deepCopy .securityContext -}}
+    {{- if and (hasKey $result "runAsUser") (eq (get $result "runAsUser") nil) -}}
+      {{- $_ := unset $result "runAsUser" -}}
+    {{- end -}}
+    {{- if and (hasKey $result "runAsGroup") (eq (get $result "runAsGroup") nil) -}}
+      {{- $_ := unset $result "runAsGroup" -}}
+    {{- end -}}
+    {{- if gt (len $result) 0 -}}
+      {{ toYaml $result | print }}
+    {{- else -}}
+{}
+    {{- end -}}
   {{- else -}}
 runAsUser: {{ .uid }}
   {{- end -}}

@@ -644,6 +644,54 @@ class TestSecurityContext:
             assert ctx_value == jmespath.search("spec.template.spec.securityContext", doc)
 
     @pytest.mark.parametrize(
+        ("component_name", "template_path"),
+        [
+            ("scheduler", "templates/scheduler/scheduler-deployment.yaml"),
+            ("statsd", "templates/statsd/statsd-deployment.yaml"),
+            ("redis", "templates/redis/redis-statefulset.yaml"),
+        ],
+    )
+    def test_null_run_as_ids_are_omitted(self, component_name, template_path):
+        docs = render_chart(
+            values={
+                component_name: {
+                    "enabled": True,
+                    "securityContexts": {
+                        "pod": {
+                            "runAsUser": None,
+                            "runAsGroup": None,
+                            "fsGroup": None,
+                            "seccompProfile": {"type": "RuntimeDefault"},
+                        }
+                    },
+                }
+            },
+            show_only=[template_path],
+        )
+
+        expected_context = {"seccompProfile": {"type": "RuntimeDefault"}}
+        security_context = jmespath.search("spec.template.spec.securityContext", docs[0])
+        assert security_context == expected_context
+
+    def test_global_null_run_as_ids_are_omitted(self):
+        docs = render_chart(
+            values={
+                "securityContexts": {
+                    "pod": {
+                        "runAsUser": None,
+                        "runAsGroup": None,
+                        "fsGroup": None,
+                        "seccompProfile": {"type": "RuntimeDefault"},
+                    }
+                }
+            },
+            show_only=["templates/scheduler/scheduler-deployment.yaml"],
+        )
+
+        security_context = jmespath.search("spec.template.spec.securityContext", docs[0])
+        assert security_context == {"seccompProfile": {"type": "RuntimeDefault"}}
+
+    @pytest.mark.parametrize(
         "workers_values",
         [
             {"securityContext": {"runAsUser": 7000}},
