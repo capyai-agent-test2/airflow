@@ -165,6 +165,12 @@ def get_provider_info():
                 "tags": ["aws"],
             },
             {
+                "integration-name": "Amazon OpenSearch",
+                "external-doc-url": "https://aws.amazon.com/opensearch-service/",
+                "logo": "/docs/integration-logos/Amazon-OpenSearch_light-bg@4x.png",
+                "tags": ["aws"],
+            },
+            {
                 "integration-name": "Amazon OpenSearch Serverless",
                 "how-to-guide": ["/docs/apache-airflow-providers-amazon/operators/opensearchserverless.rst"],
                 "external-doc-url": "https://aws.amazon.com/opensearchserverless/",
@@ -795,6 +801,10 @@ def get_provider_info():
             {
                 "integration-name": "Amazon Managed Workflows for Apache Airflow (MWAA)",
                 "python-modules": ["airflow.providers.amazon.aws.hooks.mwaa"],
+            },
+            {
+                "integration-name": "Amazon OpenSearch",
+                "python-modules": ["airflow.providers.amazon.aws.hooks.opensearch"],
             },
             {
                 "integration-name": "Amazon OpenSearch Serverless",

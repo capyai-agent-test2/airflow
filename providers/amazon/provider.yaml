@@ -236,6 +236,10 @@ integrations:
     external-doc-url: https://aws.amazon.com/managed-service-apache-flink/
     logo: /docs/integration-logos/Amazon-Kinesis-Analytics_light-bg@4x.png
     tags: [aws]
+  - integration-name: Amazon OpenSearch
+    external-doc-url: https://aws.amazon.com/opensearch-service/
+    logo: /docs/integration-logos/Amazon-OpenSearch_light-bg@4x.png
+    tags: [aws]
   - integration-name: Amazon OpenSearch Serverless
     how-to-guide:
       - /docs/apache-airflow-providers-amazon/operators/opensearchserverless.rst
@@ -724,6 +728,9 @@ hooks:
   - integration-name: Amazon Managed Workflows for Apache Airflow (MWAA)
     python-modules:
       - airflow.providers.amazon.aws.hooks.mwaa
+  - integration-name: Amazon OpenSearch
+    python-modules:
+      - airflow.providers.amazon.aws.hooks.opensearch
   - integration-name: Amazon OpenSearch Serverless
     python-modules:
       - airflow.providers.amazon.aws.hooks.opensearch_serverless
