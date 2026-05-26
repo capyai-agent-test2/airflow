@@ -34,7 +34,8 @@ Configuring the Connection
 --------------------------
 
 host
-    HOSTNAME/IP of the remote Jupyter Kernel
+    HOSTNAME/IP of the remote Jupyter Kernel. When using a Jupyter Gateway over HTTP or HTTPS,
+    this can also be the full gateway URL.
 
 Extra (optional)
     Specify the extra parameters (as json dictionary) that can be used in kernel connection.
@@ -46,6 +47,18 @@ Extra (optional)
     * ``stdin_port``: STDIN port [default: 60318].
     * ``control_port``: CONTROL port [default: 60319].
     * ``hb_port``: HEARTBEAT port [default: 60320].
+    * ``gateway_url``: Optional Jupyter Gateway URL. If omitted, Airflow also treats an
+      ``http://`` or ``https://`` value in ``host`` as the gateway URL.
+    * ``gateway_ws_url``: Optional websocket URL for the gateway. If omitted, it is derived
+      from the gateway URL.
+    * ``auth_token``: Optional authentication token sent to the gateway.
+    * ``auth_scheme``: Optional authentication scheme prefix for the token, for example
+      ``Bearer`` or ``token``.
+    * ``validate_cert``: Whether to validate HTTPS certificates [default: true].
+
+password
+    Optional authentication token for gateway connections. When set, it takes precedence over
+    ``extra.auth_token``.
 
 If you are configuring the connection via a URI, ensure that all components of the URI are URL-encoded.
 
@@ -76,3 +89,8 @@ Examples
     env_key = f"AIRFLOW_CONN_{conn.conn_id.upper()}"
 
     print(f"{env_key}='{conn.get_uri()}'")
+
+**Set Gateway Connection as Environment Variable (URI)**
+  .. code-block:: bash
+
+     export AIRFLOW_CONN_JUPYTER_KERNEL_DEFAULT='{"host": "https://gateway.example.com", "extra": {"auth_token": "secret-token", "auth_scheme": "Bearer"}}'

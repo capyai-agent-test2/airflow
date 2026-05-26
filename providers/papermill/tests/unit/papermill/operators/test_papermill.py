@@ -178,6 +178,53 @@ class TestPapermillOperator:
             kernel_ip="127.0.0.1",
         )
 
+    @patch("airflow.providers.papermill.hooks.kernel.KernelHook.get_connection")
+    @patch("airflow.providers.papermill.operators.papermill.pm")
+    def test_execute_gateway_kernel(self, mock_papermill, kernel_hook):
+        in_nb = "/tmp/does_not_exist"
+        out_nb = "/tmp/will_not_exist"
+        kernel_name = "python3"
+        conn = MagicMock()
+        conn.host = "https://gateway.example.com"
+        conn.extra_dejson = {
+            "auth_token": "secret",
+            "auth_scheme": "Bearer",
+            "validate_cert": False,
+            "gateway_ws_url": "wss://gateway.example.com",
+        }
+        kernel_hook.return_value = conn
+
+        from airflow.providers.papermill.hooks.kernel import GATEWAY_KERNEL_ENGINE
+        from airflow.providers.papermill.operators.papermill import PapermillOperator
+
+        op = PapermillOperator(
+            input_nb=in_nb,
+            output_nb=out_nb,
+            task_id="papermill_operator_gateway_test",
+            kernel_name=kernel_name,
+            kernel_conn_id="jupyter_kernel_default",
+            dag=None,
+        )
+
+        op.execute(context={})
+
+        mock_papermill.execute_notebook.assert_called_once_with(
+            in_nb,
+            out_nb,
+            parameters=None,
+            progress_bar=False,
+            report_mode=True,
+            log_output=False,
+            kernel_name=kernel_name,
+            language=None,
+            engine_name=GATEWAY_KERNEL_ENGINE,
+            gateway_url="https://gateway.example.com",
+            gateway_ws_url="wss://gateway.example.com",
+            gateway_auth_token="secret",
+            gateway_auth_scheme="Bearer",
+            gateway_validate_cert=False,
+        )
+
     @patch("airflow.providers.papermill.operators.papermill.pm")
     def test_execute_with_log_output(self, mock_papermill):
         from airflow.providers.papermill.operators.papermill import PapermillOperator
