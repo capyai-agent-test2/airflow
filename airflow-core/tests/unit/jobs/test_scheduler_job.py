@@ -7403,6 +7403,59 @@ class TestSchedulerJob:
         assert callback_request.context_from_server.max_tries == ti.max_tries
 
     @pytest.mark.usefixtures("testing_dag_bundle")
+    def test_find_and_purge_task_instances_without_heartbeats_with_null_last_heartbeat(
+        self, session, create_dagrun
+    ):
+        dagfile = EXAMPLE_STANDARD_DAGS_FOLDER / "example_branch_operator.py"
+        dagbag = DagBag(dagfile)
+        dag = dagbag.get_dag("example_branch_operator")
+        scheduler_dag = sync_dag_to_db(dag)
+
+        dag_v = DagVersion.get_latest_version(dag.dag_id)
+
+        data_interval = infer_automated_data_interval(scheduler_dag.timetable, DEFAULT_LOGICAL_DATE)
+
+        dag_run = create_dagrun(
+            scheduler_dag,
+            logical_date=DEFAULT_DATE,
+            run_type=DagRunType.SCHEDULED,
+            data_interval=data_interval,
+        )
+
+        executor = MockExecutor()
+        scheduler_job = Job()
+        with mock.patch("airflow.executors.executor_loader.ExecutorLoader.load_executor") as loader_mock:
+            loader_mock.return_value = executor
+            self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+            task = dag.get_task(task_id="run_this_first")
+            ti = create_task_instance(
+                task,
+                run_id=dag_run.run_id,
+                state=State.RUNNING,
+                dag_version_id=dag_v.id,
+            )
+            ti.last_heartbeat_at = None
+            ti.start_date = timezone.utcnow() - timedelta(minutes=10)
+            ti.queued_by_job_id = scheduler_job.id
+
+            session.add(ti)
+            session.flush()
+
+            executor.running.add(ti.key)
+
+            self.job_runner._find_and_purge_task_instances_without_heartbeats()
+
+            assert ti.key not in executor.running
+
+        executor.callback_sink.send.assert_called_once()
+        callback_request = executor.callback_sink.send.call_args.args[0]
+        assert callback_request.ti.dag_id == ti.dag_id
+        assert callback_request.ti.task_id == ti.task_id
+        assert callback_request.ti.run_id == ti.run_id
+        assert callback_request.ti.map_index == ti.map_index
+
+    @pytest.mark.usefixtures("testing_dag_bundle")
     def test_task_instance_heartbeat_timeout_message(self, session, create_dagrun):
         """
         Check that the task instance heartbeat timeout message comes out as expected

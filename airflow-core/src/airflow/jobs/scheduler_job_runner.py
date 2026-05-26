@@ -2970,7 +2970,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 .join(DM, TI.dag_id == DM.dag_id)
                 .where(
                     TI.state.in_((TaskInstanceState.RUNNING, TaskInstanceState.RESTARTING)),
-                    TI.last_heartbeat_at < limit_dttm,
+                    or_(TI.last_heartbeat_at.is_(None), TI.last_heartbeat_at < limit_dttm),
                 )
                 .where(TI.queued_by_job_id == self.job.id)
             )
