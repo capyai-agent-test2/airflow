@@ -142,6 +142,13 @@ repos:
         pass_filenames: true
         files: ^src/airflow/config_templates/config\.yml$
         require_serial: true
+      - id: generate-airflow-config-schema
+        name: Generate config_templates/schema.json
+        entry: ../scripts/ci/prek/generate_airflow_config_schema.py
+        language: python
+        pass_filenames: false
+        files: ^src/airflow/config_templates/config\.yml$
+        require_serial: true
       - id: check-code-deprecations
         name: Check deprecations categories in decorators
         entry: ../scripts/ci/prek/check_deprecations.py
