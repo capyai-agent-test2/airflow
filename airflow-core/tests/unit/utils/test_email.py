@@ -184,6 +184,25 @@ class TestEmailSmtp:
         assert mimetext.get_payload() == msg.get_payload()[0].get_payload()
 
     @mock.patch("airflow.utils.email.send_mime_email")
+    def test_send_smtp_uses_connection_from_email(self, mock_send_mime, monkeypatch):
+        monkeypatch.setenv(
+            "AIRFLOW_CONN_SMTP_TEST_CONN",
+            json.dumps(
+                {
+                    "conn_type": "smtp",
+                    "extra": {"from_email": "connection@example.com"},
+                }
+            ),
+        )
+
+        with conf_vars({("smtp", "smtp_mail_from"): None}):
+            email.send_email_smtp("to", "subject", "content", conn_id="smtp_test_conn")
+
+        _, call_args = mock_send_mime.call_args
+        assert call_args["e_from"] == "connection@example.com"
+        assert call_args["mime_msg"]["From"] == "connection@example.com"
+
+    @mock.patch("airflow.utils.email.send_mime_email")
     def test_send_bcc_smtp(self, mock_send_mime, tmp_path):
         path = tmp_path / "testfile"
         path.write_text("attachment")
@@ -237,6 +256,85 @@ class TestEmailSmtp:
         mock_smtp.return_value.login.assert_called_once_with("test-user", "test-p@$$word")
         mock_smtp.return_value.sendmail.assert_called_once_with("from", "to", msg.as_string())
         assert mock_smtp.return_value.quit.called
+
+    @mock.patch("smtplib.SMTP_SSL")
+    @mock.patch("smtplib.SMTP")
+    def test_send_mime_conn_id_uses_connection_settings(self, mock_smtp, mock_smtp_ssl, monkeypatch):
+        monkeypatch.setenv(
+            "AIRFLOW_CONN_SMTP_TEST_CONN",
+            json.dumps(
+                {
+                    "conn_type": "smtp",
+                    "host": "smtp.example.com",
+                    "port": 2525,
+                    "login": "test-user",
+                    "password": "test-p@$$word",
+                    "extra": {
+                        "disable_tls": True,
+                        "disable_ssl": True,
+                        "timeout": 45,
+                        "retry_limit": 2,
+                    },
+                }
+            ),
+        )
+        mock_smtp.side_effect = [SMTPServerDisconnected(), mock_smtp.return_value]
+
+        email.send_mime_email("from", "to", MIMEMultipart(), dryrun=False, conn_id="smtp_test_conn")
+
+        mock_smtp.assert_any_call(host="smtp.example.com", port=2525, timeout=45)
+        assert mock_smtp.call_count == 2
+        assert not mock_smtp.return_value.starttls.called
+        assert not mock_smtp_ssl.called
+        mock_smtp.return_value.login.assert_called_once_with("test-user", "test-p@$$word")
+
+    @mock.patch("smtplib.SMTP_SSL")
+    @mock.patch("smtplib.SMTP")
+    def test_send_mime_conn_id_parses_string_bool_extras(self, mock_smtp, mock_smtp_ssl, monkeypatch):
+        monkeypatch.setenv(
+            "AIRFLOW_CONN_SMTP_TEST_CONN",
+            json.dumps(
+                {
+                    "conn_type": "smtp",
+                    "host": "smtp.example.com",
+                    "port": 2525,
+                    "login": "test-user",
+                    "password": "test-p@$$word",
+                    "extra": {
+                        "disable_tls": "false",
+                        "disable_ssl": "true",
+                    },
+                }
+            ),
+        )
+
+        email.send_mime_email("from", "to", MIMEMultipart(), dryrun=False, conn_id="smtp_test_conn")
+
+        assert mock_smtp.return_value.starttls.called
+        assert not mock_smtp_ssl.called
+
+    @mock.patch("smtplib.SMTP")
+    def test_send_mime_conn_id_ignores_empty_connection_host(self, mock_smtp, monkeypatch):
+        monkeypatch.setenv(
+            "AIRFLOW_CONN_SMTP_TEST_CONN",
+            json.dumps(
+                {
+                    "conn_type": "smtp",
+                    "host": "",
+                    "port": 2525,
+                    "login": "test-user",
+                    "password": "test-p@$$word",
+                }
+            ),
+        )
+
+        email.send_mime_email("from", "to", MIMEMultipart(), dryrun=False, conn_id="smtp_test_conn")
+
+        mock_smtp.assert_called_once_with(
+            host=conf.get("smtp", "SMTP_HOST"),
+            port=2525,
+            timeout=conf.getint("smtp", "SMTP_TIMEOUT"),
+        )
 
     @mock.patch("smtplib.SMTP_SSL")
     @mock.patch("smtplib.SMTP")
