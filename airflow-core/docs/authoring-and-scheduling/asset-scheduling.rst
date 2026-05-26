@@ -377,7 +377,16 @@ For scenarios requiring more intricate conditions, such as triggering a Dag when
 
 Scheduling based on asset aliases
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Since asset events added to an alias are just simple asset events, a downstream Dag depending on the actual asset can read asset events of it normally, without considering the associated aliases. A downstream Dag can also depend on an asset alias. The authoring syntax is referencing the ``AssetAlias`` by name, and the associated asset events are picked up for scheduling. Note that a Dag can be triggered by a task with ``outlets=AssetAlias("xxx")`` if and only if the alias is resolved into ``Asset("s3://bucket/my-task")``. The Dag runs whenever a task with outlet ``AssetAlias("out")`` gets associated with at least one asset at runtime, regardless of the asset's identity. The downstream Dag is not triggered if no assets are associated to the alias for a particular given task run. This also means we can do conditional asset-triggering.
+Since asset events added to an alias are just simple asset events, a downstream Dag depending on the actual asset can
+read those events normally, without considering the associated aliases. A downstream Dag can also depend on an asset
+alias directly. This is the scheduling side of the same pattern described in
+:ref:`dynamic_data_events_emitting_and_asset_creation_through_assetalias`: ``AssetAlias`` lets a task declare a
+dynamic outlet first and resolve it to one or more concrete ``Asset`` objects at runtime. The authoring syntax is
+referencing the ``AssetAlias`` by name, and the associated asset events are picked up for scheduling. Note that a Dag
+can be triggered by a task with ``outlets=AssetAlias("xxx")`` if and only if the alias is resolved into
+``Asset("s3://bucket/my-task")``. The Dag runs whenever a task with outlet ``AssetAlias("out")`` gets associated with
+at least one asset at runtime, regardless of the asset's identity. The downstream Dag is not triggered if no assets
+are associated to the alias for a particular given task run. This also means we can do conditional asset-triggering.
 
 The asset alias is resolved to the assets during Dag parsing. Thus, if the "min_file_process_interval" configuration is set to a high value, there is a possibility that the asset alias may not be resolved. To resolve this issue, you can trigger Dag parsing.
 
