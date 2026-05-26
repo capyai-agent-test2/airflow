@@ -65,6 +65,15 @@ def get_provider_info():
                 "ui-field-behaviour": {"hidden-fields": ["schema", "extra"], "relabeling": {}},
                 "conn-fields": {
                     "db": {"label": "DB", "schema": {"type": ["integer", "null"], "default": 0}},
+                    "cluster": {
+                        "label": "Cluster mode",
+                        "schema": {"type": ["boolean", "null"], "default": False},
+                    },
+                    "startup_nodes": {
+                        "label": "Startup nodes",
+                        "description": 'Optional JSON list of cluster nodes, for example: [{"host": "redis-1", "port": 6379}]',
+                        "schema": {"type": ["string", "null"]},
+                    },
                     "ssl": {"label": "Enable SSL", "schema": {"type": ["boolean", "null"], "default": False}},
                     "ssl_cert_reqs": {
                         "label": "SSL verify mode",
