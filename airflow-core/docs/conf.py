@@ -43,6 +43,7 @@ from docs.utils.conf_constants import (
     SPHINX_DESIGN_STATIC_PATH,
     SPHINX_REDOC_EXTENSIONS,
     SUPPRESS_WARNINGS,
+    disable_suggest_change_button_for_autoapi_pages,
     filter_autoapi_ignore_entries,
     get_autodoc_mock_imports,
     get_configs_and_deprecations,
@@ -233,6 +234,7 @@ conf_py_path = "/airflow-core/docs/"
 # A dictionary of values to pass into the template engine's context for all pages.
 html_context = get_html_context(conf_py_path)
 
+
 # -- Options for sphinx_jinja ------------------------------------------
 # See: https://github.com/tardyp/sphinx-jinja
 airflow_version: Version = parse_version(
@@ -380,7 +382,9 @@ redoc = [
 
 
 def setup(sphinx):
+    sphinx.connect("html-page-context", disable_suggest_change_button_for_autoapi_pages)
     sphinx.connect("autoapi-skip-member", skip_util_classes_extension)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}
 
 
 # Fix for broken permalink icon in Sphinx 7.x+

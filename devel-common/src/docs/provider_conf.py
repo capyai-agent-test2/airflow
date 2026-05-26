@@ -52,6 +52,7 @@ from docs.utils.conf_constants import (
     SPELLING_WORDLIST_PATH,
     SPHINX_DESIGN_STATIC_PATH,
     SUPPRESS_WARNINGS,
+    disable_suggest_change_button_for_autoapi_pages,
     filter_autoapi_ignore_entries,
     get_autodoc_mock_imports,
     get_configs_and_deprecations,
@@ -218,6 +219,12 @@ html_theme_options: dict[str, Any] = get_html_theme_options()
 conf_py_path = f"/providers/{PACKAGE_ID.replace('.', '/')}/docs/"
 # A dictionary of values to pass into the template engine's context for all pages.
 html_context = get_html_context(conf_py_path)
+
+
+def setup(app):
+    app.connect("html-page-context", disable_suggest_change_button_for_autoapi_pages)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}
+
 
 # == Extensions configuration ==================================================
 

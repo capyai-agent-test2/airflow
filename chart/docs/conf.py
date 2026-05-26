@@ -52,6 +52,7 @@ from docs.utils.conf_constants import (
     SPELLING_WORDLIST_PATH,
     SPHINX_DESIGN_STATIC_PATH,
     SUPPRESS_WARNINGS,
+    disable_suggest_change_button_for_autoapi_pages,
     filter_autoapi_ignore_entries,
     get_autodoc_mock_imports,
     get_html_context,
@@ -386,3 +387,8 @@ spelling_ignore_contributor_names = False
 spelling_ignore_importable_modules = True
 
 graphviz_output_format = "svg"
+
+
+def setup(app):
+    app.connect("html-page-context", disable_suggest_change_button_for_autoapi_pages)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}

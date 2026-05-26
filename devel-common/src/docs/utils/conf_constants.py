@@ -183,6 +183,19 @@ def get_html_context(conf_py_path: str):
     }
 
 
+def disable_suggest_change_button_for_autoapi_pages(
+    app: Any, pagename: str, templatename: str, context: dict[str, Any], doctree: Any
+) -> None:
+    autoapi_root = getattr(app.config, "autoapi_root", None)
+    if not autoapi_root or (pagename != autoapi_root and not pagename.startswith(f"{autoapi_root}/")):
+        return
+
+    context["display_github"] = False
+    meta = context.get("meta")
+    if meta and "github_url" in meta:
+        context["meta"] = {key: value for key, value in meta.items() if key != "github_url"}
+
+
 def get_configs_and_deprecations(
     package_version: Version,
     config_descriptions: dict[str, dict[str, Any]],
