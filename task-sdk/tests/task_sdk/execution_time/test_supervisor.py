@@ -2959,6 +2959,34 @@ class TestHandleRequest:
             decoder = CommsDecoder(socket=None).body_decoder  # type: ignore[var-annotated, arg-type]
             assert decoder.validate_python(frame.body) == client_mock.response
 
+    def test_request_frame_encodes_numpy_scalars_in_outlet_event_extra(self):
+        np = pytest.importorskip("numpy")
+
+        message = SucceedTask(
+            end_date=timezone.parse("2024-10-31T12:00:00Z"),
+            outlet_events=[
+                {
+                    "dest_asset_key": {"name": "test-asset", "uri": "test-asset"},
+                    "extra": {"float_value": np.float64(1.23412415)},
+                }
+            ],
+        )
+
+        frame = _RequestFrame(id=42, body=message.model_dump())
+        encoded = frame.as_bytes()
+        decoded = msgspec.msgpack.Decoder(_RequestFrame).decode(encoded[4:])
+        assert decoded.body["end_date"] == timezone.parse("2024-10-31T12:00:00Z")
+        assert decoded.body["state"] == "success"
+        assert decoded.body["type"] == "SucceedTask"
+        assert decoded.body["task_outlets"] is None
+        assert decoded.body["rendered_map_index"] is None
+        assert decoded.body["outlet_events"] == [
+            {
+                "dest_asset_key": {"name": "test-asset", "uri": "test-asset"},
+                "extra": {"float_value": 1.23412415},
+            }
+        ]
+
     def test_all_to_supervisor_messages_are_covered(self):
         """Ensure all ToSupervisor message types have test coverage."""
 

@@ -126,6 +126,10 @@ def _msgpack_enc_hook(obj: Any) -> Any:
         return datetime(
             obj.year, obj.month, obj.day, obj.hour, obj.minute, obj.second, obj.microsecond, tzinfo=obj.tzinfo
         )
+    if type(obj).__module__.startswith("numpy") and hasattr(obj, "item"):
+        item = obj.item()
+        if isinstance(item, int | float | bool | str | bytes | bytearray | memoryview):
+            return item
     if isinstance(obj, Path):
         return str(obj)
     if isinstance(obj, BaseModel):
