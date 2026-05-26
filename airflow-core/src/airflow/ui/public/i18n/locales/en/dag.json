@@ -38,7 +38,21 @@
     "bundleUrl": "Bundle Url",
     "noCode": "No Code Found",
     "parseDuration": "Parse Duration:",
-    "parsedAt": "Parsed at:"
+    "parsedAt": "Parsed at:",
+    "search": {
+      "label": "Search code",
+      "nextMatch": "Next match",
+      "placeholder": "Search code...",
+      "previousMatch": "Previous match"
+    },
+    "sectionMatches_one": "{{count}} matching {{section}} section",
+    "sectionMatches_other": "{{count}} matching {{section}} sections",
+    "sections": {
+      "assets": "Asset definitions",
+      "label": "Section filter",
+      "schedule": "Schedule config",
+      "tasks": "Task definitions"
+    }
   },
   "deadlineAlerts": {
     "completionRule": "Must complete within {{interval}} of {{reference}}",
