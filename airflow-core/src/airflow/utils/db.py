@@ -266,12 +266,6 @@ def get_default_connections():
             host="localhost",
         ),
         Connection(
-            conn_id="dingding_default",
-            conn_type="http",
-            host="",
-            password="",
-        ),
-        Connection(
             conn_id="drill_default",
             conn_type="drill",
             host="localhost",
