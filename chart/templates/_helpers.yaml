@@ -712,6 +712,11 @@ server_tls_key_file = /etc/pgbouncer/server.key
   {{- include "_serviceAccountName" (merge (dict "key" "createUserJob" "nameSuffix" "create-user-job") .) -}}
 {{- end }}
 
+{{/* Create the name of the create pool job service account to use */}}
+{{- define "createPoolJob.serviceAccountName" -}}
+  {{- include "_serviceAccountName" (merge (dict "key" "createPoolJob" "nameSuffix" "create-pool-job") .) -}}
+{{- end }}
+
 {{/* Create the name of the migrate database job service account to use */}}
 {{- define "migrateDatabaseJob.serviceAccountName" -}}
   {{- include "_serviceAccountName" (merge (dict "key" "migrateDatabaseJob" "nameSuffix" "migrate-database-job") .) -}}

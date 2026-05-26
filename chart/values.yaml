@@ -2108,6 +2108,118 @@ createUserJob:
   #   cpu: 100m
   #   memory: 128Mi
 
+# Airflow pools to create or update after migrations.
+pools: []
+#  - name: default_pool
+#    slots: 128
+#    description: Default pool
+#    includeDeferred: false
+
+# Airflow create pool job settings
+createPoolJob:
+  # Whether the create pool job should be created when `pools` are defined.
+  enabled: true
+
+  # Limit the lifetime of the job object after it finished execution.
+  ttlSecondsAfterFinished: 300
+
+  # Command to use when running the create pool job (templated).
+  command: ~
+
+  # Args to use when running the create pool job (templated).
+  args:
+    - "bash"
+    - "-c"
+    - >-
+      exec \
+
+      airflow pools import /opt/airflow/pools/pools.json
+
+  # Annotations on the create pool job pod (templated)
+  annotations: {}
+
+  # `jobAnnotations` are annotations on the create pool job
+  jobAnnotations: {}
+
+  restartPolicy: OnFailure
+
+  # Labels specific to `createPoolJob` objects and pods
+  labels: {}
+
+  # When not set, the values defined in the global `securityContext` will be used
+  # (deprecated, use `createPoolJob.securityContexts` instead)
+  securityContext: {}
+  #  runAsUser: 50000
+  #  fsGroup: 0
+  #  runAsGroup: 0
+
+  # Detailed default security context for `createPoolJob` for container and pod level
+  securityContexts:
+    pod: {}
+    container: {}
+
+  # Container level lifecycle hooks
+  containerLifecycleHooks: {}
+
+  # Create Service Account
+  serviceAccount:
+    # ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+    automountServiceAccountToken: true
+
+    # Specifies whether a Service Account should be created
+    create: true
+
+    # The name of the Service Account to use.
+    # If not set and `create` is 'true', a name is generated using the release name
+    name: ~
+
+    # Annotations to add to create pool Kubernetes Service Account.
+    annotations: {}
+
+  # Launch additional containers into pool creation job
+  extraContainers: []
+
+  # Add additional init containers into pool creation job (templated).
+  extraInitContainers: []
+
+  # Mount additional volumes into pool creation job.
+  extraVolumes: []
+  extraVolumeMounts: []
+  # It can be templated like in the following example:
+  #  extraVolumes:
+  #    - name: my-templated-extra-volume
+  #      secret:
+  #         secretName: '{{ include "my_secret_template" . }}'
+  #         defaultMode: 0640
+  #         optional: true
+  #
+  #  extraVolumeMounts:
+  #    - name: my-templated-extra-volume
+  #      mountPath: "{{ .Values.my_custom_path }}"
+  #      readOnly: true
+
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  topologySpreadConstraints: []
+  priorityClassName: ~
+
+  # In case you need to disable the helm hooks that create the jobs after install.
+  # Disable this if you are e.g. using ArgoCD
+  useHelmHooks: true
+
+  applyCustomEnv: true
+
+  env: []
+
+  resources: {}
+  #  limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  #  requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
 # Airflow database migration job settings
 migrateDatabaseJob:
   enabled: true

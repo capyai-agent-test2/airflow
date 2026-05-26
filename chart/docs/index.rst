@@ -168,6 +168,15 @@ will not start as the migrations will not be run:
 
 This is so these CI/CD services can perform updates without issues and preserve the immutability of Kubernetes Job manifests.
 
+If you configure ``pools``, set the following values as well:
+
+.. code-block:: yaml
+   :caption: values.yaml
+
+   createPoolJob:
+     useHelmHooks: false
+     applyCustomEnv: false
+
 .. note::
 
    This applies to the chart installation with usage of ``--wait`` flag in ``helm install`` or ``helm upgrade`` command.
@@ -213,6 +222,24 @@ To avoid potential problems, it is recommended to disable these hooks by setting
        useHelmHooks: false
        data: |
          AIRFLOW_VAR_HELLO_MESSAGE: "Hi!"
+
+Managing pools
+--------------
+
+You can create or update Airflow pools by defining them in ``values.yaml``. The chart renders a ConfigMap with the
+pool definitions and a post-install/post-upgrade job that imports them with the Airflow CLI.
+
+.. code-block:: yaml
+   :caption: values.yaml
+
+   pools:
+     - name: default_pool
+       slots: 128
+       description: Default pool
+     - name: deferred_pool
+       slots: 8
+       description: Deferred work
+       includeDeferred: true
 
 Naming Conventions
 ------------------

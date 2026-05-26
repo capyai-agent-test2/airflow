@@ -301,6 +301,8 @@ class TestSCCActivation:
                 "triggerer": {"enabled": True},
                 "migrateDatabaseJob": {"enabled": True},
                 "createUserJob": {"enabled": True},
+                "pools": [{"name": "default_pool", "slots": 64}],
+                "createPoolJob": {"enabled": True},
                 "cleanup": {"enabled": True},
                 "databaseCleanup": {"enabled": True},
                 "dagProcessor": {"enabled": True},
@@ -336,6 +338,11 @@ class TestSCCActivation:
             "name": "prod-airflow-create-user-job",
             "namespace": "airflow",
         } in subjects
+        assert {
+            "kind": "ServiceAccount",
+            "name": "prod-airflow-create-pool-job",
+            "namespace": "airflow",
+        } in subjects
         assert {"kind": "ServiceAccount", "name": "prod-airflow-cleanup", "namespace": "airflow"} in subjects
         assert {
             "kind": "ServiceAccount",
@@ -347,3 +354,18 @@ class TestSCCActivation:
             "name": "prod-airflow-dag-processor",
             "namespace": "airflow",
         } in subjects
+
+    def test_pool_job_should_not_bind_default_service_account(self):
+        docs = render_chart(
+            name="prod",
+            namespace="airflow",
+            values={
+                "rbac": {"create": True, "createSCCRoleBinding": True},
+                "pools": [{"name": "default_pool", "slots": 64}],
+                "createPoolJob": {"enabled": True, "serviceAccount": {"create": False, "name": None}},
+            },
+            show_only=["templates/rbac/security-context-constraint-rolebinding.yaml"],
+        )
+
+        subjects = jmespath.search("subjects", docs[0])
+        assert {"kind": "ServiceAccount", "name": "default", "namespace": "airflow"} not in subjects

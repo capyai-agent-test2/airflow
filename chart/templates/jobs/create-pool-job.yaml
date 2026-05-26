@@ -1,0 +1,144 @@
+{{/*
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
+*/}}
+
+##########################
+## Airflow Create Pool Job
+##########################
+{{- if and .Values.createPoolJob.enabled (gt (len .Values.pools) 0) }}
+{{- $nodeSelector := or .Values.createPoolJob.nodeSelector .Values.nodeSelector }}
+{{- $affinity := or .Values.createPoolJob.affinity .Values.affinity }}
+{{- $tolerations := or .Values.createPoolJob.tolerations .Values.tolerations }}
+{{- $topologySpreadConstraints := or .Values.createPoolJob.topologySpreadConstraints .Values.topologySpreadConstraints }}
+{{- $securityContext := include "airflowPodSecurityContext" (list .Values.createPoolJob .Values) }}
+{{- $containerSecurityContext := include "containerSecurityContext" (list .Values.createPoolJob .Values) }}
+{{- $containerLifecycleHooks := or .Values.createPoolJob.containerLifecycleHooks .Values.containerLifecycleHooks }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "airflow.fullname" . }}-create-pool
+  labels:
+    tier: airflow
+    component: create-pool-job
+    release: {{ .Release.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service }}
+    {{- with .Values.labels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- $annotations := dict }}
+  {{- if .Values.createPoolJob.useHelmHooks }}
+    {{- $_ := set $annotations "helm.sh/hook" "post-install,post-upgrade" }}
+    {{- $_ := set $annotations "helm.sh/hook-weight" "3" }}
+    {{- $_ := set $annotations "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded" }}
+  {{- end }}
+  {{- with $annotations := merge $annotations .Values.createPoolJob.jobAnnotations }}
+  annotations: {{- $annotations | toYaml | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not (kindIs "invalid" .Values.createPoolJob.ttlSecondsAfterFinished) }}
+  ttlSecondsAfterFinished: {{ .Values.createPoolJob.ttlSecondsAfterFinished }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        tier: airflow
+        component: create-pool-job
+        release: {{ .Release.Name }}
+        {{- if or .Values.labels .Values.createPoolJob.labels }}
+          {{- mustMerge .Values.createPoolJob.labels .Values.labels | toYaml | nindent 8 }}
+        {{- end }}
+      {{- if or .Values.airflowPodAnnotations .Values.createPoolJob.annotations }}
+      annotations:
+        {{- if .Values.airflowPodAnnotations }}
+          {{- tpl (toYaml .Values.airflowPodAnnotations) . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.createPoolJob.annotations }}
+          {{- tpl (toYaml .Values.createPoolJob.annotations) . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    spec:
+      securityContext: {{ $securityContext | nindent 8 }}
+      restartPolicy: {{ .Values.createPoolJob.restartPolicy }}
+      {{- if .Values.createPoolJob.priorityClassName }}
+      priorityClassName: {{ .Values.createPoolJob.priorityClassName }}
+      {{- end }}
+      nodeSelector: {{- toYaml $nodeSelector | nindent 8 }}
+      affinity: {{- toYaml $affinity | nindent 8 }}
+      {{- if .Values.schedulerName }}
+      schedulerName: {{ .Values.schedulerName }}
+      {{- end }}
+      tolerations: {{- toYaml $tolerations | nindent 8 }}
+      topologySpreadConstraints: {{- toYaml $topologySpreadConstraints | nindent 8 }}
+      serviceAccountName: {{ include "createPoolJob.serviceAccountName" . }}
+      imagePullSecrets: {{- include "image_pull_secrets" . | nindent 8 }}
+      {{- if .Values.createPoolJob.extraInitContainers }}
+      initContainers:
+        {{- tpl (toYaml .Values.createPoolJob.extraInitContainers) . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: create-pool
+          image: {{ template "airflow_image" . }}
+          imagePullPolicy: {{ .Values.images.airflow.pullPolicy }}
+          securityContext: {{ $containerSecurityContext | nindent 12 }}
+          {{- if $containerLifecycleHooks  }}
+          lifecycle: {{- tpl (toYaml $containerLifecycleHooks) . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.createPoolJob.command }}
+          command: {{ tpl (toYaml .Values.createPoolJob.command) . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.createPoolJob.args }}
+          args: {{ tpl (toYaml .Values.createPoolJob.args) . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.createPoolJob.applyCustomEnv }}
+          envFrom: {{- include "custom_airflow_environment_from" . | default "\n  []" | indent 10 }}
+          env: {{- include "custom_airflow_environment" . | indent 10 }}
+          {{- else }}
+          env:
+          {{- end }}
+          {{- include "standard_airflow_environment" . | indent 10 }}
+          {{- include "container_extra_envs" (list . .Values.createPoolJob.env) | indent 10 }}
+          resources: {{- toYaml .Values.createPoolJob.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "airflow_config_mount" . | nindent 12 }}
+            - name: pools
+              mountPath: /opt/airflow/pools
+              readOnly: true
+            {{- if .Values.volumeMounts }}
+              {{- toYaml .Values.volumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.createPoolJob.extraVolumeMounts }}
+              {{- tpl (toYaml .Values.createPoolJob.extraVolumeMounts) . | nindent 12 }}
+            {{- end }}
+        {{- if .Values.createPoolJob.extraContainers }}
+          {{- tpl (toYaml .Values.createPoolJob.extraContainers) . | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ template "airflow_config" . }}
+        - name: pools
+          configMap:
+            name: {{ include "airflow.fullname" . }}-pools
+        {{- if .Values.volumes }}
+          {{- toYaml .Values.volumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.createPoolJob.extraVolumes }}
+          {{- tpl (toYaml .Values.createPoolJob.extraVolumes) . | nindent 8 }}
+        {{- end }}
+{{- end }}
