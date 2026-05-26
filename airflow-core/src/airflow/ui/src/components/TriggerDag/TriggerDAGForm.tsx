@@ -34,7 +34,7 @@ import { ErrorAlert, type ExpandedApiError } from "../ErrorAlert";
 import { Checkbox } from "../ui/Checkbox";
 import { RadioCardItem, RadioCardRoot } from "../ui/RadioCard";
 import TriggerDAGAdvancedOptions from "./TriggerDAGAdvancedOptions";
-import { dataIntervalModeOptions, type DagRunTriggerParams } from "./types";
+import { dataIntervalModeOptions, type DagRunTriggerParams, type TriggerDagPrefillConfig } from "./types";
 
 type TriggerDAGFormProps = {
   readonly dagDisplayName: string;
@@ -46,13 +46,7 @@ type TriggerDAGFormProps = {
   readonly isPending?: boolean;
   readonly onSubmitTrigger?: (params: DagRunTriggerParams) => void;
   readonly open: boolean;
-  readonly prefillConfig?:
-    | {
-        conf: Record<string, unknown> | undefined;
-        logicalDate: string | undefined;
-        runId: string;
-      }
-    | undefined;
+  readonly prefillConfig?: TriggerDagPrefillConfig | undefined;
 };
 
 const TriggerDAGForm = ({
@@ -92,20 +86,19 @@ const TriggerDAGForm = ({
   });
 
   // Pre-fill form when prefillConfig is provided (priority over conf)
-  // Only restore 'conf' (parameters), not logicalDate, runId, or partitionKey to avoid 409 conflicts
   useEffect(() => {
     if (prefillConfig && open) {
       const confString = prefillConfig.conf ? JSON.stringify(prefillConfig.conf, undefined, 2) : "";
 
       reset({
         conf: confString,
-        dagRunId: "",
-        dataIntervalEnd: "",
-        dataIntervalMode: "auto",
-        dataIntervalStart: "",
-        logicalDate: isPartitioned ? "" : dayjs().format(DEFAULT_DATETIME_FORMAT),
-        note: "",
-        partitionKey: undefined,
+        dagRunId: prefillConfig.dagRunId ?? "",
+        dataIntervalEnd: prefillConfig.dataIntervalEnd ?? "",
+        dataIntervalMode: prefillConfig.dataIntervalMode ?? "auto",
+        dataIntervalStart: prefillConfig.dataIntervalStart ?? "",
+        logicalDate: isPartitioned ? "" : (prefillConfig.logicalDate ?? dayjs().format(DEFAULT_DATETIME_FORMAT)),
+        note: prefillConfig.note ?? "",
+        partitionKey: prefillConfig.partitionKey,
       });
       // Also update the param store to keep it in sync.
       // Wait until we have the initial params so section ordering stays consistent.

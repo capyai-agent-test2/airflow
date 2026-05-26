@@ -99,8 +99,8 @@ describe("TriggerDAGForm", () => {
           conf: {
             message: "Original message",
           },
+          dagRunId: "manual__test",
           logicalDate: undefined,
-          runId: "manual__test",
         }}
       />,
       { wrapper: Wrapper },

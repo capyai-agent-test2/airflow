@@ -165,6 +165,7 @@ export const routerConfig = [
       {
         children: [
           { element: <Overview />, index: true },
+          { element: <Overview />, path: "trigger" },
           { element: <DagRuns />, path: "runs" },
           { element: <Tasks />, path: "tasks" },
           { element: <Calendar />, path: "calendar" },
