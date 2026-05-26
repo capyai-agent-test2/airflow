@@ -65,6 +65,24 @@ def mocked_blob_file_system():
         (
             Connection(
                 conn_id="testconn",
+                conn_type="adls",
+                login="client_id",
+                password="password",
+                host="storage_account",
+                extra={
+                    "tenant_id": "tenant_id",
+                },
+            ),
+            {
+                "account_name": "storage_account",
+                "client_id": "client_id",
+                "client_secret": "password",
+                "tenant_id": "tenant_id",
+            },
+        ),
+        (
+            Connection(
+                conn_id="testconn",
                 conn_type="wasb",
                 login="testaccountname",
                 password="password",
