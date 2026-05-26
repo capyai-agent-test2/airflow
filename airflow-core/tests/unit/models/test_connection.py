@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import sys
+import types
 from typing import TYPE_CHECKING
 from unittest import mock
 
@@ -423,6 +424,65 @@ class TestConnection:
             "stream": True,
             "headers": {"Content-Type": "application/json", "X-Requested-By": "Airflow"},
         }
+
+    @mock.patch("airflow.models.connection.import_string")
+    @mock.patch("airflow.providers_manager.ProvidersManager")
+    def test_test_connection_uses_existing_sql_connection(self, mock_providers_manager, mock_import_string):
+        hook = types.SimpleNamespace(
+            hook_class_name="fake.module.FakeDbHook",
+            hook_name="Fake DB Hook",
+            package_name="fake-package",
+            connection_id_attribute_name="fake_conn_id",
+        )
+        mock_providers_manager.return_value.hooks = {"mysql": hook}
+
+        class FakeDbHook:
+            def __init__(self, fake_conn_id, connection=None):
+                self.fake_conn_id = fake_conn_id
+                self.connection = connection
+
+            def test_connection(self):
+                if self.connection is None:
+                    raise AirflowNotFoundException(f"The conn_id `{self.fake_conn_id}` isn't defined")
+                return True, "Connection successfully tested"
+
+        mock_import_string.return_value = FakeDbHook
+
+        conn = Connection(conn_id="Maria_DB_tester", conn_type="mysql")
+
+        status, message = conn.test_connection()
+
+        assert status is True
+        assert message == "Connection successfully tested"
+
+    @mock.patch("airflow.models.connection.import_string")
+    @mock.patch("airflow.providers_manager.ProvidersManager")
+    def test_test_connection_falls_back_for_hooks_without_connection_param(
+        self, mock_providers_manager, mock_import_string
+    ):
+        hook = types.SimpleNamespace(
+            hook_class_name="fake.module.FakeLegacyHook",
+            hook_name="Fake Legacy Hook",
+            package_name="fake-package",
+            connection_id_attribute_name="fake_conn_id",
+        )
+        mock_providers_manager.return_value.hooks = {"http": hook}
+
+        class FakeLegacyHook:
+            def __init__(self, fake_conn_id):
+                self.fake_conn_id = fake_conn_id
+
+            def test_connection(self):
+                return True, "Connection successfully tested"
+
+        mock_import_string.return_value = FakeLegacyHook
+
+        conn = Connection(conn_id="test_conn", conn_type="http")
+
+        status, message = conn.test_connection()
+
+        assert status is True
+        assert message == "Connection successfully tested"
 
     @mock.patch("airflow.sdk.Connection.get")
     def test_get_connection_from_secrets_task_sdk_success(self, mock_get):
