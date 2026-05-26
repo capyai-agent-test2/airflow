@@ -241,6 +241,7 @@ class _PartialDescriptor:
 OPERATOR_DEFAULTS: dict[str, Any] = {
     "allow_nested_operators": True,
     "depends_on_past": False,
+    "depends_on_previous_tasks": [],
     "email_on_failure": DEFAULT_EMAIL_ON_FAILURE,
     "email_on_retry": DEFAULT_EMAIL_ON_RETRY,
     "execution_timeout": DEFAULT_TASK_EXECUTION_TIMEOUT,
@@ -288,6 +289,7 @@ if TYPE_CHECKING:
         resources: dict[str, Any] | None = ...,
         trigger_rule: str = ...,
         depends_on_past: bool = ...,
+        depends_on_previous_tasks: Collection[str] = ...,
         ignore_first_depends_on_past: bool = ...,
         wait_for_past_depends_before_skipping: bool = ...,
         wait_for_downstream: bool = ...,
@@ -386,6 +388,11 @@ else:
             if dag:
                 dag_str = f" in dag {dag.dag_id}"
             raise ValueError(f"pool slots for {task_id}{dag_str} cannot be less than 1")
+        partial_kwargs["depends_on_previous_tasks"] = _validate_depends_on_previous_tasks(
+            partial_kwargs["depends_on_previous_tasks"],
+            depends_on_past=partial_kwargs["depends_on_past"],
+            wait_for_downstream=partial_kwargs["wait_for_downstream"],
+        )
         if retries := partial_kwargs.get("retries"):
             partial_kwargs["retries"] = BaseOperator._convert_retries(retries)
         partial_kwargs["retry_delay"] = BaseOperator._convert_retry_delay(partial_kwargs["retry_delay"])
@@ -460,6 +467,21 @@ def _collect_from_input(value_or_values: None | C | Collection[C]) -> list[C]:
     if isinstance(value_or_values, Collection):
         return list(value_or_values)
     return [value_or_values]
+
+
+def _validate_depends_on_previous_tasks(
+    value: Collection[str], *, depends_on_past: bool, wait_for_downstream: bool
+) -> list[str]:
+    if isinstance(value, str):
+        raise TypeError("depends_on_previous_tasks must be a collection of task IDs, not a string.")
+    converted = list(value)
+    if any(not isinstance(task_id, str) for task_id in converted):
+        raise TypeError("depends_on_previous_tasks must contain only task IDs.")
+    if converted and (depends_on_past or wait_for_downstream):
+        raise ValueError(
+            "depends_on_previous_tasks cannot be used with depends_on_past or wait_for_downstream."
+        )
+    return converted
 
 
 class BaseOperatorMeta(abc.ABCMeta):
@@ -605,6 +627,7 @@ BASEOPERATOR_ARGS_EXPECTED_TYPES = {
     "retries": int,
     "retry_exponential_backoff": (int, float),
     "depends_on_past": bool,
+    "depends_on_previous_tasks": list,
     "ignore_first_depends_on_past": bool,
     "wait_for_past_depends_before_skipping": bool,
     "wait_for_downstream": bool,
@@ -708,6 +731,9 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
     :param depends_on_past: when set to true, task instances will run
         sequentially and only if the previous instance has succeeded or has been skipped.
         The task instance for the start_date is allowed to run.
+    :param depends_on_previous_tasks: when set, task instances will wait for the listed tasks
+        in the previous Dag run to succeed or be skipped before running. This cannot be combined
+        with ``depends_on_past`` or ``wait_for_downstream``.
     :param wait_for_past_depends_before_skipping: when set to true, if the task instance
         should be marked as skipped, and depends_on_past is true, the ti will stay on None state
         waiting the task of the previous run
@@ -876,6 +902,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
     start_date: datetime | None = None
     end_date: datetime | None = None
     depends_on_past: bool = False
+    depends_on_previous_tasks: list[str] = field(default_factory=list)
     ignore_first_depends_on_past: bool = DEFAULT_IGNORE_FIRST_DEPENDS_ON_PAST
     wait_for_past_depends_before_skipping: bool = DEFAULT_WAIT_FOR_PAST_DEPENDS_BEFORE_SKIPPING
     wait_for_downstream: bool = False
@@ -958,6 +985,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         "start_date",
         "end_date",
         "depends_on_past",
+        "depends_on_previous_tasks",
         "wait_for_downstream",
         "priority_weight",
         "execution_timeout",
@@ -1035,6 +1063,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         depends_on_past: bool = False,
+        depends_on_previous_tasks: Collection[str] = (),
         ignore_first_depends_on_past: bool = DEFAULT_IGNORE_FIRST_DEPENDS_ON_PAST,
         wait_for_past_depends_before_skipping: bool = DEFAULT_WAIT_FOR_PAST_DEPENDS_BEFORE_SKIPPING,
         wait_for_downstream: bool = False,
@@ -1169,6 +1198,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         self.trigger_rule: TriggerRule = TriggerRule(trigger_rule)
 
         self.depends_on_past: bool = depends_on_past
+        self.depends_on_previous_tasks: list[str] = list(depends_on_previous_tasks)
         self.ignore_first_depends_on_past: bool = ignore_first_depends_on_past
         self.wait_for_past_depends_before_skipping: bool = wait_for_past_depends_before_skipping
         self.wait_for_downstream: bool = wait_for_downstream
@@ -1387,6 +1417,23 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
 
     _convert_retry_delay = _convert_timedelta
     _convert_max_retry_delay = _convert_timedelta
+
+    def _convert_depends_on_past(self, value: bool) -> bool:
+        if value and getattr(self, "depends_on_previous_tasks", []):
+            raise ValueError("depends_on_past cannot be used with depends_on_previous_tasks.")
+        return value
+
+    def _convert_depends_on_previous_tasks(self, value: Collection[str]) -> list[str]:
+        return _validate_depends_on_previous_tasks(
+            value,
+            depends_on_past=getattr(self, "depends_on_past", False),
+            wait_for_downstream=getattr(self, "wait_for_downstream", False),
+        )
+
+    def _convert_wait_for_downstream(self, value: bool) -> bool:
+        if value and getattr(self, "depends_on_previous_tasks", []):
+            raise ValueError("wait_for_downstream cannot be used with depends_on_previous_tasks.")
+        return value
 
     @staticmethod
     def _convert_resources(resources: dict[str, Any] | None) -> Resources | None:

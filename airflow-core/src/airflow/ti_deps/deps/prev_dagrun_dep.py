@@ -105,6 +105,14 @@ class PrevDagrunDep(BaseTIDep):
         return 0 if unsuccessful_tis_count is None else unsuccessful_tis_count
 
     @staticmethod
+    def _get_previous_task_ids(task: Operator) -> tuple[str, ...]:
+        if task.depends_on_previous_tasks:
+            return tuple(task.depends_on_previous_tasks)
+        if task.depends_on_past:
+            return (task.task_id,)
+        return ()
+
+    @staticmethod
     def _has_unsuccessful_dependants(dagrun: DagRun, task: Operator, *, session: Session) -> bool:
         """
         Check if any of the task's dependants are unsuccessful in a given run.
@@ -135,7 +143,8 @@ class PrevDagrunDep(BaseTIDep):
             yield self._passing_status(reason=reason)
             return
 
-        if not ti.task.depends_on_past:
+        previous_task_ids = self._get_previous_task_ids(ti.task)
+        if not previous_task_ids:
             self._push_past_deps_met_xcom_if_needed(ti, dep_context)
             yield self._passing_status(reason="The task did not have depends_on_past set.")
             return
@@ -180,30 +189,50 @@ class PrevDagrunDep(BaseTIDep):
             yield self._passing_status(reason="This task instance was the first task instance for its task.")
             return
 
-        if not self._has_tis(last_dagrun, ti.task_id, session=session):
-            if ti.task.ignore_first_depends_on_past:
-                if not self._has_any_prior_tis(ti, session=session):
-                    self._push_past_deps_met_xcom_if_needed(ti, dep_context)
-                    yield self._passing_status(
-                        reason="ignore_first_depends_on_past is true for this task "
-                        "and it is the first task instance for its task."
+        for previous_task_id in previous_task_ids:
+            if not self._has_tis(last_dagrun, previous_task_id, session=session):
+                if previous_task_id == ti.task_id and ti.task.ignore_first_depends_on_past:
+                    if not self._has_any_prior_tis(ti, session=session):
+                        if len(previous_task_ids) == 1:
+                            self._push_past_deps_met_xcom_if_needed(ti, dep_context)
+                            yield self._passing_status(
+                                reason="ignore_first_depends_on_past is true for this task "
+                                "and it is the first task instance for its task."
+                            )
+                            return
+                        continue
+
+                if previous_task_id == ti.task_id:
+                    yield self._failing_status(
+                        reason="depends_on_past is true for this task's DAG, but the previous "
+                        "task instance has not run yet."
                     )
-                    return
+                else:
+                    yield self._failing_status(
+                        reason=(
+                            f"depends_on_previous_tasks requires task {previous_task_id!r} to exist in the "
+                            "previous Dag run, but it has not run yet."
+                        )
+                    )
+                return
 
-            yield self._failing_status(
-                reason="depends_on_past is true for this task's DAG, but the previous "
-                "task instance has not run yet."
+            unsuccessful_tis_count = self._count_unsuccessful_tis(
+                last_dagrun, previous_task_id, session=session
             )
-            return
-
-        unsuccessful_tis_count = self._count_unsuccessful_tis(last_dagrun, ti.task_id, session=session)
-        if unsuccessful_tis_count > 0:
-            reason = (
-                f"depends_on_past is true for this task, but {unsuccessful_tis_count} "
-                f"previous task instance(s) are not in a successful state."
-            )
-            yield self._failing_status(reason=reason)
-            return
+            if unsuccessful_tis_count > 0:
+                if previous_task_id == ti.task_id:
+                    reason = (
+                        f"depends_on_past is true for this task, but {unsuccessful_tis_count} "
+                        f"previous task instance(s) are not in a successful state."
+                    )
+                else:
+                    reason = (
+                        "depends_on_previous_tasks requires task "
+                        f"{previous_task_id!r} in the previous Dag run to succeed or be skipped, but "
+                        f"{unsuccessful_tis_count} task instance(s) are not in a successful state."
+                    )
+                yield self._failing_status(reason=reason)
+                return
 
         if ti.task.wait_for_downstream and self._has_unsuccessful_dependants(
             last_dagrun, ti.task, session=session

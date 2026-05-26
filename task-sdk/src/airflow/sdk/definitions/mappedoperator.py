@@ -454,7 +454,27 @@ class MappedOperator(AbstractOperator):
 
     @depends_on_past.setter
     def depends_on_past(self, value: bool) -> None:
+        if value and self.depends_on_previous_tasks:
+            raise ValueError("depends_on_past cannot be used with depends_on_previous_tasks.")
         self.partial_kwargs["depends_on_past"] = value
+
+    @property
+    def depends_on_previous_tasks(self) -> list[str]:
+        value = self.partial_kwargs.get("depends_on_previous_tasks", ())
+        return list(value)
+
+    @depends_on_previous_tasks.setter
+    def depends_on_previous_tasks(self, value: Collection[str]) -> None:
+        if isinstance(value, str):
+            raise TypeError("depends_on_previous_tasks must be a collection of task IDs, not a string.")
+        converted = list(value)
+        if any(not isinstance(task_id, str) for task_id in converted):
+            raise TypeError("depends_on_previous_tasks must contain only task IDs.")
+        if converted and (self.depends_on_past or self.wait_for_downstream):
+            raise ValueError(
+                "depends_on_previous_tasks cannot be used with depends_on_past or wait_for_downstream."
+            )
+        self.partial_kwargs["depends_on_previous_tasks"] = converted
 
     @property
     def ignore_first_depends_on_past(self) -> bool:
@@ -482,6 +502,8 @@ class MappedOperator(AbstractOperator):
 
     @wait_for_downstream.setter
     def wait_for_downstream(self, value: bool) -> None:
+        if value and self.depends_on_previous_tasks:
+            raise ValueError("wait_for_downstream cannot be used with depends_on_previous_tasks.")
         self.partial_kwargs["wait_for_downstream"] = value
 
     @property

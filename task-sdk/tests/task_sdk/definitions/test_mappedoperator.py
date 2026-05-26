@@ -169,6 +169,31 @@ def test_partial_on_invalid_pool_slots_raises() -> None:
         MockOperator.partial(task_id="pool_slots_test", pool="test", pool_slots="a").expand(arg1=[1, 2, 3])
 
 
+def test_partial_on_depends_on_previous_tasks_conflict_raises() -> None:
+    with pytest.raises(
+        ValueError,
+        match="depends_on_previous_tasks cannot be used with depends_on_past or wait_for_downstream",
+    ):
+        MockOperator.partial(
+            task_id="mapped",
+            arg1="a",
+            depends_on_past=True,
+            depends_on_previous_tasks=["upstream"],
+        ).expand(arg2=["b"])
+
+
+def test_partial_on_depends_on_previous_tasks_string_raises() -> None:
+    with pytest.raises(
+        TypeError,
+        match="depends_on_previous_tasks must be a collection of task IDs, not a string",
+    ):
+        MockOperator.partial(
+            task_id="mapped",
+            arg1="a",
+            depends_on_previous_tasks="upstream",
+        ).expand(arg2=["b"])
+
+
 def test_mapped_task_applies_default_args_classic():
     with DAG(
         dag_id="test",
@@ -760,6 +785,7 @@ def test_mapped_xcom_push_skipped_tasks(create_runtime_ti, mock_supervisor_comms
         ("is_setup", True, False),
         ("is_teardown", True, False),
         ("depends_on_past", True, False),
+        ("depends_on_previous_tasks", ["old_task"], ["new_task"]),
         ("ignore_first_depends_on_past", True, False),
         ("wait_for_past_depends_before_skipping", True, False),
         ("wait_for_downstream", True, False),
@@ -789,6 +815,16 @@ def test_setters(setter_name: str, old_value: object, new_value: object) -> None
     assert getattr(op, setter_name) == old_value
     setattr(op, setter_name, new_value)
     assert getattr(op, setter_name) == new_value
+
+
+def test_depends_on_previous_tasks_setter_rejects_conflicts() -> None:
+    op = MockOperator.partial(task_id="a", arg1="a", depends_on_past=True).expand(arg2=["a", "b", "c"])
+
+    with pytest.raises(
+        ValueError,
+        match="depends_on_previous_tasks cannot be used with depends_on_past or wait_for_downstream",
+    ):
+        op.depends_on_previous_tasks = ["upstream"]
 
 
 def test_mapped_operator_in_task_group_no_duplicate_prefix():
