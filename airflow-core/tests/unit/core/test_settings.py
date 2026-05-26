@@ -79,6 +79,10 @@ def task_must_have_owners(task: BaseOperator):
         )
 """
 
+SETTINGS_FILE_COMPAT_SDK_CONF = """
+from airflow.providers.common.compat.sdk import conf
+"""
+
 
 class SettingsContext:
     def __init__(self, content: str, module_name: str):
@@ -213,6 +217,16 @@ class TestLocalSettings:
             task_instance.owner = "airflow"
             with pytest.raises(AirflowClusterPolicyViolation):
                 settings.task_must_have_owners(task_instance)
+
+    def test_import_local_settings_does_not_override_conf(self):
+        with SettingsContext(SETTINGS_FILE_COMPAT_SDK_CONF, "airflow_local_settings"):
+            from airflow import settings
+            from airflow.configuration import conf as core_conf
+
+            settings.import_local_settings()
+
+            assert settings.conf is core_conf
+            assert hasattr(settings.conf, "mask_secrets")
 
 
 class TestMetadataEngineHooks:

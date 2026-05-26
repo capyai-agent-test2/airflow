@@ -788,6 +788,8 @@ def import_local_settings():
         # If we have already handled a function by adding it to the plugin,
         # then don't clobber the global function
         for name in names - plugin_functions:
+            if name == "conf":
+                continue
             globals()[name] = getattr(airflow_local_settings, name)
 
         if get_policy_plugin_manager().hook.task_instance_mutation_hook.get_hookimpls():
