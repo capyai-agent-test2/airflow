@@ -29,7 +29,7 @@ import {
   PanelGroup,
   PanelResizeHandle,
 } from "react-resizable-panels";
-import { Outlet, useParams, useSearchParams } from "react-router-dom";
+import { Outlet, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useLocalStorage } from "usehooks-ts";
 
 import {
@@ -93,11 +93,13 @@ type Props = {
 
 export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
   const { t: translate } = useTranslation();
-  const { dagId = "", runId } = useParams();
+  const { dagId = "", groupId, runId, taskId } = useParams();
+  const navigate = useNavigate();
   const { data: dag } = useDagServiceGetDag({ dagId });
   const [dagView, setDagView] = useLocalStorage<DagView>(DEFAULT_DAG_VIEW_KEY, "grid");
   const panelGroupRef = useRef<ImperativePanelGroupHandle | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.toString();
 
   // Global setting: applies to all Dags (intentionally not scoped to dagId)
   const [showVersionIndicatorMode, setShowVersionIndicatorMode] = useLocalStorage(
@@ -163,6 +165,24 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
     runType: runTypeFilter,
     triggeringUser: triggeringUserFilter,
   });
+
+  useEffect(() => {
+    const latestRunId = initialGridRuns?.[0]?.run_id;
+
+    if (dagView !== "graph" || latestRunId === undefined || Boolean(runId) || Boolean(groupId) || Boolean(taskId)) {
+      return;
+    }
+
+    void Promise.resolve(
+      navigate(
+        {
+          pathname: `/dags/${dagId}/runs/${latestRunId}`,
+          search,
+        },
+        { replace: true },
+      ),
+    );
+  }, [dagId, dagView, groupId, initialGridRuns, navigate, runId, search, taskId]);
 
   // Whether the selected run is absent from the initial grid page and we don't
   // yet have a ceiling set. Only true once initialGridRuns has loaded.
