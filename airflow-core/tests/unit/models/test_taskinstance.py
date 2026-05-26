@@ -2359,18 +2359,33 @@ class TestTaskInstance:
         assert "error" in callback_args
         assert callback_args["error"] == error_message
 
-    def test_handle_failure_updates_queued_task_updates_state(self, dag_maker):
-        session = settings.Session()
+    @pytest.mark.parametrize("initial_state", [State.QUEUED, State.DEFERRED])
+    def test_handle_failure_records_history_for_retrying_non_running_ti(
+        self, dag_maker, session, initial_state
+    ):
         with dag_maker():
             task = EmptyOperator(task_id="mytask", retries=1)
         dr = dag_maker.create_dagrun()
         ti = dr.get_task_instance(task.task_id)
-        ti.state = State.QUEUED
-        session.merge(ti)
+        ti.state = initial_state
+        ti = session.merge(ti)
         session.flush()
-        assert ti.state == State.QUEUED
+        assert ti.state == initial_state
+        old_ti_id = ti.id
+        old_try_number = ti.try_number
         ti.handle_failure("test queued ti", test_mode=True)
         assert ti.state == State.UP_FOR_RETRY
+        tih = session.scalar(
+            select(TaskInstanceHistory).where(
+                TaskInstanceHistory.dag_id == ti.dag_id,
+                TaskInstanceHistory.task_id == ti.task_id,
+                TaskInstanceHistory.run_id == ti.run_id,
+                TaskInstanceHistory.map_index == ti.map_index,
+                TaskInstanceHistory.try_number == old_try_number,
+                TaskInstanceHistory.task_instance_id == old_ti_id,
+            )
+        )
+        assert tih is not None
 
     @patch("airflow._shared.observability.metrics.stats._get_backend")
     def test_handle_failure_no_task(self, mock_get_backend, dag_maker):
