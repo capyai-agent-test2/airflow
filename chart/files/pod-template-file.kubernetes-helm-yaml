@@ -50,7 +50,7 @@ metadata:
 spec:
   initContainers:
     {{- if and .Values.dags.gitSync.enabled (not .Values.dags.persistence.enabled) }}
-      {{- include "git_sync_container" (dict "Values" .Values "is_init" "true" "Template" .Template) | nindent 4 }}
+      {{- include "git_sync_container" (dict "Values" .Values "Capabilities" .Capabilities "is_init" "true" "Template" .Template) | nindent 4 }}
     {{- end }}
     {{- if or .Values.workers.kubernetes.extraInitContainers .Values.workers.extraInitContainers }}
       {{- tpl (toYaml (.Values.workers.kubernetes.extraInitContainers | default .Values.workers.extraInitContainers)) . | nindent 4 }}

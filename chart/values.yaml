@@ -4105,6 +4105,11 @@ dags:
     # default one and old one will be removed
     recommendedProbeSetting: false
 
+    # Run Git-Sync as a native Kubernetes sidecar on clusters that support init container
+    # restartPolicy (Kubernetes 1.28+). When enabled, the chart keeps the init container
+    # running for the pod lifetime instead of adding a separate regular sidecar container.
+    useNativeSidecar: false
+
     startupProbe:
       enabled: true
       timeoutSeconds: 1

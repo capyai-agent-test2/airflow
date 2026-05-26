@@ -160,7 +160,7 @@ spec:
             {{- end }}
         {{- end }}
         {{- if and .Values.dags.gitSync.enabled (not .Values.dags.persistence.enabled) }}
-          {{- include "git_sync_container" (dict "Values" .Values "is_init" "true" "Template" .Template) | nindent 8 }}
+          {{- include "git_sync_container" (dict "Values" .Values "Capabilities" .Capabilities "is_init" "true" "Template" .Template) | nindent 8 }}
         {{- end }}
         {{- if .Values.triggerer.extraInitContainers }}
           {{- tpl (toYaml .Values.triggerer.extraInitContainers) . | nindent 8 }}
@@ -216,7 +216,7 @@ spec:
           ports:
             - name: triggerer-logs
               containerPort: {{ .Values.ports.triggererLogs }}
-        {{- if and .Values.dags.gitSync.enabled (not .Values.dags.persistence.enabled) }}
+        {{- if and .Values.dags.gitSync.enabled (not .Values.dags.persistence.enabled) (ne (include "git_sync_uses_native_sidecar" .) "true") }}
           {{- include "git_sync_container" . | nindent 8 }}
         {{- end }}
         {{- if .Values.triggerer.logGroomerSidecar.enabled }}

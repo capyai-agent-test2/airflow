@@ -11090,6 +11090,11 @@
                             "type": "boolean",
                             "default": false
                         },
+                        "useNativeSidecar": {
+                            "description": "Run Git-Sync as a native Kubernetes sidecar on clusters that support init container restartPolicy (Kubernetes 1.28+).",
+                            "type": "boolean",
+                            "default": false
+                        },
                         "startupProbe": {
                             "description": "Startup probe configuration for git sync container.",
                             "type": "object",

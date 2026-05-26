@@ -137,7 +137,7 @@ spec:
             {{- end }}
         {{- end }}
         {{- if and .Values.dags.gitSync.enabled (not .Values.dags.persistence.enabled) }}
-          {{- include "git_sync_container" (dict "Values" .Values "is_init" "true" "Template" .Template) | nindent 8 }}
+          {{- include "git_sync_container" (dict "Values" .Values "Capabilities" .Capabilities "is_init" "true" "Template" .Template) | nindent 8 }}
         {{- end }}
         {{- if .Values.dagProcessor.extraInitContainers }}
           {{- tpl (toYaml .Values.dagProcessor.extraInitContainers) . | nindent 8 }}
@@ -190,7 +190,7 @@ spec:
                 {{- else }}
                   {{- include "dag_processor_liveness_check_command" . | indent 14 }}
                 {{- end }}
-        {{- if .Values.dags.gitSync.enabled }}
+        {{- if and .Values.dags.gitSync.enabled (ne (include "git_sync_uses_native_sidecar" .) "true") }}
           {{- include "git_sync_container" . | indent 8 }}
         {{- end }}
         {{- if .Values.dagProcessor.logGroomerSidecar.enabled }}

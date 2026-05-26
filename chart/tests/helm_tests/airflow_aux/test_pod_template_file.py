@@ -135,6 +135,30 @@ class TestPodTemplateFile:
 
         assert jmespath.search("spec.initContainers", docs[0]) is None
 
+    def test_should_render_native_git_sync_sidecar_on_supported_kubernetes(self):
+        docs = render_chart(
+            values={
+                "dags": {
+                    "gitSync": {
+                        "enabled": True,
+                        "containerName": "git-sync-test",
+                        "httpPort": 10,
+                        "recommendedProbeSetting": True,
+                        "useNativeSidecar": True,
+                    }
+                }
+            },
+            show_only=["templates/pod-template-file.yaml"],
+            chart_dir=self.temp_chart_dir,
+            kubernetes_version="1.30.13",
+        )
+
+        assert jmespath.search("spec.initContainers[0].name", docs[0]) == "git-sync-test"
+        assert jmespath.search("spec.initContainers[0].restartPolicy", docs[0]) == "Always"
+        assert {"name": "GIT_SYNC_HTTP_BIND", "value": ":10"} in jmespath.search(
+            "spec.initContainers[0].env", docs[0]
+        )
+
     @pytest.mark.parametrize(
         ("dag_values", "expected_read_only"),
         [
