@@ -1331,20 +1331,26 @@ class TestTIUpdateState:
             assert events[0].asset == AssetModel(name="my-task", uri="s3://bucket/my-task", extra={})
             assert events[0].extra == expected_extra
 
-    def test_ti_update_state_to_success_asset_registration_failure_returns_204(
+    def test_ti_update_state_to_success_asset_registration_db_failure_returns_204(
         self, client, session, create_task_instance
     ):
         ti = create_task_instance(
-            task_id="test_ti_update_state_to_success_asset_registration_failure_returns_204",
+            task_id="test_ti_update_state_to_success_asset_registration_db_failure_returns_204",
             start_date=DEFAULT_START_DATE,
             state=State.RUNNING,
         )
         session.commit()
 
+        def raise_db_error(_, __, ___, current_session):
+            current_session.execute(
+                update(TaskInstance).where(TaskInstance.id == ti.id).values(hostname=None)
+            )
+            current_session.flush()
+
         with mock.patch(
             "airflow.models.taskinstance.TaskInstance.register_asset_changes_in_db",
             autospec=True,
-            side_effect=RuntimeError("boom"),
+            side_effect=raise_db_error,
         ) as mock_register_asset_changes:
             response = client.patch(
                 f"/execution/task-instances/{ti.id}/state",

@@ -484,6 +484,7 @@ def ti_update_state(
                     session,
                 )
         except Exception:
+            session.rollback()
             log.warning(
                 "Failed to register asset changes after Task Instance success update",
                 dag_id=dag_id,
