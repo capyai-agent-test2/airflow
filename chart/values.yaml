@@ -3899,6 +3899,7 @@ postgresql:
 config:
   core:
     dags_folder: '{{ include "airflow_dags" . }}'
+    plugins_folder: '{{ include "airflow_plugins" . }}'
     # This is ignored when used with the official Docker image
     load_examples: 'False'
     executor: '{{ .Values.executor }}'
@@ -4118,6 +4119,181 @@ dags:
 
     # The behaviour of the LivenessProbe will change with the next release of Helm Chart.
     # To enable future behaviour set `dags.gitSync.recommendedProbeSetting` to 'true'.
+    # New behaviour uses the recommended liveness configuration by using Git-Sync built-in
+    # liveness service
+    livenessProbe: {}
+    #  enabled: true
+    #  timeoutSeconds: 1
+    #  initialDelaySeconds: 0
+    #  periodSeconds: 5
+    #  failureThreshold: 10
+
+    # Mount additional volumes into git-sync.
+    extraVolumeMounts: []
+    # It can be templated like in the following example:
+    #  extraVolumeMounts:
+    #    - name: my-templated-extra-volume
+    #      mountPath: "{{ .Values.my_custom_path }}"
+    #      readOnly: true
+
+    # Supported env vars for gitsync can be found at https://github.com/kubernetes/git-sync
+    env: []
+    # - name: ""
+    #   value: ""
+
+    # Configuration for empty dir volume
+    # emptyDirConfig:
+    #   sizeLimit: 1Gi
+    #   medium: Memory
+
+    resources: {}
+    #  limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    #  requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+plugins:
+  # Where plugins volume will be mounted. Works for both persistence and gitSync.
+  # If not specified, plugins mount path will be set to $AIRFLOW_HOME/plugins
+  mountPath: ~
+  persistence:
+    # Annotations for plugins PVC
+    annotations: {}
+
+    # Enable persistent volume for storing plugins
+    enabled: false
+
+    # Volume size for plugins
+    size: 1Gi
+
+    # If using a custom storageClass, pass name here
+    storageClassName:
+
+    # Access mode of the persistent volume
+    accessMode: ReadWriteOnce
+
+    # The name of an existing PVC to use
+    existingClaim:
+
+    # Optional subpath for plugins volume mount
+    subPath: ~
+
+  gitSync:
+    enabled: false
+
+    # Git repo clone url
+    repo: https://github.com/apache/airflow.git
+    # SSH example: git@github.com:apache/airflow.git
+    # HTTPS example: https://github.com/apache/airflow.git
+
+    branch: v2-2-stable
+    rev: HEAD
+
+    # The git revision (branch, tag, or hash) to check out, v4 only
+    ref: v2-2-stable
+
+    depth: 1
+
+    # The number of consecutive failures allowed before aborting
+    maxFailures: 0
+
+    # Subpath within the repo where plugins are located.
+    # Should be "" if plugins are at repo root
+    subPath: ""
+
+    # If your repo needs a username/password, you can load them to a k8s secret
+    #
+    # credentialsSecret: git-credentials
+    #
+    # Secret example:
+    #  apiVersion: v1
+    #  kind: Secret
+    #  metadata:
+    #    name: git-credentials
+    #  data:
+    #    # For git-sync v3
+    #    GIT_SYNC_USERNAME: <base64_encoded_git_username>
+    #    GIT_SYNC_PASSWORD: <base64_encoded_git_password>
+    #    # For git-sync v4
+    #    GITSYNC_USERNAME: <base64_encoded_git_username>
+    #    GITSYNC_PASSWORD: <base64_encoded_git_password>
+
+    # If you are using an ssh clone url, you can load the ssh private key to a k8s secret
+    #
+    # sshKeySecret: airflow-plugins-ssh-secret
+    #
+    # Secret example:
+    #  apiVersion: v1
+    #  kind: Secret
+    #  metadata:
+    #    name: airflow-plugins-ssh-secret
+    #  data:
+    #    gitSshKey: <base64_encoded_data>
+
+    # If `sshKeySecret` is not specified, you can set `sshKey`
+    # sshKey: |
+    #   -----BEGIN {OPENSSH PRIVATE KEY}-----
+    #   ...
+    #   -----END {OPENSSH PRIVATE KEY}-----
+
+    # If you are using an ssh private key, you can additionally
+    # specify the content of your known_hosts file
+    # knownHosts: |
+    #    <host1>,<ip1> <key1>
+    #    <host2>,<ip2> <key2>
+
+    # Interval between git sync attempts in seconds.
+    # High values are more likely to cause plugins to become out of sync between different components.
+    # Low values cause more traffic to the remote git repository.
+    # Go-style duration string (e.g. "100ms" or "0.1s" = 100ms).
+    # For backwards compatibility, wait will be used if it is specified.
+    period: 5s
+    wait: ~
+
+    # Add variables from secret into gitSync containers, such proxy-config
+    envFrom: ~
+    # envFrom: |
+    #   - secretRef:
+    #       name: 'proxy-config'
+
+    containerName: git-sync
+    uid: 65533
+
+    # When not set, the values defined in the global `securityContext` will be used
+    # (deprecated, use `plugins.gitSync.securityContexts` instead)
+    securityContext: {}
+    #  runAsUser: 65533
+    #  runAsGroup: 0
+
+    securityContexts:
+      container: {}
+
+    # Container level lifecycle hooks
+    containerLifecycleHooks: {}
+
+    # Git-Sync liveness service HTTP bind port
+    httpPort: 1234
+
+    # Setting this to true, will remove readinessProbe usage and configure livenessProbe to
+    # use a dedicated Git-Sync liveness service. In future, behaviour with value true will be
+    # default one and old one will be removed
+    recommendedProbeSetting: false
+
+    startupProbe:
+      enabled: true
+      timeoutSeconds: 1
+      initialDelaySeconds: 0
+      periodSeconds: 5
+      failureThreshold: 10
+
+    # As Git-Sync is not service-type object, the usage of this section will be removed.
+    # By setting `plugins.gitSync.recommendedProbeSetting` to 'true', you will enable future behaviour.
+    readinessProbe: {}
+
+    # The behaviour of the LivenessProbe will change with the next release of Helm Chart.
+    # To enable future behaviour set `plugins.gitSync.recommendedProbeSetting` to 'true'.
     # New behaviour uses the recommended liveness configuration by using Git-Sync built-in
     # liveness service
     livenessProbe: {}

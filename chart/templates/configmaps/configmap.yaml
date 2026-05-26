@@ -66,6 +66,11 @@ data:
     {{- .Values.dags.gitSync.knownHosts | nindent 4 }}
   {{- end }}
 
+  {{- if and .Values.plugins.gitSync.enabled .Values.plugins.gitSync.knownHosts }}
+  plugins_known_hosts: |-
+    {{- .Values.plugins.gitSync.knownHosts | nindent 4 }}
+  {{- end }}
+
   {{- if contains "KubernetesExecutor" $.Values.executor }}
   pod_template_file.yaml: |-
     {{- if .Values.podTemplate }}

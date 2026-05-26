@@ -11324,6 +11324,398 @@
                 }
             }
         },
+        "plugins": {
+            "description": "Plugins settings.",
+            "type": "object",
+            "x-docsSection": "Airflow",
+            "additionalProperties": false,
+            "properties": {
+                "mountPath": {
+                    "description": "Where plugins volume will be mounted. Works for both `persistence` and `gitSync`. If not specified, plugins mount path will be set to `$AIRFLOW_HOME/plugins`",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "default": null
+                },
+                "persistence": {
+                    "description": "Persistence configuration.",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "description": "Enable persistent volume for storing plugins.",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "size": {
+                            "description": "Volume size for plugins.",
+                            "type": "string",
+                            "default": "1Gi"
+                        },
+                        "storageClassName": {
+                            "description": "If using a custom StorageClass, pass name here (templated).",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "accessMode": {
+                            "description": "Access mode of the persistent volume.",
+                            "type": "string",
+                            "enum": [
+                                "ReadWriteOnce",
+                                "ReadOnlyMany",
+                                "ReadWriteMany"
+                            ],
+                            "default": "ReadWriteOnce"
+                        },
+                        "existingClaim": {
+                            "description": "The name of an existing PVC to use.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "annotations": {
+                            "description": "Annotations for the plugins PVC",
+                            "type": "object",
+                            "default": {},
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        },
+                        "subPath": {
+                            "description": "Subpath within the PVC where plugins are located.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        }
+                    }
+                },
+                "gitSync": {
+                    "description": "Git sync settings.",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "description": "Enable Git sync.",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "repo": {
+                            "description": "Git repository.",
+                            "type": "string",
+                            "default": "https://github.com/apache/airflow.git"
+                        },
+                        "branch": {
+                            "description": "Git branch",
+                            "type": "string",
+                            "default": "v2-2-stable"
+                        },
+                        "rev": {
+                            "description": "Git revision.",
+                            "type": "string",
+                            "default": "HEAD"
+                        },
+                        "ref": {
+                            "description": "Git revision branch, tag, or hash.",
+                            "type": "string",
+                            "default": "v2-2-stable"
+                        },
+                        "depth": {
+                            "description": "Repository depth.",
+                            "type": "integer",
+                            "default": 1
+                        },
+                        "maxFailures": {
+                            "description": "The number of consecutive failures allowed before aborting.",
+                            "type": "integer",
+                            "default": 0
+                        },
+                        "subPath": {
+                            "description": "Subpath within the repo where plugins are located.",
+                            "type": "string",
+                            "default": ""
+                        },
+                        "wait": {
+                            "description": "Interval between git sync attempts in seconds. High values are more likely to cause plugins to become out of sync between different components. Low values cause more traffic to the remote git repository.",
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "period": {
+                            "description": "Interval between git sync attempts in Go-style duration string. High values are more likely to cause plugins to become out of sync between different components. Low values cause more traffic to the remote git repository.",
+                            "type": "string",
+                            "default": "5s"
+                        },
+                        "containerName": {
+                            "description": "Git sync container name.",
+                            "type": "string",
+                            "default": "git-sync"
+                        },
+                        "securityContext": {
+                            "description": "Security context for the `gitSync` container (deprecated, use `securityContexts` instead). If not set, the values from `securityContext` will be used.",
+                            "type": "object",
+                            "$ref": "#/definitions/io.k8s.api.core.v1.SecurityContext",
+                            "default": {},
+                            "examples": [
+                                {
+                                    "runAsUser": 50000,
+                                    "runAsGroup": 0
+                                }
+                            ]
+                        },
+                        "httpPort": {
+                            "description": "Git-Sync liveness service http bind port.",
+                            "type": "integer",
+                            "default": 1234
+                        },
+                        "recommendedProbeSetting": {
+                            "description": "Setting this to true, will remove readiness probe usage and configure liveness probe to use a dedicated Git-Sync liveness service.",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "startupProbe": {
+                            "description": "Startup probe configuration for git sync container.",
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "description": "Enable GitSync Kubernetes Startup Probe.",
+                                    "type": "boolean",
+                                    "default": true
+                                },
+                                "timeoutSeconds": {
+                                    "description": "Number of seconds after which the probe times out. Minimum value is 1 seconds.",
+                                    "type": "integer",
+                                    "default": 1
+                                },
+                                "initialDelaySeconds": {
+                                    "description": "Number of seconds after the container has started before startup probe is initiated.",
+                                    "type": "integer",
+                                    "default": 0
+                                },
+                                "periodSeconds": {
+                                    "description": "How often (in seconds) to perform the probe. Minimum value is 1.",
+                                    "type": "integer",
+                                    "default": 5
+                                },
+                                "failureThreshold": {
+                                    "description": "Minimum consecutive failures for the probe to be considered failed after having succeeded. Minimum value is 1.",
+                                    "type": "integer",
+                                    "default": 10
+                                }
+                            }
+                        },
+                        "livenessProbe": {
+                            "description": "Liveness probe configuration for git sync container.",
+                            "type": "object",
+                            "additionalProperties": true,
+                            "properties": {
+                                "enabled": {
+                                    "description": "Enable GitSync Kubernetes Liveness Probe.",
+                                    "type": "boolean",
+                                    "default": true
+                                },
+                                "timeoutSeconds": {
+                                    "description": "Number of seconds after which the probe times out. Minimum value is 1 seconds.",
+                                    "type": "integer",
+                                    "default": 1
+                                },
+                                "initialDelaySeconds": {
+                                    "description": "Number of seconds after the container has started before startup probe is initiated.",
+                                    "type": "integer",
+                                    "default": 0
+                                },
+                                "periodSeconds": {
+                                    "description": "How often (in seconds) to perform the probe. Minimum value is 1.",
+                                    "type": "integer",
+                                    "default": 5
+                                },
+                                "failureThreshold": {
+                                    "description": "Minimum consecutive failures for the probe to be considered failed after having succeeded. Minimum value is 1.",
+                                    "type": "integer",
+                                    "default": 10
+                                }
+                            }
+                        },
+                        "readinessProbe": {
+                            "description": "Readiness probe configuration for git sync container. As Git-Sync is not service-type object, the usage of the section was removed. Section itself will be removed in future release as to not break setups during upgrades.",
+                            "type": "object",
+                            "$ref": "#/definitions/io.k8s.api.core.v1.Probe"
+                        },
+                        "emptyDirConfig": {
+                            "description": "Configuration for plugins empty dir volume.",
+                            "type": "object",
+                            "$ref": "#/definitions/io.k8s.api.core.v1.EmptyDirVolumeSource",
+                            "default": null
+                        },
+                        "containerLifecycleHooks": {
+                            "description": "Container Lifecycle Hooks definition for the git sync sidecar. If not set, the values from global `containerLifecycleHooks` will be used.",
+                            "type": "object",
+                            "$ref": "#/definitions/io.k8s.api.core.v1.Lifecycle",
+                            "default": {},
+                            "x-docsSection": "Kubernetes",
+                            "examples": [
+                                {
+                                    "postStart": {
+                                        "exec": {
+                                            "command": [
+                                                "/bin/sh",
+                                                "-c",
+                                                "echo postStart handler > /usr/share/message"
+                                            ]
+                                        }
+                                    },
+                                    "preStop": {
+                                        "exec": {
+                                            "command": [
+                                                "/bin/sh",
+                                                "-c",
+                                                "echo preStop handler > /usr/share/message"
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        "securityContexts": {
+                            "description": "Security context definition for the git sync sidecar. If not set, the values from global `securityContexts` will be used.",
+                            "type": "object",
+                            "x-docsSection": "Kubernetes",
+                            "properties": {
+                                "container": {
+                                    "description": "Container security context definition for the git sync sidecar.",
+                                    "type": "object",
+                                    "$ref": "#/definitions/io.k8s.api.core.v1.SecurityContext",
+                                    "default": {},
+                                    "x-docsSection": "Kubernetes",
+                                    "examples": [
+                                        {
+                                            "allowPrivilegeEscalation": false,
+                                            "capabilities": {
+                                                "drop": [
+                                                    "ALL"
+                                                ]
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "uid": {
+                            "description": "Git sync container run as user parameter.",
+                            "type": "integer",
+                            "default": 65533
+                        },
+                        "extraVolumeMounts": {
+                            "description": "Mount additional volumes into git sync container.",
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "$ref": "#/definitions/io.k8s.api.core.v1.VolumeMount"
+                            }
+                        },
+                        "credentialsSecret": {
+                            "description": "Name of a Secret containing the repo `GIT_SYNC_USERNAME` and `GIT_SYNC_PASSWORD`.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "sshKey": {
+                            "description": "SSH private key",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "sshKeySecret": {
+                            "description": "Name of a Secret containing the repo `sshKeySecret`.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "knownHosts": {
+                            "description": "When using a ssh private key, the contents of your `known_hosts` file.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null,
+                            "examples": [
+                                "<host1>,<ip1> <key1>\n<host2>,<ip2> <key2>",
+                                "<host1>,<ip1> <key1>"
+                            ]
+                        },
+                        "env": {
+                            "description": "Environment variables for git sync container.",
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "$ref": "#/definitions/io.k8s.api.core.v1.EnvVar"
+                            },
+                            "examples": [
+                                {
+                                    "name": "GIT_SYNC_TIMEOUT",
+                                    "value": "60"
+                                },
+                                {
+                                    "name": "GIT_SYNC_USERNAME",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": "git-secret",
+                                            "key": "username"
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        "envFrom": {
+                            "description": "Extra envFrom 'items' that will be added to the definition of Airflow gitSync containers; a string or array are expected (templated).",
+                            "type": [
+                                "null",
+                                "string"
+                            ],
+                            "default": null,
+                            "examples": [
+                                "- secretRef:\n    name: 'proxy-config",
+                                "- configMapRef:\n    name: 'proxy-config"
+                            ]
+                        },
+                        "resources": {
+                            "description": "Resources on plugins git-sync sidecar",
+                            "type": "object",
+                            "default": {},
+                            "examples": [
+                                {
+                                    "limits": {
+                                        "cpu": "100m",
+                                        "memory": "128Mi"
+                                    },
+                                    "requests": {
+                                        "cpu": "100m",
+                                        "memory": "128Mi"
+                                    }
+                                }
+                            ],
+                            "$ref": "#/definitions/io.k8s.api.core.v1.ResourceRequirements"
+                        }
+                    }
+                }
+            }
+        },
         "logs": {
             "description": "Logs settings.",
             "type": "object",

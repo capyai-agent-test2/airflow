@@ -127,6 +127,51 @@ class TestAirflowCommon:
         for doc in docs:
             assert expected_mount in jmespath.search("spec.template.spec.containers[0].volumeMounts", doc)
 
+    @pytest.mark.parametrize(
+        ("plugin_values", "expected_mount"),
+        [
+            (
+                {"gitSync": {"enabled": True}},
+                {
+                    "mountPath": "/opt/airflow/plugins",
+                    "name": "plugins",
+                    "readOnly": True,
+                },
+            ),
+            (
+                {"persistence": {"enabled": True}},
+                {
+                    "mountPath": "/opt/airflow/plugins",
+                    "name": "plugins",
+                    "readOnly": False,
+                },
+            ),
+            (
+                {"mountPath": "/opt/airflow/plugins/custom", "gitSync": {"enabled": True}},
+                {
+                    "mountPath": "/opt/airflow/plugins/custom",
+                    "name": "plugins",
+                    "readOnly": True,
+                },
+            ),
+        ],
+    )
+    def test_plugins_mount(self, plugin_values, expected_mount):
+        docs = render_chart(
+            values={"plugins": plugin_values},
+            show_only=[
+                "templates/api-server/api-server-deployment.yaml",
+                "templates/dag-processor/dag-processor-deployment.yaml",
+                "templates/scheduler/scheduler-deployment.yaml",
+                "templates/triggerer/triggerer-deployment.yaml",
+                "templates/workers/worker-deployment.yaml",
+            ],
+        )
+
+        assert len(docs) == 5
+        for doc in docs:
+            assert expected_mount in jmespath.search("spec.template.spec.containers[0].volumeMounts", doc)
+
     def test_git_sync_http_port(self):
         docs = render_chart(
             values={

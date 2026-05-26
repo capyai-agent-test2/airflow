@@ -173,6 +173,43 @@ metadata:
         assert expected_folder_config in cfg.splitlines()
 
     @pytest.mark.parametrize(
+        ("plugin_values", "expected_default_plugin_folder"),
+        [
+            (
+                {"gitSync": {"enabled": True}},
+                "/opt/airflow/plugins/repo",
+            ),
+            (
+                {"persistence": {"enabled": True}},
+                "/opt/airflow/plugins",
+            ),
+            (
+                {"mountPath": "/opt/airflow/plugins/custom", "gitSync": {"enabled": True}},
+                "/opt/airflow/plugins/custom/repo",
+            ),
+            (
+                {
+                    "mountPath": "/opt/airflow/plugins/custom",
+                    "gitSync": {"enabled": True, "subPath": "python"},
+                },
+                "/opt/airflow/plugins/custom/repo/python",
+            ),
+            (
+                {"mountPath": "/opt/airflow/plugins/custom", "persistence": {"enabled": True}},
+                "/opt/airflow/plugins/custom",
+            ),
+        ],
+    )
+    def test_expected_default_plugin_folder(self, plugin_values, expected_default_plugin_folder):
+        docs = render_chart(
+            values={"plugins": plugin_values},
+            show_only=["templates/configmaps/configmap.yaml"],
+        )
+        cfg = jmespath.search('data."airflow.cfg"', docs[0])
+        expected_folder_config = f"plugins_folder = {expected_default_plugin_folder}"
+        assert expected_folder_config in cfg.splitlines()
+
+    @pytest.mark.parametrize(
         ("base_url", "execution_api_server_url", "expected_execution_url"),
         [
             (
