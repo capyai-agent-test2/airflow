@@ -57,6 +57,7 @@ from airflowctl.api.operations import (
     PoolsOperations,
     ProvidersOperations,
     ServerResponseError,
+    TasksOperations,
     VariablesOperations,
     VersionOperations,
     XComOperations,
@@ -442,6 +443,12 @@ class Client(httpx.Client):
     def pools(self):
         """Operations related to pools."""
         return PoolsOperations(self)
+
+    @lru_cache()  # type: ignore[prop-decorator]
+    @property
+    def tasks(self):
+        """Operations related to tasks."""
+        return TasksOperations(self)
 
     @lru_cache()  # type: ignore[prop-decorator]
     @property
