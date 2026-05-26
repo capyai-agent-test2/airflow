@@ -28,6 +28,7 @@ import os
 import re
 import shlex
 import string
+import time
 from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from contextlib import AbstractContextManager, suppress
 from enum import Enum
@@ -273,6 +274,7 @@ class KubernetesPodOperator(BaseOperator):
     POD_CHECKED_KEY = "already_checked"
     POST_TERMINATION_TIMEOUT = 120
     MAX_REDEFER_ATTEMPTS = 3
+    MAX_POD_START_ATTEMPTS = 3
 
     template_fields: Sequence[str] = (
         "image",
@@ -703,30 +705,7 @@ class KubernetesPodOperator(BaseOperator):
                     context=context,
                     operator=self,
                 )
-            if self.pod is None:
-                self.pod = self.get_or_create_pod(  # must set `self.pod` for `on_kill`
-                    pod_request_obj=self.pod_request_obj,
-                    context=context,
-                )
-            # push to xcom now so that if there is an error we still have the values
-            ti = context["ti"]
-            ti.xcom_push(key="pod_name", value=self.pod.metadata.name)
-            ti.xcom_push(key="pod_namespace", value=self.pod.metadata.namespace)
-
-            # get remote pod for use in cleanup methods
-            self.remote_pod = self.find_pod(self.pod.metadata.namespace, context=context)
-            for callback in self.callbacks:
-                callback.on_pod_creation(
-                    pod=self.remote_pod,
-                    client=self.client,
-                    mode=ExecutionMode.SYNC,
-                    context=context,
-                    operator=self,
-                )
-
-            self.await_init_containers_completion(pod=self.pod)
-
-            self.await_pod_start(pod=self.pod)
+            self.create_pod_and_await_start(context)
             if self.callbacks:
                 pod = self.find_pod(self.pod.metadata.namespace, context=context)
                 for callback in self.callbacks:
@@ -773,6 +752,47 @@ class KubernetesPodOperator(BaseOperator):
 
         if self.do_xcom_push:
             return result
+
+    def create_pod_and_await_start(self, context: Context) -> None:
+        ti = context["ti"]
+        for attempt in range(1, self.MAX_POD_START_ATTEMPTS + 1):
+            if self.pod is None:
+                self.pod = self.get_or_create_pod(  # must set `self.pod` for `on_kill`
+                    pod_request_obj=self.pod_request_obj,
+                    context=context,
+                )
+
+            ti.xcom_push(key="pod_name", value=self.pod.metadata.name)
+            ti.xcom_push(key="pod_namespace", value=self.pod.metadata.namespace)
+
+            self.remote_pod = self.find_pod(self.pod.metadata.namespace, context=context)
+            for callback in self.callbacks:
+                callback.on_pod_creation(
+                    pod=self.remote_pod,
+                    client=self.client,
+                    mode=ExecutionMode.SYNC,
+                    context=context,
+                    operator=self,
+                )
+
+            self.await_init_containers_completion(pod=self.pod)
+
+            try:
+                self.await_pod_start(pod=self.pod)
+                return
+            except kubernetes.client.exceptions.ApiException as exc:
+                if exc.status != 404 or attempt == self.MAX_POD_START_ATTEMPTS:
+                    raise
+                self.log.warning(
+                    "Pod %s/%s disappeared before reaching Running; recreating it and retrying startup (%d/%d).",
+                    self.pod.metadata.namespace,
+                    self.pod.metadata.name,
+                    attempt + 1,
+                    self.MAX_POD_START_ATTEMPTS,
+                )
+                self.pod = None
+                self.remote_pod = None
+                time.sleep(2 ** (attempt - 1))
 
     @tenacity.retry(
         wait=tenacity.wait_exponential(max=15),

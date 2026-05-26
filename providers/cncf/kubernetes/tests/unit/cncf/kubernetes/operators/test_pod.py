@@ -3444,6 +3444,44 @@ class TestKubernetesPodOperatorAsync:
             )
         assert exc_info.value.status == 500
 
+    @patch(f"{KPO_MODULE}.time.sleep")
+    @patch(KUB_OP_PATH.format("find_pod"))
+    @patch(KUB_OP_PATH.format("get_or_create_pod"))
+    @patch(KUB_OP_PATH.format("await_pod_start"))
+    @patch(KUB_OP_PATH.format("post_complete_action"))
+    def test_execute_sync_recreates_pod_after_404_before_running(
+        self,
+        mocked_post_complete_action,
+        mocked_await_pod_start,
+        mocked_get_or_create_pod,
+        mocked_find_pod,
+        mocked_sleep,
+    ):
+        first_pod = k8s.V1Pod(metadata=k8s.V1ObjectMeta(name="first-pod", namespace=TEST_NAMESPACE))
+        second_pod = k8s.V1Pod(metadata=k8s.V1ObjectMeta(name="second-pod", namespace=TEST_NAMESPACE))
+        mocked_get_or_create_pod.side_effect = [first_pod, second_pod]
+        mocked_find_pod.side_effect = [first_pod, second_pod]
+        mocked_await_pod_start.side_effect = [ApiException(status=404, reason="Not Found"), None]
+
+        k = KubernetesPodOperator(task_id="task", image=TEST_IMAGE)
+        context = create_context(k)
+        context["ti"].xcom_push = MagicMock()
+        context["ti"].map_index = -1
+
+        k.execute_sync(context)
+
+        mocked_post_complete_action.assert_called_once()
+        assert mocked_get_or_create_pod.call_count == 2
+        assert mocked_await_pod_start.call_count == 2
+        mocked_sleep.assert_called_once_with(1)
+        assert k.pod == second_pod
+        assert context["ti"].xcom_push.call_args_list == [
+            mock.call(key="pod_name", value="first-pod"),
+            mock.call(key="pod_namespace", value=TEST_NAMESPACE),
+            mock.call(key="pod_name", value="second-pod"),
+            mock.call(key="pod_namespace", value=TEST_NAMESPACE),
+        ]
+
 
 @pytest.mark.parametrize("do_xcom_push", [True, False])
 @patch(KUB_OP_PATH.format("extract_xcom"))
