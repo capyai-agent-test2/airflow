@@ -1,0 +1,1 @@
+Add optional ``ServiceMonitor`` resources for the built-in StatsD and PgBouncer chart components.
