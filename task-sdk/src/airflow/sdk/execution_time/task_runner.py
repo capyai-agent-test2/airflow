@@ -1017,6 +1017,7 @@ def startup(msg: StartupDetails) -> tuple[RuntimeTaskInstance, Context, Logger]:
         dag_id=msg.ti.dag_id,
         task_id=msg.ti.task_id,
         run_id=msg.ti.run_id,
+        logical_date=msg.ti.logical_date.isoformat() if msg.ti.logical_date else None,
         try_number=msg.ti.try_number,
         map_index=msg.ti.map_index,
     )
