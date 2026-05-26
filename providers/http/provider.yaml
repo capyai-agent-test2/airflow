@@ -122,5 +122,12 @@ connection-types:
     ui-field-behaviour:
       hidden-fields: []
       relabeling: {}
-      placeholders: {}
-    conn-fields: {}
+      placeholders:
+        host: _service._tcp.example.com
+        port: Leave empty for SRV connections
+    conn-fields:
+      srv:
+        label: SRV Connection
+        schema:
+          type: [boolean, "null"]
+        description: Resolve the host as a DNS SRV record and use the returned target host and port.

@@ -25,3 +25,11 @@ class HttpErrorException(AirflowException):
 
 class HttpMethodException(AirflowException):
     """Exception raised for invalid HTTP methods in Http hook."""
+
+
+class HttpSRVConfigException(AirflowException):
+    """Exception raised for invalid SRV configuration in Http hook."""
+
+
+class HttpSRVResolutionException(AirflowException):
+    """Exception raised when resolving an SRV record for Http hook fails."""

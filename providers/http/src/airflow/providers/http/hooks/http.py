@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import copy
+import random
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, cast
@@ -35,7 +36,12 @@ from requests_toolbelt.adapters.socket_options import TCPKeepAliveAdapter
 from tenacity import retry_if_exception
 
 from airflow.providers.common.compat.sdk import AirflowException, BaseHook
-from airflow.providers.http.exceptions import HttpErrorException, HttpMethodException
+from airflow.providers.http.exceptions import (
+    HttpErrorException,
+    HttpMethodException,
+    HttpSRVConfigException,
+    HttpSRVResolutionException,
+)
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 if TYPE_CHECKING:
@@ -75,6 +81,7 @@ def _process_extra_options_from_connection(
     max_redirects = conn_extra_options.pop("max_redirects", None)
     trust_env = conn_extra_options.pop("trust_env", None)
     check_response = conn_extra_options.pop("check_response", None)
+    conn_extra_options.pop("srv", None)
 
     if stream is not None and "stream" not in passed_extra_options:
         passed_extra_options["stream"] = stream
@@ -96,6 +103,38 @@ def _process_extra_options_from_connection(
         passed_extra_options["check_response"] = check_response
 
     return conn_extra_options, passed_extra_options
+
+
+def _resolve_srv_record(host: str) -> tuple[str, int]:
+    try:
+        import dns.exception
+        import dns.resolver
+    except ModuleNotFoundError as e:
+        raise HttpSRVResolutionException(
+            "SRV resolution requires the optional 'dnspython' dependency to be installed"
+        ) from e
+
+    try:
+        records = dns.resolver.resolve(host, "SRV")
+    except dns.exception.DNSException as e:
+        raise HttpSRVResolutionException(f"Unable to resolve SRV record for {host}") from e
+
+    sorted_records = sorted(records, key=lambda record: record.priority)
+    best_priority = sorted_records[0].priority
+    priority_records = [record for record in sorted_records if record.priority == best_priority]
+    total_weight = sum(record.weight for record in priority_records)
+    if total_weight <= 0:
+        selected_record = random.choice(priority_records)
+    else:
+        selection_point = random.uniform(0, total_weight)
+        cumulative_weight = 0
+        selected_record = priority_records[-1]
+        for record in priority_records:
+            cumulative_weight += record.weight
+            if selection_point <= cumulative_weight:
+                selected_record = record
+                break
+    return selected_record.target.to_text(omit_final_dot=True), int(selected_record.port)
 
 
 def _retryable_error_async(exception: BaseException) -> bool:
@@ -218,13 +257,24 @@ class HttpHook(BaseHook):
     def _set_base_url(self, connection) -> None:
         host = connection.host or self.default_host
         schema = connection.schema or "http"
-        # RFC 3986 (https://www.rfc-editor.org/rfc/rfc3986.html#page-16)
-        if "://" in host:
-            self.base_url = host
+        srv = str(connection.extra_dejson.get("srv", "false")).lower() == "true"
+        if srv:
+            if "://" in host:
+                raise HttpSRVConfigException(
+                    "SRV HTTP connections should define the host without a URL scheme"
+                )
+            if connection.port:
+                raise HttpSRVConfigException("SRV HTTP connections should not define a port")
+            resolved_host, resolved_port = _resolve_srv_record(host)
+            self.base_url = f"{schema}://{resolved_host}:{resolved_port}"
         else:
-            self.base_url = f"{schema}://{host}" if host else f"{schema}://"
-        if connection.port:
-            self.base_url = f"{self.base_url}:{connection.port}"
+            # RFC 3986 (https://www.rfc-editor.org/rfc/rfc3986.html#page-16)
+            if "://" in host:
+                self.base_url = host
+            else:
+                self.base_url = f"{schema}://{host}" if host else f"{schema}://"
+            if connection.port:
+                self.base_url = f"{self.base_url}:{connection.port}"
         parsed = urlparse(self.base_url)
         if not parsed.scheme:
             raise ValueError(f"Invalid base URL: Missing scheme in {self.base_url}")
