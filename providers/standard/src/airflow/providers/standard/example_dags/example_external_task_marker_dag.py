@@ -40,11 +40,13 @@ or AirflowSensorTimeout exception
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pendulum
 
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.standard.sensors.external_task import ExternalTaskMarker, ExternalTaskSensor
-from airflow.sdk import DAG
+from airflow.sdk import DAG, TaskGroup
 
 start_date = pendulum.datetime(2021, 1, 1, tz="UTC")
 
@@ -52,21 +54,22 @@ with DAG(
     dag_id="example_external_task_marker_parent",
     start_date=start_date,
     catchup=False,
-    schedule=None,
+    schedule=timedelta(minutes=30),
     tags=["example", "example2"],
 ) as parent_dag:
-    # [START howto_operator_external_task_marker]
-    parent_task = ExternalTaskMarker(
-        task_id="parent_task",
-        external_dag_id="example_external_task_marker_child",
-        external_task_id="child_task1",
-    )
-    # [END howto_operator_external_task_marker]
+    with TaskGroup(group_id="parent_dag_task_group_id", prefix_group_id=False):
+        # [START howto_operator_external_task_marker]
+        parent_task = ExternalTaskMarker(
+            task_id="parent_task",
+            external_dag_id="example_external_task_marker_child",
+            external_task_id="child_task1",
+        )
+        # [END howto_operator_external_task_marker]
 
 with DAG(
     dag_id="example_external_task_marker_child",
     start_date=start_date,
-    schedule=None,
+    schedule=timedelta(minutes=30),
     catchup=False,
     tags=["example", "example2"],
 ) as child_dag:

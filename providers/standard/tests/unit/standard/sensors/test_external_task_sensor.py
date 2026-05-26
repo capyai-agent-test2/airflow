@@ -107,6 +107,22 @@ def clean_db():
     clear_db_runs()
 
 
+@pytest.mark.usefixtures("testing_dag_bundle")
+@pytest.mark.parametrize(
+    "dag_id",
+    ["example_external_task_marker_parent", "example_external_task_marker_child"],
+)
+def test_example_external_task_marker_dags_can_be_scheduled(dag_id):
+    dag_bag = DagBag(dag_folder=DEV_NULL, include_examples=True)
+
+    dag = dag_bag.get_dag(dag_id)
+
+    assert dag is not None
+    assert dag.timetable.can_be_scheduled
+    if dag_id == "example_external_task_marker_parent":
+        assert "parent_dag_task_group_id" in dag.task_group_dict
+
+
 @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Different test for v3.0+")
 class TestExternalTaskSensorV2:
     def setup_method(self):
