@@ -1,3 +1,13 @@
+## Capy setup detection
+
+This backing repo is used by both normal Capy projects and filesystem-snapshot projects. At session start, detect whether dependencies are already preinstalled before doing any heavy setup.
+
+- Do not run heavy setup blindly at session start; it blocks jams. Start with cheap probes, then install only the missing task-specific pieces.
+- Treat the VM as snapshot-prepared when dependency dirs/caches/tools are present and the smoke probes pass: check `.venv`, `.build`, relevant `node_modules`, uv cache/tool installs, `uv --version`, `prek --version`, `uv lock --check --project .`, and `breeze --help`.
+- If those probes fail or the dirs/tools are absent, use minimal non-snapshot setup instead of full environment/bootstrap scripts.
+- Airflow minimal setup: before installing, check `uv lock --check --project .`, `breeze --help`, and whether `.venv` plus uv tools already exist. If missing, install pinned `uv`/`prek` from `uv.lock`, run `ANSWER=y scripts/tools/setup_breeze`, then `uv sync --frozen --group dev --python 3.10`.
+- Avoid full Breeze/Docker/provider matrices unless the task explicitly requires them; prefer targeted tests and task-specific installs.
+
  <!-- SPDX-License-Identifier: Apache-2.0
       https://www.apache.org/licenses/LICENSE-2.0 -->
 
