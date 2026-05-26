@@ -267,6 +267,58 @@ ARG_DAG_ID = Arg(
     type=str,
     help="The Dag ID of the Dag to pause or unpause",
 )
+ARG_DAG_ID_OPTION = Arg(
+    flags=("--dag-id",),
+    type=str,
+    required=True,
+    help="The Dag ID of the Dag",
+)
+ARG_DAG_RUN_ID_OPTION = Arg(
+    flags=("--dag-run-id",),
+    type=str,
+    required=True,
+    help="The Dag run ID",
+)
+ARG_TASK_IDS = Arg(
+    flags=("--task-ids",),
+    type=string_list_type,
+    help="Comma-separated task IDs to clear",
+)
+ARG_ONLY_FAILED = Arg(
+    flags=("--only-failed",),
+    type=bool,
+    default=True,
+    action=argparse.BooleanOptionalAction,
+    help="Only clear failed task instances",
+)
+ARG_ONLY_RUNNING = Arg(
+    flags=("--only-running",),
+    type=bool,
+    default=False,
+    action=argparse.BooleanOptionalAction,
+    help="Only clear running task instances",
+)
+ARG_UPSTREAM = Arg(
+    flags=("--upstream",),
+    type=bool,
+    default=False,
+    action=argparse.BooleanOptionalAction,
+    help="Include upstream task instances",
+)
+ARG_DOWNSTREAM = Arg(
+    flags=("--downstream",),
+    type=bool,
+    default=False,
+    action=argparse.BooleanOptionalAction,
+    help="Include downstream task instances",
+)
+ARG_DRY_RUN = Arg(
+    flags=("--dry-run",),
+    type=bool,
+    default=True,
+    action=argparse.BooleanOptionalAction,
+    help="Preview cleared task instances without modifying state",
+)
 
 ARG_ACTION_ON_EXISTING_KEY = Arg(
     flags=("-a", "--action-on-existing-key"),
@@ -988,6 +1040,25 @@ DAG_COMMANDS = (
     ),
 )
 
+TASK_COMMANDS = (
+    ActionCommand(
+        name="clear",
+        help="Clear task instances in a Dag run",
+        func=lazy_load_command("airflowctl.ctl.commands.task_command.clear"),
+        args=(
+            ARG_DAG_ID_OPTION,
+            ARG_DAG_RUN_ID_OPTION,
+            ARG_TASK_IDS,
+            ARG_ONLY_FAILED,
+            ARG_ONLY_RUNNING,
+            ARG_UPSTREAM,
+            ARG_DOWNSTREAM,
+            ARG_DRY_RUN,
+            ARG_OUTPUT,
+        ),
+    ),
+)
+
 POOL_COMMANDS = (
     ActionCommand(
         name="import",
@@ -1036,6 +1107,11 @@ core_commands: list[CLICommand] = [
         name="dags",
         help="Manage Airflow Dags",
         subcommands=DAG_COMMANDS,
+    ),
+    GroupCommand(
+        name="tasks",
+        help="Manage Airflow tasks",
+        subcommands=TASK_COMMANDS,
     ),
     GroupCommand(
         name="pools",
