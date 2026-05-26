@@ -528,10 +528,12 @@ class TestScheduler:
         docs = render_chart(
             show_only=["templates/scheduler/scheduler-deployment.yaml"],
         )
+        command = jmespath.search("spec.template.spec.containers[0].livenessProbe.exec.command", docs[0])[-1]
         assert (
-            "airflow jobs check --job-type SchedulerJob --local"
-            in jmespath.search("spec.template.spec.containers[0].livenessProbe.exec.command", docs[0])[-1]
+            "tr '\\000' ' ' < /proc/1/cmdline | grep -qE '(^|[[:space:]])airflow scheduler($|[[:space:]])'"
+            in command
         )
+        assert "airflow jobs check --job-type SchedulerJob --local" in command
 
     def test_startupprobe_command_depends_on_airflow_version(self):
         docs = render_chart(

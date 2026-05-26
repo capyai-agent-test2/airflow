@@ -773,6 +773,7 @@ server_tls_key_file = /etc/pgbouncer/server.key
   - sh
   - -c
   - |
+    tr '\000' ' ' < /proc/1/cmdline | grep -qE '(^|[[:space:]])airflow scheduler($|[[:space:]])' && \
     CONNECTION_CHECK_MAX_COUNT=0 AIRFLOW__LOGGING__LOGGING_LEVEL=ERROR exec /entrypoint \
     airflow jobs check --job-type SchedulerJob --local
 {{- end }}
@@ -790,6 +791,7 @@ server_tls_key_file = /etc/pgbouncer/server.key
   - sh
   - -c
   - |
+    tr '\000' ' ' < /proc/1/cmdline | grep -qE '(^|[[:space:]])airflow triggerer($|[[:space:]])' && \
     CONNECTION_CHECK_MAX_COUNT=0 AIRFLOW__LOGGING__LOGGING_LEVEL=ERROR exec /entrypoint \
     airflow jobs check --job-type TriggererJob --local
 {{- end }}
