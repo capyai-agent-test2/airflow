@@ -26,6 +26,7 @@ import httpx
 import pytest
 
 from airflowctl.api.operations import ServerResponseError
+from airflowctl.ctl import cli_parser
 from airflowctl.ctl.cli_config import (
     ARG_AUTH_TOKEN,
     ActionCommand,
@@ -414,6 +415,24 @@ class TestCommandFactory:
 
 
 class TestCliConfigMethods:
+    parser = cli_parser.get_parser()
+
+    def test_generated_tasks_states_for_dag_run_parser_includes_output(self):
+        args = self.parser.parse_args(
+            [
+                "tasks",
+                "states-for-dag-run",
+                "example_dag",
+                "manual__2025-01-24T00:00:00+00:00",
+                "--output",
+                "yaml",
+            ]
+        )
+
+        assert args.dag_id == "example_dag"
+        assert args.dag_run_id == "manual__2025-01-24T00:00:00+00:00"
+        assert args.output == "yaml"
+
     @pytest.mark.parametrize(
         "raised_exception",
         [

@@ -91,6 +91,9 @@ from airflowctl.api.datamodels.generated import (
     QueuedEventCollectionResponse,
     QueuedEventResponse,
     ReprocessBehavior,
+    TaskInstanceCollectionResponse,
+    TaskInstanceResponse,
+    TaskInstanceState,
     TriggerDAGRunPostBody,
     VariableBody,
     VariableCollectionResponse,
@@ -1569,6 +1572,89 @@ class TestAuthOperations:
             )
         )
         assert response.access_token == "NO_TOKEN"
+
+
+class TestTasksOperations:
+    dag_id: str = "test_dag"
+    dag_run_id: str = "manual__2025-01-24T00:00:00+00:00"
+    task_instance_response = TaskInstanceResponse(
+        id=uuid.uuid4(),
+        task_id="test_task",
+        dag_id=dag_id,
+        dag_run_id=dag_run_id,
+        map_index=-1,
+        logical_date=datetime.datetime(2025, 1, 24, 0, 0, 0),
+        run_after=datetime.datetime(2025, 1, 24, 0, 0, 0),
+        start_date=datetime.datetime(2025, 1, 24, 0, 5, 0),
+        end_date=datetime.datetime(2025, 1, 24, 0, 10, 0),
+        duration=300.0,
+        state=TaskInstanceState.SUCCESS,
+        try_number=1,
+        max_tries=1,
+        task_display_name="test_task",
+        dag_display_name=dag_id,
+        pool="default_pool",
+        pool_slots=1,
+        executor_config="{}",
+    )
+
+    def test_states_for_dag_run(self):
+        response_payload = TaskInstanceCollectionResponse(
+            task_instances=[self.task_instance_response],
+            total_entries=1,
+        )
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == f"/api/v2/dags/{self.dag_id}/dagRuns/{self.dag_run_id}/taskInstances"
+            return httpx.Response(200, json=json.loads(response_payload.model_dump_json()))
+
+        client = make_api_client(transport=httpx.MockTransport(handle_request))
+        response = client.tasks.states_for_dag_run(dag_id=self.dag_id, dag_run_id=self.dag_run_id)
+
+        assert response == {
+            "task_instances": [
+                {
+                    "dag_id": self.dag_id,
+                    "logical_date": "2025-01-24T00:00:00",
+                    "task_id": "test_task",
+                    "state": "success",
+                    "start_date": "2025-01-24T00:05:00",
+                    "end_date": "2025-01-24T00:10:00",
+                }
+            ]
+        }
+
+    def test_states_for_dag_run_includes_map_index_for_mapped_tasks(self):
+        mapped_task = self.task_instance_response.model_copy(
+            update={
+                "id": uuid.uuid4(),
+                "task_id": "mapped_task",
+                "map_index": 3,
+                "state": TaskInstanceState.RUNNING,
+            }
+        )
+        response_payload = TaskInstanceCollectionResponse(task_instances=[mapped_task], total_entries=1)
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == f"/api/v2/dags/{self.dag_id}/dagRuns/{self.dag_run_id}/taskInstances"
+            return httpx.Response(200, json=json.loads(response_payload.model_dump_json()))
+
+        client = make_api_client(transport=httpx.MockTransport(handle_request))
+        response = client.tasks.states_for_dag_run(dag_id=self.dag_id, dag_run_id=self.dag_run_id)
+
+        assert response == {
+            "task_instances": [
+                {
+                    "dag_id": self.dag_id,
+                    "logical_date": "2025-01-24T00:00:00",
+                    "task_id": "mapped_task",
+                    "state": "running",
+                    "start_date": "2025-01-24T00:05:00",
+                    "end_date": "2025-01-24T00:10:00",
+                    "map_index": "3",
+                }
+            ]
+        }
 
 
 class TestXComOperations:

@@ -68,6 +68,8 @@ from airflowctl.api.datamodels.generated import (
     ProviderCollectionResponse,
     QueuedEventCollectionResponse,
     QueuedEventResponse,
+    TaskInstanceCollectionResponse,
+    TaskInstanceResponse,
     TriggerDAGRunPostBody,
     VariableBody,
     VariableCollectionResponse,
@@ -775,6 +777,41 @@ class VariablesOperations(BaseOperations):
             return VariableResponse.model_validate_json(self.response.content)
         except ServerResponseError as e:
             raise e
+
+
+class TasksOperations(BaseOperations):
+    """Task operations."""
+
+    def states_for_dag_run(self, dag_id: str, dag_run_id: str) -> dict[str, list[dict[str, str]]]:
+        """Get task instance states for a Dag run."""
+        response = super().execute_list(
+            path=f"dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances",
+            data_model=TaskInstanceCollectionResponse,
+        )
+        has_mapped_instances = any(task_instance.map_index >= 0 for task_instance in response.task_instances)
+
+        def format_task_instance(task_instance: TaskInstanceResponse) -> dict[str, str]:
+            data = {
+                "dag_id": task_instance.dag_id,
+                "logical_date": task_instance.logical_date.isoformat() if task_instance.logical_date else "",
+                "task_id": task_instance.task_id,
+                "state": task_instance.state.value if task_instance.state else "",
+                "start_date": task_instance.start_date.isoformat() if task_instance.start_date else "",
+                "end_date": task_instance.end_date.isoformat() if task_instance.end_date else "",
+            }
+            if has_mapped_instances:
+                data["map_index"] = (
+                    str(task_instance.map_index)
+                    if task_instance.map_index is not None and task_instance.map_index >= 0
+                    else ""
+                )
+            return data
+
+        return {
+            "task_instances": [
+                format_task_instance(task_instance) for task_instance in response.task_instances
+            ]
+        }
 
 
 class VersionOperations(BaseOperations):
