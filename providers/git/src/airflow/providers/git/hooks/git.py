@@ -44,6 +44,7 @@ class GitHook(BaseHook):
     * ``key_file`` — path to an SSH private key file.
     * ``private_key`` — inline SSH private key string (mutually exclusive with ``key_file``).
     * ``private_key_passphrase`` — passphrase for the private key (key_file or inline).
+    * ``git_config`` — mapping of Git config keys to values exported via ``GIT_CONFIG_*`` env vars.
     * ``strict_host_key_checking`` — ``"yes"`` or ``"no"`` (default ``"no"``).
     * ``known_hosts_file`` — path to a custom SSH known-hosts file.
     * ``ssh_config_file`` — path to a custom SSH config file.
@@ -71,6 +72,7 @@ class GitHook(BaseHook):
                         "key_file": "optional/path/to/keyfile",
                         "private_key": "optional inline private key",
                         "private_key_passphrase": "",
+                        "git_config": {"http.proactiveAuth": "basic"},
                         "strict_host_key_checking": "no",
                         "known_hosts_file": "",
                         "ssh_config_file": "",
@@ -96,6 +98,7 @@ class GitHook(BaseHook):
         self.private_key = extra.get("private_key")
         self.key_file = extra.get("key_file")
         self.private_key_passphrase = extra.get("private_key_passphrase")
+        self.git_config = extra.get("git_config")
 
         # SSH connection options
         self.strict_host_key_checking = extra.get("strict_host_key_checking", "no")
@@ -108,6 +111,7 @@ class GitHook(BaseHook):
 
         if self.key_file and self.private_key:
             raise AirflowException("Both 'key_file' and 'private_key' cannot be provided at the same time")
+        self._set_git_config_env()
         self._process_git_auth_url()
 
     _VALID_STRICT_HOST_KEY_CHECKING = frozenset({"yes", "no", "accept-new", "off", "ask"})
@@ -161,6 +165,19 @@ class GitHook(BaseHook):
 
     def set_git_env(self, key: str | None = None) -> None:
         self.env["GIT_SSH_COMMAND"] = self._build_ssh_command(key)
+
+    def _set_git_config_env(self) -> None:
+        if self.git_config is None:
+            return
+        if not isinstance(self.git_config, dict):
+            raise ValueError("git_config must be a mapping of git config keys to values")
+
+        self.env["GIT_CONFIG_COUNT"] = str(len(self.git_config))
+        for index, (config_key, config_value) in enumerate(self.git_config.items()):
+            if not isinstance(config_key, str):
+                raise ValueError("git_config keys must be strings")
+            self.env[f"GIT_CONFIG_KEY_{index}"] = config_key
+            self.env[f"GIT_CONFIG_VALUE_{index}"] = str(config_value)
 
     @contextlib.contextmanager
     def _passphrase_askpass_env(self):

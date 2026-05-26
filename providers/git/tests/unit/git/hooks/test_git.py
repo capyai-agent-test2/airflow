@@ -49,6 +49,7 @@ CONN_ONLY_PATH = "my_git_conn_only_path"
 CONN_ONLY_INLINE_KEY = "my_git_conn_only_inline_key"
 CONN_BOTH_PATH_INLINE = "my_git_conn_both_path_inline"
 CONN_NO_REPO_URL = "my_git_conn_no_repo_url"
+CONN_GIT_CONFIG = "my_git_conn_git_config"
 
 
 @pytest.fixture
@@ -118,6 +119,15 @@ class TestGitHook:
                 extra={
                     "private_key": "inline_key",
                 },
+            )
+        )
+        create_connection_without_db(
+            Connection(
+                conn_id=CONN_GIT_CONFIG,
+                host=AIRFLOW_HTTPS_URL,
+                password=ACCESS_TOKEN,
+                conn_type="git",
+                extra={"git_config": {"http.proactiveAuth": "basic", "credential.helper": "store"}},
             )
         )
 
@@ -312,6 +322,15 @@ class TestGitHook:
         with hook.configure_hook_env():
             cmd = hook.env["GIT_SSH_COMMAND"]
             assert "-o UserKnownHostsFile=/dev/null" in cmd
+
+    def test_git_config_is_exported_in_hook_env(self):
+        hook = GitHook(git_conn_id=CONN_GIT_CONFIG)
+
+        assert hook.env["GIT_CONFIG_COUNT"] == "2"
+        assert hook.env["GIT_CONFIG_KEY_0"] == "http.proactiveAuth"
+        assert hook.env["GIT_CONFIG_VALUE_0"] == "basic"
+        assert hook.env["GIT_CONFIG_KEY_1"] == "credential.helper"
+        assert hook.env["GIT_CONFIG_VALUE_1"] == "store"
 
     def test_passphrase_sets_askpass_env(self, create_connection_without_db):
         create_connection_without_db(
