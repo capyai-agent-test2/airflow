@@ -543,6 +543,14 @@ class TestBaseOperator:
 
         assert op1.task_id in op2.upstream_task_ids
 
+    def test_set_xcomargs_dependencies_works_when_dynamic_template_field_is_set_after_init(self):
+        with DAG(dag_id="xcomargs_test", schedule=None):
+            op1 = BaseOperator(task_id="op1")
+            op2 = MockOperator(task_id="op2", template_all_fields=True)
+            op2.arg3 = op1.output
+
+        assert op1.task_id in op2.upstream_task_ids
+
     def test_set_xcomargs_dependencies_error_when_outside_dag(self):
         op1 = BaseOperator(task_id="op1")
         with pytest.raises(

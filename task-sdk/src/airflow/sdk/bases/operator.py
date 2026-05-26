@@ -1014,7 +1014,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
             return  # Skip any custom behavior for validation and during execute.
         if key in self.__init_kwargs:
             self.__init_kwargs[key] = value
-        if self.__instantiated and key in self.template_fields:
+        if self.__instantiated and key in self._get_template_fields():
             # Resolve upstreams set by assigning an XComArg after initializing
             # an operator, example:
             #   op = BashOperator()
