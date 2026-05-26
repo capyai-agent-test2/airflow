@@ -63,7 +63,6 @@ services:
       - ../../../empty:/opt/airflow/providers/datadog/src
       - ../../../empty:/opt/airflow/providers/dbt/cloud/src
       - ../../../empty:/opt/airflow/providers/dingding/src
-      - ../../../empty:/opt/airflow/providers/discord/src
       - ../../../empty:/opt/airflow/providers/docker/src
       - ../../../empty:/opt/airflow/providers/edge3/src
       - ../../../empty:/opt/airflow/providers/elasticsearch/src
