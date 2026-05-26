@@ -468,6 +468,19 @@ class NotificationsDirective(BaseJinjaReferenceDirective):
         )
 
 
+class TriggersDirective(BaseJinjaReferenceDirective):
+    """Generate list of triggers"""
+
+    def render_content(
+        self, *, tags: set[str] | None, header_separator: str = DEFAULT_HEADER_SEPARATOR
+    ) -> str:
+        return _common_render_list_content(
+            header_separator=header_separator,
+            resource_type="triggers",
+            template="triggers.rst.jinja2",
+        )
+
+
 class ExecutorsDirective(BaseJinjaReferenceDirective):
     """Generate list of executors"""
 
@@ -558,6 +571,7 @@ def setup(app):
     app.add_directive("airflow-connections", ConnectionsDirective)
     app.add_directive("airflow-extra-links", ExtraLinksDirective)
     app.add_directive("airflow-notifications", NotificationsDirective)
+    app.add_directive("airflow-triggers", TriggersDirective)
     app.add_directive("airflow-executors", ExecutorsDirective)
     app.add_directive("airflow-queues", QueuesDirective)
     app.add_directive("airflow-deferrable-operators", DeferrableOperatorDirective)
@@ -645,6 +659,19 @@ def extra_links(header_separator: str):
     print(
         _common_render_list_content(
             header_separator=header_separator, resource_type="extra-links", template="extra_links.rst.jinja2"
+        )
+    )
+
+
+@cli.command()
+@option_header_separator
+def triggers(header_separator: str):
+    """Renders Triggers content"""
+    print(
+        _common_render_list_content(
+            header_separator=header_separator,
+            resource_type="triggers",
+            template="triggers.rst.jinja2",
         )
     )
 

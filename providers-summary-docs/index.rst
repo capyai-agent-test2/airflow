@@ -127,6 +127,14 @@ notifications about the status of your tasks/dags.
 You can see all the notifications available via community-managed providers in
 :doc:`/core-extensions/notifications`.
 
+Triggers
+''''''''
+
+Providers can add triggers used by deferrable tasks and other asynchronous workflows.
+
+You can see all the trigger modules available via community-managed providers in
+:doc:`/core-extensions/triggers`.
+
 
 Installing and upgrading providers
 ----------------------------------
