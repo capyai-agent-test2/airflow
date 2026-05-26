@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import collections
+import os
 from typing import Any, Protocol
 
 import structlog
@@ -245,7 +246,20 @@ class BaseXCom:
             specified Dag run is returned. If *True*, the latest matching XCom is
             returned regardless of the run it belongs to.
         """
-        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+        if os.environ.get("_AIRFLOW_PROCESS_CONTEXT") != "client":
+            try:
+                from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+            except ImportError:
+                return cls._fetch_xcom_value_from_database(
+                    key=key,
+                    dag_id=dag_id,
+                    task_id=task_id,
+                    run_id=run_id,
+                    map_index=map_index,
+                    include_prior_dates=include_prior_dates,
+                )
+        else:
+            from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
 
         msg = SUPERVISOR_COMMS.send(
             GetXCom(
@@ -272,6 +286,47 @@ class BaseXCom:
             map_index=map_index,
         )
         return None
+
+    @classmethod
+    def _fetch_xcom_value_from_database(
+        cls,
+        *,
+        key: str,
+        dag_id: str,
+        task_id: str,
+        run_id: str,
+        map_index: int | None = None,
+        include_prior_dates: bool = False,
+    ) -> Any | None:
+        """Retrieve an XCom value directly from the metadata database in server contexts."""
+        from airflow.models.xcom import XComModel
+        from airflow.utils.session import create_session
+
+        stmt = XComModel.get_many(
+            key=key,
+            dag_ids=dag_id,
+            task_ids=task_id,
+            run_id=run_id,
+            map_indexes=map_index,
+            include_prior_dates=include_prior_dates,
+            limit=1,
+        ).with_only_columns(XComModel.value)
+
+        with create_session() as session:
+            result = session.execute(stmt).first()
+
+        if result is None:
+            log.warning(
+                "No XCom value found; defaulting to None.",
+                key=key,
+                dag_id=dag_id,
+                task_id=task_id,
+                run_id=run_id,
+                map_index=map_index,
+            )
+            return None
+
+        return XComModel.deserialize_value(result)
 
     @classmethod
     def get_all(

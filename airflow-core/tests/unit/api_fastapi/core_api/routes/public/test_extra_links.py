@@ -24,6 +24,7 @@ from airflow.api_fastapi.core_api.datamodels.extra_links import ExtraLinkCollect
 from airflow.models.dagbag import DBDagBag
 from airflow.models.xcom import XComModel as XCom
 from airflow.plugins_manager import AirflowPlugin
+from airflow.providers.common.compat.sdk import BaseOperator, XCom as SDKXCom
 from airflow.utils.state import DagRunState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
 
@@ -70,6 +71,19 @@ class TryNumberLink(BaseOperatorLink):
 class TryNumberPlugin(AirflowPlugin):
     name = "try_number_plugin"
     operator_extra_links = [TryNumberLink()]
+
+
+class SDKXComLink(BaseOperatorLink):
+    name = "SDK XCom"
+    operators = [CustomOperator]
+
+    def get_link(self, operator: BaseOperator, *, ti_key):
+        return SDKXCom.get_value(key="data_doc", ti_key=ti_key)
+
+
+class SDKXComPlugin(AirflowPlugin):
+    name = "sdk_xcom_plugin"
+    operator_extra_links = [SDKXComLink()]
 
 
 @pytest.mark.mock_plugin_manager(plugins=[])
@@ -262,6 +276,28 @@ class TestGetExtraLinks:
                     "S3": ("https://s3.amazonaws.com/airflow-logs/TEST_DAG_ID/TEST_SINGLE_LINK/"),
                 },
                 total_entries=3,
+            ).model_dump()
+        )
+
+    @pytest.mark.mock_plugin_manager(plugins=[SDKXComPlugin])
+    def test_should_respond_200_support_plugins_using_sdk_xcom(self, test_client):
+        XCom.set(
+            key="data_doc",
+            value="https://example.com/ge_result",
+            task_id=self.task_single_link,
+            dag_id=self.dag_id,
+            run_id=self.dag_run_id,
+        )
+        response = test_client.get(
+            f"/dags/{self.dag_id}/dagRuns/{self.dag_run_id}/taskInstances/{self.task_single_link}/links",
+        )
+
+        assert response.status_code == 200
+        assert (
+            response.json()
+            == ExtraLinkCollectionResponse(
+                extra_links={"Google Custom": None, "SDK XCom": "https://example.com/ge_result"},
+                total_entries=2,
             ).model_dump()
         )
 
