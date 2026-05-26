@@ -25,6 +25,7 @@ from textwrap import dedent
 import httpx
 import pytest
 
+import airflowctl.api.operations as api_operations
 from airflowctl.api.operations import ServerResponseError
 from airflowctl.ctl.cli_config import (
     ARG_AUTH_TOKEN,
@@ -36,6 +37,7 @@ from airflowctl.ctl.cli_config import (
     merge_commands,
     safe_call_command,
 )
+from airflowctl.ctl.cli_parser import get_parser
 from airflowctl.exceptions import (
     AirflowCtlConnectionException,
     AirflowCtlCredentialNotFoundException,
@@ -412,8 +414,39 @@ class TestCommandFactory:
         assert limit_arg.flags == ("--limit",)
         assert limit_arg.kwargs["type"] is int
 
+    def test_command_factory_required_datamodel_fields_are_required_flags(self):
+        command_factory = CommandFactory(file_path=api_operations.__file__)
+        backfills_create_args = []
+        for generated_group_command in command_factory.group_commands:
+            if generated_group_command.name != "backfill":
+                continue
+            for sub_command in generated_group_command.subcommands:
+                if sub_command.name == "create":
+                    backfills_create_args = list(sub_command.args)
+                    break
+
+        dag_id_arg = next(arg for arg in backfills_create_args if arg.flags == ("--dag-id",))
+        from_date_arg = next(arg for arg in backfills_create_args if arg.flags == ("--from-date",))
+        to_date_arg = next(arg for arg in backfills_create_args if arg.flags == ("--to-date",))
+        run_backwards_arg = next(arg for arg in backfills_create_args if arg.flags == ("--run-backwards",))
+
+        assert dag_id_arg.kwargs["required"] is True
+        assert from_date_arg.kwargs["required"] is True
+        assert to_date_arg.kwargs["required"] is True
+        assert run_backwards_arg.kwargs["required"] is False
+
 
 class TestCliConfigMethods:
+    def test_parser_missing_required_backfill_fields_reports_required_flags(self, capsys):
+        with pytest.raises(SystemExit) as ctx:
+            get_parser().parse_args(["backfill", "create"])
+
+        assert ctx.value.code == 2
+        assert (
+            "the following arguments are required: --dag-id, --from-date, --to-date"
+            in capsys.readouterr().err
+        )
+
     @pytest.mark.parametrize(
         "raised_exception",
         [
