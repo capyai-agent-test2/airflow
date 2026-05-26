@@ -285,6 +285,7 @@ class DockerOperator(BaseOperator):
             )
             raise ValueError(msg)
         self.auto_remove = auto_remove
+        self.container_removed = False
         self.command = command
         self.container_name = container_name
         self.cpus = cpus
@@ -461,9 +462,9 @@ class DockerOperator(BaseOperator):
             return None
         finally:
             if self.auto_remove == "success":
-                self.cli.remove_container(self.container["Id"])
+                self._remove_container()
             elif self.auto_remove == "force":
-                self.cli.remove_container(self.container["Id"], force=True)
+                self._remove_container(force=True)
 
     def _attempt_to_retrieve_result(self):
         """
@@ -534,6 +535,14 @@ class DockerOperator(BaseOperator):
                 self.log.info("Not attempting to kill container as it was not created")
                 return
             self.cli.stop(self.container["Id"])
+            if self.auto_remove == "force":
+                self._remove_container(force=True)
+
+    def _remove_container(self, *, force: bool = False) -> None:
+        if self.container is None or self.container_removed:
+            return
+        self.cli.remove_container(self.container["Id"], force=force)
+        self.container_removed = True
 
     @staticmethod
     def unpack_environment_variables(env_str: str) -> dict:

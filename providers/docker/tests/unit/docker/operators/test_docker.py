@@ -108,17 +108,27 @@ def test_unpack_environment_variables(env_str, expected):
 
 
 @pytest.mark.parametrize("container_exists", [True, False])
-def test_on_kill_client_created(docker_api_client_patcher, container_exists):
+@pytest.mark.parametrize("auto_remove", ["never", "force"])
+def test_on_kill_client_created(docker_api_client_patcher, container_exists, auto_remove):
     """Test operator on_kill method if APIClient created."""
-    op = DockerOperator(image=TEST_IMAGE, hostname=TEST_DOCKER_URL, task_id="test_on_kill")
+    op = DockerOperator(
+        image=TEST_IMAGE, hostname=TEST_DOCKER_URL, task_id="test_on_kill", auto_remove=auto_remove
+    )
     op.container = {"Id": "some_id"} if container_exists else None
 
     op.hook.get_conn()  # Try to create APIClient
     op.on_kill()
     if container_exists:
         docker_api_client_patcher.return_value.stop.assert_called_once_with("some_id")
+        if auto_remove == "force":
+            docker_api_client_patcher.return_value.remove_container.assert_called_once_with(
+                "some_id", force=True
+            )
+        else:
+            docker_api_client_patcher.return_value.remove_container.assert_not_called()
     else:
         docker_api_client_patcher.return_value.stop.assert_not_called()
+        docker_api_client_patcher.return_value.remove_container.assert_not_called()
 
 
 def test_on_kill_client_not_created(docker_api_client_patcher):
@@ -578,6 +588,21 @@ class TestDockerOperator:
             failed_msg=failed_msg,
         )
         assert raised_exception.value.logs == [log_line[0].rstrip(), log_line[1].decode("utf-8").rstrip()]
+
+    def test_execute_force_auto_remove_after_on_kill(self):
+        operator = DockerOperator(image="ubuntu", owner="unittest", task_id="unittest", auto_remove="force")
+
+        def kill_during_wait(*args, **kwargs):
+            operator.on_kill()
+            return {"StatusCode": 137}
+
+        self.client_mock.wait.side_effect = kill_during_wait
+
+        with pytest.raises(DockerContainerFailedException):
+            operator.execute(None)
+
+        self.client_mock.stop.assert_called_once_with("some_id")
+        self.client_mock.remove_container.assert_called_once_with("some_id", force=True)
 
     def test_auto_remove_container_fails(self):
         self.client_mock.wait.return_value = {"StatusCode": 1}
