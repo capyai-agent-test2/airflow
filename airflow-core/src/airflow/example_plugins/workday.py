@@ -36,6 +36,8 @@ log = logging.getLogger(__name__)
 
 
 class AfterWorkdayTimetable(Timetable):
+    """Schedule runs after each workday."""
+
     _NOT_LOADED = object()
     _holiday_calendar = _NOT_LOADED
 
@@ -107,6 +109,8 @@ class AfterWorkdayTimetable(Timetable):
 
 
 class WorkdayTimetablePlugin(AirflowPlugin):
+    """Register the example workday timetable."""
+
     name = "workday_timetable_plugin"
     timetables = [AfterWorkdayTimetable]
 
