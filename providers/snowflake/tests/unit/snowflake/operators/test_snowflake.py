@@ -32,6 +32,7 @@ from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.providers.snowflake.operators.snowflake import (
     SnowflakeCheckOperator,
     SnowflakeIntervalCheckOperator,
+    SnowflakeNotebookOperator,
     SnowflakeSqlApiOperator,
     SnowflakeValueCheckOperator,
 )
@@ -51,6 +52,7 @@ TEST_DAG_ID = "unit_test_dag"
 TASK_ID = "snowflake_check"
 CONN_ID = "my_snowflake_conn"
 TEST_SQL = "select * from any;"
+NOTEBOOK = "MY_DB.MY_SCHEMA.MY_NOTEBOOK"
 
 SQL_MULTIPLE_STMTS = (
     "create or replace table user_test (i int); insert into user_test (i) "
@@ -605,3 +607,55 @@ class TestSnowflakeSqlApiOperator:
         operator.on_kill()
 
         mock_cancel_queries.assert_not_called()
+
+
+class TestSnowflakeNotebookOperator:
+    def test_build_execute_notebook_sql_without_parameters(self):
+        operator = SnowflakeNotebookOperator(task_id=TASK_ID, notebook=NOTEBOOK)
+
+        assert operator.sql == "EXECUTE NOTEBOOK MY_DB.MY_SCHEMA.MY_NOTEBOOK()"
+
+    def test_build_execute_notebook_sql_with_parameters(self):
+        operator = SnowflakeNotebookOperator(
+            task_id=TASK_ID,
+            notebook=NOTEBOOK,
+            parameters=["param1", "target_db=PROD"],
+        )
+
+        assert operator.sql == "EXECUTE NOTEBOOK MY_DB.MY_SCHEMA.MY_NOTEBOOK('param1', 'target_db=PROD')"
+
+    def test_build_execute_notebook_sql_escapes_string_parameters(self):
+        operator = SnowflakeNotebookOperator(
+            task_id=TASK_ID,
+            notebook=NOTEBOOK,
+            parameters=["O'Brien", r"C:\tmp\files"],
+        )
+
+        assert (
+            operator.sql == "EXECUTE NOTEBOOK MY_DB.MY_SCHEMA.MY_NOTEBOOK('O''Brien', 'C:\\\\tmp\\\\files')"
+        )
+
+    def test_build_execute_notebook_sql_preserves_parameters_attribute(self):
+        operator = SnowflakeNotebookOperator(
+            task_id=TASK_ID,
+            notebook=NOTEBOOK,
+            parameters=["a", "b"],
+        )
+
+        assert operator.parameters == ["a", "b"]
+        assert operator.statement_count == 1
+
+    @mock.patch("airflow.providers.snowflake.operators.snowflake.SnowflakeSqlApiOperator.execute")
+    def test_execute_rebuilds_sql_after_template_rendering(self, mock_execute):
+        operator = SnowflakeNotebookOperator(
+            task_id=TASK_ID,
+            notebook=NOTEBOOK,
+            parameters=["{{ params.name }}"],
+        )
+        context = mock.Mock()
+
+        operator.parameters = ["O'Brien"]
+        operator.execute(context)
+
+        assert operator.sql == "EXECUTE NOTEBOOK MY_DB.MY_SCHEMA.MY_NOTEBOOK('O''Brien')"
+        mock_execute.assert_called_once_with(context)
