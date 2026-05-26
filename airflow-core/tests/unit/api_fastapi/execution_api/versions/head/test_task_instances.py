@@ -1331,6 +1331,45 @@ class TestTIUpdateState:
             assert events[0].asset == AssetModel(name="my-task", uri="s3://bucket/my-task", extra={})
             assert events[0].extra == expected_extra
 
+    def test_ti_update_state_to_success_asset_registration_db_failure_returns_204(
+        self, client, session, create_task_instance
+    ):
+        ti = create_task_instance(
+            task_id="test_ti_update_state_to_success_asset_registration_db_failure_returns_204",
+            start_date=DEFAULT_START_DATE,
+            state=State.RUNNING,
+        )
+        session.commit()
+
+        def raise_db_error(_, __, ___, current_session):
+            current_session.execute(update(TaskInstance).where(TaskInstance.id == ti.id).values(pool=None))
+            current_session.flush()
+
+        with mock.patch(
+            "airflow.models.taskinstance.TaskInstance.register_asset_changes_in_db",
+            autospec=True,
+            side_effect=raise_db_error,
+        ) as mock_register_asset_changes:
+            response = client.patch(
+                f"/execution/task-instances/{ti.id}/state",
+                json={
+                    "state": State.SUCCESS,
+                    "end_date": DEFAULT_END_DATE.isoformat(),
+                    "task_outlets": [],
+                    "outlet_events": [],
+                },
+            )
+
+        assert response.status_code == 204
+        mock_register_asset_changes.assert_called_once()
+
+        session.expire_all()
+        ti = session.get(TaskInstance, ti.id)
+        assert ti is not None
+        assert ti.state == State.SUCCESS
+        assert ti.end_date == DEFAULT_END_DATE
+        assert session.scalar(select(Log).where(Log.dag_id == ti.dag_id)) is not None
+
     def test_ti_update_state_not_found(self, client, session):
         """
         Test that a 404 error is returned when the Task Instance does not exist.

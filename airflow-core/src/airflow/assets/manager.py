@@ -40,6 +40,7 @@ from airflow.models.asset import (
     DagScheduleAssetReference,
     DagScheduleAssetUriReference,
     PartitionedAssetKeyLog,
+    asset_alias_asset_event_association_table,
 )
 from airflow.models.log import Log
 from airflow.utils.helpers import is_container
@@ -327,8 +328,12 @@ class AssetManager(LoggingMixin):
             ).unique()
 
             for asset_alias_model in asset_alias_models:
-                asset_alias_model.asset_events.append(asset_event)
-                session.add(asset_alias_model)
+                session.execute(
+                    asset_alias_asset_event_association_table.insert().values(
+                        alias_id=asset_alias_model.id,
+                        event_id=asset_event.id,
+                    )
+                )
 
                 dags_to_queue_from_asset_alias |= {
                     alias_ref.dag
