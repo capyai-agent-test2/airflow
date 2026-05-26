@@ -225,6 +225,30 @@ class TestExecutorInitializer:
         mock_configure_orm.assert_called_once()
 
 
+class TestExecute:
+    @mock.patch("airflow.providers.openlineage.plugins.listener.threading.active_count", return_value=1)
+    @mock.patch("airflow.providers.openlineage.plugins.listener.OpenLineageListener._fork_execute")
+    def test_execute_uses_fork_for_single_threaded_process(self, mock_fork_execute, _mock_active_count):
+        listener = OpenLineageListener()
+        callable_mock = mock.create_autospec(lambda: None)
+
+        listener._execute(callable_mock, "on_success", use_fork=True)
+
+        mock_fork_execute.assert_called_once_with(callable_mock, "on_success")
+        callable_mock.assert_not_called()
+
+    @mock.patch("airflow.providers.openlineage.plugins.listener.threading.active_count", return_value=2)
+    @mock.patch("airflow.providers.openlineage.plugins.listener.OpenLineageListener._fork_execute")
+    def test_execute_skips_fork_for_multi_threaded_process(self, mock_fork_execute, _mock_active_count):
+        listener = OpenLineageListener()
+        callable_mock = mock.create_autospec(lambda: None)
+
+        listener._execute(callable_mock, "on_success", use_fork=True)
+
+        mock_fork_execute.assert_not_called()
+        callable_mock.assert_called_once_with()
+
+
 @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Airflow 2 tests")
 class TestOpenLineageListenerAirflow2:
     @patch("airflow.models.TaskInstance.xcom_push")
