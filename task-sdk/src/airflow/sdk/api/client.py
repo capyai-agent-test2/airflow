@@ -34,6 +34,7 @@ from opentelemetry import trace
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from pydantic import BaseModel, JsonValue
 from tenacity import (
+    Retrying,
     before_log,
     retry,
     retry_if_exception,
@@ -900,9 +901,7 @@ class DagRunOperations:
         )
 
         try:
-            self.client.post(
-                f"dag-runs/{dag_id}/{run_id}", content=body.model_dump_json(exclude_defaults=True)
-            )
+            self._trigger_dag_run(dag_id=dag_id, run_id=run_id, body=body)
         except ServerResponseError as e:
             if e.response.status_code == HTTPStatus.CONFLICT:
                 if reset_dag_run:
@@ -914,6 +913,55 @@ class DagRunOperations:
             raise
 
         return OKResponse(ok=True)
+
+    def _does_dag_run_exist(self, dag_id: str, run_id: str) -> bool:
+        try:
+            self.get_detail(dag_id=dag_id, run_id=run_id)
+        except ServerResponseError as e:
+            if e.response.status_code == HTTPStatus.NOT_FOUND:
+                return False
+            raise
+        return True
+
+    def _trigger_dag_run(self, dag_id: str, run_id: str, body: TriggerDAGRunPayload) -> None:
+        request = getattr(type(self.client).request, "__wrapped__", type(self.client).request)
+        saw_missing_dag_run_after_ambiguous_error = False
+
+        for attempt in Retrying(
+            retry=retry_if_exception(_should_retry_api_request),
+            stop=stop_after_attempt(API_RETRIES),
+            wait=wait_random_exponential(min=API_RETRY_WAIT_MIN, max=API_RETRY_WAIT_MAX),
+            before_sleep=_log_and_trace_retry,
+            reraise=True,
+        ):
+            with attempt:
+                try:
+                    request(
+                        self.client,
+                        "POST",
+                        f"dag-runs/{dag_id}/{run_id}",
+                        content=body.model_dump_json(exclude_defaults=True),
+                    )
+                except httpx.RequestError:
+                    saw_missing_dag_run_after_ambiguous_error = not self._does_dag_run_exist(
+                        dag_id=dag_id, run_id=run_id
+                    )
+                    raise
+                except ServerResponseError as e:
+                    if (
+                        saw_missing_dag_run_after_ambiguous_error
+                        and e.response.status_code == HTTPStatus.CONFLICT
+                        and self._does_dag_run_exist(dag_id=dag_id, run_id=run_id)
+                    ):
+                        log.info(
+                            "Dag Run exists after trigger retry conflict; treating request as successful.",
+                            dag_id=dag_id,
+                            run_id=run_id,
+                        )
+                        return
+                    raise
+                else:
+                    return
 
     def clear(self, dag_id: str, run_id: str) -> OKResponse:
         """Clear a Dag run via the API server."""

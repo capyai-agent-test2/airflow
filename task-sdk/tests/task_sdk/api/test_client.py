@@ -1358,6 +1358,145 @@ class TestDagRunOperations:
 
         assert result == OKResponse(ok=True)
 
+    @mock.patch("airflow.sdk.api.client.API_RETRIES", 2)
+    @mock.patch("airflow.sdk.api.client.API_RETRY_WAIT_MIN", 0)
+    @mock.patch("airflow.sdk.api.client.API_RETRY_WAIT_MAX", 0)
+    def test_trigger_conflict_after_ambiguous_retry_treats_existing_run_as_success(self):
+        """Treat conflict after an ambiguous retry as success when the requested Dag run now exists."""
+        post_attempts = 0
+        get_attempts = 0
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            nonlocal get_attempts, post_attempts
+            if request.method == "POST" and request.url.path == "/dag-runs/test_trigger_retry/test_run_id":
+                post_attempts += 1
+                if post_attempts == 1:
+                    raise httpx.RequestError("connection dropped after write", request=request)
+                return httpx.Response(
+                    status_code=409,
+                    json={
+                        "detail": {
+                            "reason": "already_exists",
+                            "message": "A Dag Run already exists for Dag test_trigger_retry with run id test_run_id",
+                        }
+                    },
+                )
+            if request.method == "GET" and request.url.path == "/dag-runs/test_trigger_retry/test_run_id":
+                get_attempts += 1
+                if get_attempts == 1:
+                    return httpx.Response(
+                        status_code=404,
+                        json={
+                            "detail": {
+                                "reason": "not_found",
+                                "message": "Dag run not found",
+                            }
+                        },
+                    )
+                return httpx.Response(
+                    status_code=200,
+                    json={
+                        "dag_id": "test_trigger_retry",
+                        "run_id": "test_run_id",
+                        "logical_date": "2025-01-01T00:00:00Z",
+                        "start_date": "2025-01-01T00:00:00Z",
+                        "run_type": "manual",
+                        "run_after": "2025-01-01T00:00:00Z",
+                        "state": "running",
+                        "consumed_asset_events": [],
+                    },
+                )
+            return httpx.Response(status_code=422)
+
+        client = make_client(transport=httpx.MockTransport(handle_request))
+        result = client.dag_runs.trigger(dag_id="test_trigger_retry", run_id="test_run_id")
+
+        assert post_attempts == 2
+        assert get_attempts == 2
+        assert result == OKResponse(ok=True)
+
+    @mock.patch("airflow.sdk.api.client.API_RETRIES", 2)
+    @mock.patch("airflow.sdk.api.client.API_RETRY_WAIT_MIN", 0)
+    @mock.patch("airflow.sdk.api.client.API_RETRY_WAIT_MAX", 0)
+    def test_trigger_request_error_retries_when_dag_run_does_not_exist(self):
+        """Retry the trigger request when an ambiguous error occurs and the Dag run is still absent."""
+        post_attempts = 0
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            nonlocal post_attempts
+            if (
+                request.method == "POST"
+                and request.url.path == "/dag-runs/test_trigger_request_error/test_run_id"
+            ):
+                post_attempts += 1
+                if post_attempts == 1:
+                    raise httpx.RequestError("connection dropped before response", request=request)
+                return httpx.Response(status_code=204)
+            if (
+                request.method == "GET"
+                and request.url.path == "/dag-runs/test_trigger_request_error/test_run_id"
+            ):
+                return httpx.Response(
+                    status_code=404,
+                    json={
+                        "detail": {
+                            "reason": "not_found",
+                            "message": "Dag run not found",
+                        }
+                    },
+                )
+            return httpx.Response(status_code=422)
+
+        client = make_client(transport=httpx.MockTransport(handle_request))
+        result = client.dag_runs.trigger(dag_id="test_trigger_request_error", run_id="test_run_id")
+
+        assert post_attempts == 2
+        assert result == OKResponse(ok=True)
+
+    @mock.patch("airflow.sdk.api.client.API_RETRIES", 2)
+    @mock.patch("airflow.sdk.api.client.API_RETRY_WAIT_MIN", 0)
+    @mock.patch("airflow.sdk.api.client.API_RETRY_WAIT_MAX", 0)
+    def test_trigger_request_error_preserves_existing_run_conflict(self):
+        """Keep duplicate-run semantics when an ambiguous error occurs but the Dag run already exists."""
+        post_attempts = 0
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            nonlocal post_attempts
+            if request.method == "POST" and request.url.path == "/dag-runs/test_trigger_existing/test_run_id":
+                post_attempts += 1
+                if post_attempts == 1:
+                    raise httpx.RequestError("connection dropped before response", request=request)
+                return httpx.Response(
+                    status_code=409,
+                    json={
+                        "detail": {
+                            "reason": "already_exists",
+                            "message": "A Dag Run already exists for Dag test_trigger_existing with run id test_run_id",
+                        }
+                    },
+                )
+            if request.method == "GET" and request.url.path == "/dag-runs/test_trigger_existing/test_run_id":
+                return httpx.Response(
+                    status_code=200,
+                    json={
+                        "dag_id": "test_trigger_existing",
+                        "run_id": "test_run_id",
+                        "logical_date": "2025-01-01T00:00:00Z",
+                        "start_date": "2025-01-01T00:00:00Z",
+                        "run_type": "manual",
+                        "run_after": "2025-01-01T00:00:00Z",
+                        "state": "running",
+                        "consumed_asset_events": [],
+                    },
+                )
+            return httpx.Response(status_code=422)
+
+        client = make_client(transport=httpx.MockTransport(handle_request))
+        result = client.dag_runs.trigger(dag_id="test_trigger_existing", run_id="test_run_id")
+
+        assert post_attempts == 2
+        assert result == ErrorResponse(error=ErrorType.DAGRUN_ALREADY_EXISTS)
+
     def test_clear(self):
         """Test that the client can clear a dag run"""
 
