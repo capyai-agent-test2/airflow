@@ -1342,9 +1342,7 @@ class TestTIUpdateState:
         session.commit()
 
         def raise_db_error(_, __, ___, current_session):
-            current_session.execute(
-                update(TaskInstance).where(TaskInstance.id == ti.id).values(hostname=None)
-            )
+            current_session.execute(update(TaskInstance).where(TaskInstance.id == ti.id).values(pool=None))
             current_session.flush()
 
         with mock.patch(
