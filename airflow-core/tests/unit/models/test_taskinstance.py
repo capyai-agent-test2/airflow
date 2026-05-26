@@ -126,6 +126,12 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.db_test, pytest.mark.need_serialized_dag, pytest.mark.want_activate_assets]
 
 
+def test_task_instance_declares_index_for_dag_version_id():
+    index_names = {index.name for index in TaskInstance.__table__.indexes}
+
+    assert "ti_dag_version_id" in index_names
+
+
 @pytest.fixture
 def test_pool():
     with create_session() as session:
