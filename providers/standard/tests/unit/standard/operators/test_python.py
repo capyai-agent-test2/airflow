@@ -1326,6 +1326,33 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
         with pytest.raises(AirflowException, match="Unsupported serializer 'airflow'"):
             self.run_as_task(f, serializer="airflow")
 
+    def test_get_current_context_from_virtualenv_task(self):
+        def f():
+            from airflow.sdk import get_current_context
+
+            def read_context():
+                context = get_current_context()
+                return {
+                    "ds": context["ds"],
+                    "data_interval_end": context["data_interval_end"].isoformat(),
+                    "run_id": context["run_id"],
+                }
+
+            return read_context()
+
+        ti = self.run_as_task(
+            f,
+            return_ti=True,
+            env_vars={"PYTHONPATH": os.pathsep.join(sys.path)},
+            requirements=["pendulum"],
+            system_site_packages=False,
+        )
+        assert TaskInstance.xcom_pull(ti) == {
+            "ds": self.ds_templated,
+            "data_interval_end": self.default_date.isoformat(),
+            "run_id": "test",
+        }
+
     def test_no_requirements(self):
         """Tests that the python callable is invoked on task run."""
 

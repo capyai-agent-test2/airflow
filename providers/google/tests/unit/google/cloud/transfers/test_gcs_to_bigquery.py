@@ -46,6 +46,12 @@ from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQue
 from airflow.utils.state import TaskInstanceState
 
 from tests_common.test_utils.taskinstance import run_task_instance
+from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS
+
+if AIRFLOW_V_3_0_PLUS:
+    from airflow.sdk import task, task_group
+else:
+    from airflow.decorators import task, task_group  # type: ignore[attr-defined,no-redef]
 
 TASK_ID = "test-gcs-to-bq-operator"
 TEST_EXPLICIT_DEST = "test-project.dataset.table"
@@ -98,6 +104,53 @@ GCS_TO_BQ_PATH = "airflow.providers.google.cloud.transfers.gcs_to_bigquery.{}"
 
 
 class TestGCSToBigQueryOperator:
+    @pytest.mark.db_test
+    @pytest.mark.need_serialized_dag
+    @mock.patch(GCS_TO_BQ_PATH.format("BigQueryHook"))
+    def test_schema_fields_from_mapped_task_group_are_rendered(self, hook, dag_maker, session):
+        job = MagicMock(spec=["job_id", "error_result", "to_api_repr", "result"])
+        job.job_id = REAL_JOB_ID
+        job.error_result = False
+        job.to_api_repr.return_value = {"configuration": {"load": {"schema": {"fields": SCHEMA_FIELDS}}}}
+        job.result.return_value = None
+        hook.return_value.insert_job.return_value = job
+        hook.return_value.generate_job_id.return_value = REAL_JOB_ID
+        hook.return_value.split_tablename.return_value = (PROJECT_ID, DATASET, TABLE)
+
+        with dag_maker(dag_id="test_gcs_to_bigquery_mapped_schema_fields", session=session):
+
+            @task
+            def build_kwargs():
+                return [{"schema_fields": SCHEMA_FIELDS}]
+
+            @task_group(group_id="load")
+            def load(schema_fields):
+                GCSToBigQueryOperator(
+                    task_id="gcs_to_bq",
+                    bucket=TEST_BUCKET,
+                    source_objects=TEST_SOURCE_OBJECTS,
+                    destination_project_dataset_table=TEST_EXPLICIT_DEST,
+                    schema_fields=schema_fields,
+                    write_disposition=WRITE_DISPOSITION,
+                    project_id=JOB_PROJECT_ID,
+                )
+
+            load.expand_kwargs(build_kwargs())
+
+        dr = dag_maker.create_dagrun()
+        dag_maker.run_ti("build_kwargs", dag_run=dr, session=session)
+
+        schedulable = {
+            (ti.task_id, ti.map_index)
+            for ti in dr.task_instance_scheduling_decisions(session=session).schedulable_tis
+        }
+        assert ("load.gcs_to_bq", 0) in schedulable
+
+        dag_maker.run_ti("load.gcs_to_bq", dag_run=dr, map_index=0, session=session)
+
+        config = hook.return_value.insert_job.call_args.kwargs["configuration"]
+        assert config["load"]["schema"] == {"fields": SCHEMA_FIELDS}
+
     @mock.patch(GCS_TO_BQ_PATH.format("BigQueryHook"))
     def test_max_value_external_table_should_execute_successfully(self, hook):
         hook.return_value.insert_job.side_effect = [

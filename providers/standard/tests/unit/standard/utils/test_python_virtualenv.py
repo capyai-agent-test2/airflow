@@ -17,13 +17,21 @@
 # under the License.
 from __future__ import annotations
 
+import pickle
+import subprocess
+import sys
 from pathlib import Path
 from textwrap import dedent
 from unittest import mock
 
 import pytest
 
-from airflow.providers.standard.utils.python_virtualenv import _generate_pip_conf, _use_uv, prepare_virtualenv
+from airflow.providers.standard.utils.python_virtualenv import (
+    _generate_pip_conf,
+    _use_uv,
+    prepare_virtualenv,
+    write_python_script,
+)
 
 from tests_common.test_utils.config import conf_vars
 from tests_common.test_utils.version_compat import remove_task_decorator
@@ -248,6 +256,55 @@ class TestPrepareVirtualenv:
         assert pip_cmd == ["uv", "pip", "install", "--python", f"{venv_dir}/bin/python", "somepackage"]
         assert "env" in pip_kwargs
         assert pip_kwargs["env"]["UV_DEFAULT_INDEX"] == "https://private.package.index"
+
+    def test_python_script_backwards_compatible_without_context_arg(self, tmp_path: Path):
+        fake_airflow = tmp_path / "fake_airflow"
+        for package_dir in [
+            fake_airflow / "airflow",
+            fake_airflow / "airflow" / "sdk",
+            fake_airflow / "airflow" / "sdk" / "execution_time",
+        ]:
+            package_dir.mkdir(parents=True, exist_ok=True)
+            (package_dir / "__init__.py").write_text("")
+        (fake_airflow / "airflow" / "sdk" / "execution_time" / "task_runner.py").write_text("")
+
+        input_path = tmp_path / "script.in"
+        output_path = tmp_path / "script.out"
+        script_path = tmp_path / "script.py"
+        termination_log_path = tmp_path / "termination.log"
+
+        write_python_script(
+            jinja_context={
+                "op_args": [],
+                "op_kwargs": {},
+                "pickling_library": "pickle",
+                "python_callable": "f",
+                "python_callable_source": dedent(
+                    """
+                    def f():
+                        return "ok"
+                    """
+                ),
+                "expect_airflow": False,
+                "string_args_global": False,
+            },
+            filename=str(script_path),
+        )
+
+        subprocess.run(
+            [
+                sys.executable,
+                str(script_path),
+                str(input_path),
+                str(output_path),
+                "none",
+                str(termination_log_path),
+            ],
+            check=True,
+            env={"PYTHONPATH": str(fake_airflow)},
+        )
+
+        assert pickle.loads(output_path.read_bytes()) == "ok"
 
     @pytest.mark.parametrize(
         ("decorators", "expected_decorators"),

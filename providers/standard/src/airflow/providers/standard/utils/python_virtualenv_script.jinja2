@@ -128,12 +128,31 @@ with open(sys.argv[3], "r") as file:
     virtualenv_string_args = list(map(lambda x: x.strip(), list(file)))
 {% endif %}
 
+if len(sys.argv) > 5:
+    with open(sys.argv[5], "rb") as file:
+        virtualenv_context = {{ pickling_library }}.load(file)
+else:
+    virtualenv_context = {}
+
 try:
-    res = {{ python_callable }}(*arg_dict["args"], **arg_dict["kwargs"])
-except Exception as e:
-    with open(sys.argv[4], "w") as file:
-        file.write(str(e))
-    raise
+    from airflow.sdk.execution_time.context import set_current_context
+except ModuleNotFoundError:
+    set_current_context = None
+
+if set_current_context is None:
+    from contextlib import nullcontext
+
+    current_context = nullcontext(virtualenv_context)
+else:
+    current_context = set_current_context(virtualenv_context)
+
+with current_context:
+    try:
+        res = {{ python_callable }}(*arg_dict["args"], **arg_dict["kwargs"])
+    except Exception as e:
+        with open(sys.argv[4], "w") as file:
+            file.write(str(e))
+        raise
 
 # Write output
 with open(sys.argv[2], "wb") as file:
