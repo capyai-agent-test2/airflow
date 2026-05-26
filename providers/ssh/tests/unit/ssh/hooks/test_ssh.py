@@ -69,6 +69,40 @@ TEST_HOST_KEY = generate_host_key(pkey=TEST_PKEY)
 
 TEST_PKEY_ECDSA = paramiko.ECDSAKey.generate()
 TEST_PRIVATE_KEY_ECDSA = generate_key_string(pkey=TEST_PKEY_ECDSA)
+TEST_PRIVATE_KEY_DSA = textwrap.dedent(
+    """\
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABsQAAAAdzc2gtZH
+    NzAAAAgQCR54AfvRdumgijULo3uYLLoz3KYmHwG8hwvpOaaoQ7YmXOvGfyQJotanoWWC4G
+    CmPare7kn5Vz32dh2DaKK7TOyagGJSOIzoMHKvGL91a/8mfaHGeJ1Mzd05MhOJl8WVAz/B
+    mE37r5M8HA3CwfqFXDFxTPc0hcSZOXJVBaUgDn6QAAABUAyxj/gqTIbc1x7LWK8yBZyDUe
+    UCUAAACAbed2Ywqx1FG2RFEZVgMInKYhejVTOlUX5nWWqyCMYGHaVnPWbn6dWfCFRNUvUM
+    Jt7Q62Iii5As5oNuFL+PTU3t5pxyPJkQbPQ2CW5YvSszqK0X0ksQ+8XHfNXB/wfd7fNq1m
+    MxceUsaw683fv483lfUcIntvdijQnLZ5Brcv9LoAAACAeHVVwtDTAIIXVfVjofn+BB4WGQ
+    RtEf6JPnsXd0XBphGmo9N0yaqbOsSzmlCSuaUmdvy/2gYmjWXOwOkYNFxMuX2en9vdgiyH
+    8GTk9GjQ5JXpjVM2XNefvx1/X1D4oHSsF9BRHnVlumXImSdEQe/tYJBivpgSaq/Iw/RobU
+    x+fmcAAAIAjZkzO42ZMzsAAAAHc3NoLWRzcwAAAIEAkeeAH70XbpoIo1C6N7mCy6M9ymJh
+    8BvIcL6TmmqEO2Jlzrxn8kCaLWp6FlguBgpj2q3u5J+Vc99nYdg2iiu0zsmoBiUjiM6DBy
+    rxi/dWv/Jn2hxnidTM3dOTITiZfFlQM/wZhN+6+TPBwNwsH6hVwxcUz3NIXEmTlyVQWlIA
+    5+kAAAAVAMsY/4KkyG3Ncey1ivMgWcg1HlAlAAAAgG3ndmMKsdRRtkRRGVYDCJymIXo1Uz
+    pVF+Z1lqsgjGBh2lZz1m5+nVnwhUTVL1DCbe0OtiIouQLOaDbhS/j01N7eaccjyZEGz0Ng
+    luWL0rM6itF9JLEPvFx3zVwf8H3e3zatZjMXHlLGsOvN37+PN5X1HCJ7b3Yo0Jy2eQa3L/
+    S6AAAAgHh1VcLQ0wCCF1X1Y6H5/gQeFhkEbRH+iT57F3dFwaYRpqPTdMmqmzrEs5pQkrml
+    Jnb8v9oGJo1lzsDpGDRcTLl9np/b3YIsh/Bk5PRo0OSV6Y1TNlzXn78df19Q+KB0rBfQUR
+    51ZbplyJknREHv7WCQYr6YEmqvyMP0aG1Mfn5nAAAAFQCoUhjQ/QTf5/dVHFX2VNBdfeox
+    DwAAAClyb290QDQxOTBjNjg4LTAyMTctNDNjYy04NWFkLTgzOTc3ZTIwMWFjMAE=
+    -----END OPENSSH PRIVATE KEY-----
+    """
+)
+TEST_HOST_KEY_DSA = (
+    "AAAAB3NzaC1kc3MAAACBAJHngB+9F26aCKNQuje5gsujPcpiYfAbyHC+k5pqhDtiZc68Z/JAmi1qehZYLgYKY9qt7uSflX"
+    "PZ2HYNoortM7JqAYlI4jOgwcq8Yv3Vr/yZ9ocZ4nUzN3TkyE4mXxZUDP8GYTfuvkzwcDcLB+oVcMXFM9zSFxJk5clUFpSAOf"
+    "pAAAAFQDLGP+CpMhtzXHstYrzIFnINR5QJQAAAIBt53ZjCrHUUbZEURlWAwicpiF6NVM6VRfmdZarIIxgYdpWc9Zufp1Z8IV"
+    "E1S9Qwm3tDrYiKLkCzmg24Uv49NTe3mnHI8mRBs9DYJbli9KzOorRfSSxD7xcd81cH/B93t82rWYzFx5SxrDrzd+/jzeV9H"
+    "CJ7b3Yo0Jy2eQa3L/S6AAAAgHh1VcLQ0wCCF1X1Y6H5/gQeFhkEbRH+iT57F3dFwaYRpqPTdMmqmzrEs5pQkrmlJnb8v9oG"
+    "Jo1lzsDpGDRcTLl9np/b3YIsh/Bk5PRo0OSV6Y1TNlzXn78df19Q+KB0rBfQUR51ZbplyJknREHv7WCQYr6YEmqvyMP0aG1"
+    "Mfn5nA=="
+)
 
 TEST_TIMEOUT = 20
 TEST_CONN_TIMEOUT = 30
@@ -743,6 +777,28 @@ class TestSSHHook:
         create_connection_without_db(conn)
         hook = SSHHook(ssh_conn_id=conn.conn_id)
         assert isinstance(hook.pkey, paramiko.RSAKey)
+
+    def test_dsa_private_key_requires_migration(self, create_connection_without_db):
+        conn = Connection(
+            conn_id="dsa_pkey",
+            host="localhost",
+            conn_type="ssh",
+            extra={"private_key": TEST_PRIVATE_KEY_DSA},
+        )
+        create_connection_without_db(conn)
+        with pytest.raises(AirflowException, match="DSA keys are no longer supported"):
+            SSHHook(ssh_conn_id=conn.conn_id)
+
+    def test_dsa_host_key_requires_migration(self, create_connection_without_db):
+        conn = Connection(
+            conn_id="dsa_host_key",
+            host="localhost",
+            conn_type="ssh",
+            extra={"host_key": f"ssh-dss {TEST_HOST_KEY_DSA}"},
+        )
+        create_connection_without_db(conn)
+        with pytest.raises(ValueError, match="DSA host keys are no longer supported"):
+            SSHHook(ssh_conn_id=conn.conn_id)
 
     def test_oneline_key(self, create_connection_without_db, mock_supervisor_comms):
         TEST_ONELINE_KEY = "-----BEGIN OPENSSHPRIVATE KEY-----asdfg-----END OPENSSHPRIVATE KEY-----"

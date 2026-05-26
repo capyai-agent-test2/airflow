@@ -89,12 +89,10 @@ class SSHHook(BaseHook):
         paramiko.RSAKey,
         paramiko.ECDSAKey,
         paramiko.Ed25519Key,
-        paramiko.DSSKey,
     )
 
     _host_key_mappings = {
         "rsa": paramiko.RSAKey,
-        "dss": paramiko.DSSKey,
         "ecdsa": paramiko.ECDSAKey,
         "ed25519": paramiko.Ed25519Key,
     }
@@ -224,6 +222,11 @@ class SSHHook(BaseHook):
                 if host_key is not None:
                     if host_key.startswith("ssh-"):
                         key_type, host_key = host_key.split(None)[:2]
+                        if key_type == "ssh-dss":
+                            raise ValueError(
+                                "DSA host keys are no longer supported. "
+                                "Generate an RSA, ECDSA, or Ed25519 key and update the SSH connection."
+                            )
                         key_constructor = self._host_key_mappings[key_type[4:]]
                     else:
                         key_constructor = paramiko.RSAKey
@@ -413,14 +416,19 @@ class SSHHook(BaseHook):
                 key = pkey_class.from_private_key(StringIO(private_key), password=passphrase)
                 # Test it actually works. If Paramiko loads an openssh generated key, sometimes it will
                 # happily load it as the wrong type, only to fail when actually used.
-                key.sign_ssh_data(b"")
+                signing_algorithm = None
+                key_hashes = getattr(key, "HASHES", None)
+                key_name = key.get_name()
+                if isinstance(key_hashes, dict) and key_hashes and key_name not in key_hashes:
+                    signing_algorithm = next(iter(key_hashes))
+                key.sign_ssh_data(b"", algorithm=signing_algorithm)
                 return key
             except (paramiko.ssh_exception.SSHException, ValueError):
                 continue
         raise AirflowException(
             "Private key provided cannot be read by paramiko."
-            "Ensure key provided is valid for one of the following"
-            "key formats: RSA, DSS, ECDSA, or Ed25519"
+            " Ensure the key is valid and use an RSA, ECDSA, or Ed25519 key;"
+            " DSA keys are no longer supported."
         )
 
     def exec_ssh_client_command(
