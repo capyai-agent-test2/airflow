@@ -36,6 +36,24 @@ from airflow.exceptions import AirflowException
 log = logging.getLogger(__name__)
 
 
+def _get_email_connection_extra_value(conn_id: str | None, *keys: str) -> str | None:
+    if conn_id is None:
+        return None
+
+    try:
+        from airflow.models import Connection
+
+        airflow_conn = Connection.get_connection_from_secrets(conn_id)
+    except AirflowException:
+        return None
+
+    for key in keys:
+        value = airflow_conn.extra_dejson.get(key)
+        if value is not None:
+            return value
+    return None
+
+
 def send_email(
     to: list[str] | Iterable[str],
     subject: str,
@@ -71,7 +89,11 @@ def send_email(
     """
     backend = conf.getimport("email", "EMAIL_BACKEND")
     backend_conn_id = conn_id or conf.get("email", "EMAIL_CONN_ID")
-    from_email = conf.get("email", "from_email", fallback=None)
+    from_email = kwargs.pop("from_email", None)
+    if from_email is None:
+        from_email = _get_email_connection_extra_value(backend_conn_id, "from_email", "smtp_mail_from")
+    if from_email is None:
+        from_email = conf.get("email", "from_email", fallback=None)
 
     to_list = get_email_address_list(to)
     to_comma_separated = ", ".join(to_list)
@@ -127,16 +149,15 @@ def send_email_smtp(
 
     >>> send_email("test@example.com", "foo", "<b>Foo</b> bar", ["/dev/null"], dryrun=True)
     """
-    smtp_mail_from = conf.get("smtp", "SMTP_MAIL_FROM")
-
-    if smtp_mail_from is not None:
-        mail_from = smtp_mail_from
-    else:
-        if from_email is None:
-            raise ValueError(
-                "You should set from email - either by smtp/smtp_mail_from config or `from_email` parameter"
-            )
-        mail_from = from_email
+    mail_from = from_email
+    if mail_from is None:
+        mail_from = _get_email_connection_extra_value(conn_id, "smtp_mail_from", "from_email")
+    if mail_from is None:
+        mail_from = conf.get("smtp", "SMTP_MAIL_FROM", fallback=None)
+    if mail_from is None:
+        raise ValueError(
+            "You should set from email - either by smtp/smtp_mail_from config or `from_email` parameter"
+        )
 
     msg, recipients = build_mime_message(
         mail_from=mail_from,
