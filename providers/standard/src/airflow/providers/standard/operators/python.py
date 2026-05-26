@@ -22,6 +22,7 @@ import inspect
 import json
 import logging
 import os
+import pickle
 import re
 import shutil
 import subprocess
@@ -42,6 +43,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier
 from packaging.version import InvalidVersion, Version
 
+from airflow.configuration import conf
 from airflow.exceptions import (
     AirflowConfigException,
     AirflowProviderDeprecationWarning,
@@ -169,6 +171,9 @@ class PythonOperator(BaseAsyncOperator):
         logs. Defaults to True, which allows return value log output.
         It can be set to False to prevent log output of return value when you return huge data
         such as transmission a large amount of XCom to TaskAPI.
+    :param execute_tasks_new_python_interpreter: Whether to run ``python_callable`` in a fresh Python
+        interpreter for this task instance. If ``None`` (default), the operator follows the global
+        ``core.execute_tasks_new_python_interpreter`` setting.
     """
 
     template_fields: Sequence[str] = ("templates_dict", "op_args", "op_kwargs")
@@ -189,6 +194,7 @@ class PythonOperator(BaseAsyncOperator):
         templates_dict: dict[str, Any] | None = None,
         templates_exts: Sequence[str] | None = None,
         show_return_value_in_logs: bool = True,
+        execute_tasks_new_python_interpreter: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -201,17 +207,30 @@ class PythonOperator(BaseAsyncOperator):
         if templates_exts:
             self.template_ext = templates_exts
         self.show_return_value_in_logs = show_return_value_in_logs
+        self.execute_tasks_new_python_interpreter = execute_tasks_new_python_interpreter
+        self._bundle_path: str | None = None
 
     @property
     def is_async(self) -> bool:
         return is_async_callable(self.python_callable)
 
     def execute(self, context) -> Any:
+        if self.is_async and self._should_execute_in_subprocess():
+            raise AirflowException(
+                "Running async python_callables in a new interpreter is not supported by PythonOperator."
+            )
+        self._bundle_path = self._get_bundle_path_from_context(context)
+        context_keys_before_merge = set(context)
+        explicit_op_kwargs = set(self.op_kwargs)
         if self.is_async:
             return BaseAsyncOperator.execute(self, context)
 
         context_merge(context, self.op_kwargs, templates_dict=self.templates_dict)
-        self.op_kwargs = self.determine_kwargs(context)
+        self.op_kwargs = self.determine_kwargs(
+            context,
+            context_keys_before_merge=context_keys_before_merge,
+            explicit_op_kwargs=explicit_op_kwargs,
+        )
 
         # This needs to be lazy because subclasses may implement execute_callable
         # by running a separate process that can't use the eager result.
@@ -236,8 +255,22 @@ class PythonOperator(BaseAsyncOperator):
 
         return return_value
 
-    def determine_kwargs(self, context: Mapping[str, Any]) -> Mapping[str, Any]:
-        return KeywordParameters.determine(self.python_callable, self.op_args, context).unpacking()
+    def determine_kwargs(
+        self,
+        context: Mapping[str, Any],
+        *,
+        context_keys_before_merge: set[str] | None = None,
+        explicit_op_kwargs: set[str] | None = None,
+    ) -> Mapping[str, Any]:
+        keyword_params = KeywordParameters.determine(self.python_callable, self.op_args, context)
+        kwargs = keyword_params.unpacking()
+        if self._should_execute_in_subprocess() and self._callable_accepts_var_keyword():
+            return self._filter_serializable_context_kwargs(
+                kwargs,
+                context_keys_before_merge=context_keys_before_merge or set(),
+                explicit_op_kwargs=explicit_op_kwargs or set(),
+            )
+        return kwargs
 
     __prepare_execution: Callable[[], tuple[ExecutionCallableRunner, OutletEventAccessorsProtocol] | None]
 
@@ -247,6 +280,8 @@ class PythonOperator(BaseAsyncOperator):
 
         :return: the return value of the call.
         """
+        if self._should_execute_in_subprocess():
+            return self._execute_python_callable_in_subprocess()
         if (execution_preparation := self.__prepare_execution()) is None:
             return self.python_callable(*self.op_args, **self.op_kwargs)
         create_execution_runner, asset_events = execution_preparation
@@ -293,6 +328,172 @@ class PythonOperator(BaseAsyncOperator):
             create_execution_runner, asset_events = execution_preparation
             runner = create_execution_runner(self.python_callable, asset_events, logger=self.log)
             return await runner.run(*self.op_args, **self.op_kwargs)
+
+    def _should_execute_in_subprocess(self) -> bool:
+        if self.execute_tasks_new_python_interpreter is not None:
+            return self.execute_tasks_new_python_interpreter
+        return conf.getboolean("core", "execute_tasks_new_python_interpreter", fallback=False)
+
+    def _callable_accepts_var_keyword(self) -> bool:
+        return any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in inspect.signature(self.python_callable).parameters.values()
+        )
+
+    def _filter_serializable_context_kwargs(
+        self,
+        kwargs: Mapping[str, Any],
+        *,
+        context_keys_before_merge: set[str],
+        explicit_op_kwargs: set[str],
+    ) -> Mapping[str, Any]:
+        filtered_kwargs: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            if key in explicit_op_kwargs or key not in context_keys_before_merge:
+                filtered_kwargs[key] = value
+                continue
+            try:
+                pickle.dumps(value)
+            except Exception:
+                self.log.debug(
+                    "Dropping non-serializable context key %r for subprocess execution in PythonOperator",
+                    key,
+                )
+                continue
+            filtered_kwargs[key] = value
+        return filtered_kwargs
+
+    def _get_bundle_path_from_context(self, context: Context) -> str | None:
+        if not AIRFLOW_V_3_0_PLUS:
+            return None
+
+        ti = context["ti"]
+        if bundle_instance := getattr(ti, "bundle_instance", None):
+            return bundle_instance.path
+        return None
+
+    def get_python_source(self) -> str:
+        """Return the source of self.python_callable."""
+        return textwrap.dedent(inspect.getsource(self.python_callable))
+
+    def _write_args(self, file: Path) -> None:
+        def resolve_proxies(obj):
+            """Recursively replaces lazy_object_proxy.Proxy instances with their resolved values."""
+            if isinstance(obj, lazy_object_proxy.Proxy):
+                return obj.__wrapped__
+            if isinstance(obj, dict):
+                return {k: resolve_proxies(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [resolve_proxies(v) for v in obj]
+            return obj
+
+        if self.op_args or self.op_kwargs:
+            resolved_kwargs = resolve_proxies(self.op_kwargs)
+            try:
+                file.write_bytes(pickle.dumps({"args": self.op_args, "kwargs": resolved_kwargs}))
+            except Exception:
+                bad_keys: list[str] = []
+                for key, value in resolved_kwargs.items():
+                    try:
+                        pickle.dumps(value)
+                    except Exception:
+                        bad_keys.append(key)
+                if bad_keys:
+                    raise AirflowException(
+                        f"Failed to serialize op_kwargs. The following keys contain objects that "
+                        f"cannot be pickled: {bad_keys}. This often happens when "
+                        f"render_template_as_native_obj=True and templates like '{{{{ ti }}}}' "
+                        f"resolve to live Airflow objects instead of strings. Use string "
+                        f"representations or pass only the specific attributes you need "
+                        f"(e.g. '{{{{ ti.task_id }}}}', '{{{{ ti.run_id }}}}')."
+                    )
+                raise
+
+    def _validate_subprocess_python_callable(self) -> None:
+        if not isinstance(self.python_callable, types.FunctionType) or (
+            isinstance(self.python_callable, types.LambdaType) and self.python_callable.__name__ == "<lambda>"
+        ):
+            raise AirflowException(
+                "PythonOperator only supports functions defined with def for "
+                "execute_tasks_new_python_interpreter=True."
+            )
+        if inspect.isgeneratorfunction(self.python_callable):
+            raise AirflowException(
+                "PythonOperator does not support generator functions for "
+                "execute_tasks_new_python_interpreter=True."
+            )
+
+    def _read_result(self, path: Path) -> Any:
+        if path.stat().st_size == 0:
+            return None
+        try:
+            return pickle.loads(path.read_bytes())
+        except ValueError as value_error:
+            raise DeserializingResultError() from value_error
+
+    def _execute_python_callable_in_subprocess(self) -> Any:
+        self._validate_subprocess_python_callable()
+        with TemporaryDirectory(prefix="python-operator-call") as tmp:
+            tmp_dir = Path(tmp)
+            input_path = tmp_dir / "script.in"
+            output_path = tmp_dir / "script.out"
+            string_args_path = tmp_dir / "string_args.txt"
+            script_path = tmp_dir / "script.py"
+            termination_log_path = tmp_dir / "termination.log"
+            airflow_context_path = tmp_dir / "airflow_context.json"
+
+            self._write_args(input_path)
+
+            jinja_context = {
+                "op_args": self.op_args,
+                "op_kwargs": self.op_kwargs,
+                "expect_airflow": True,
+                "pickling_library": "pickle",
+                "python_callable": self.python_callable.__name__,
+                "python_callable_source": self.get_python_source(),
+                "string_args_global": False,
+            }
+
+            if inspect.getfile(self.python_callable) == self.dag.fileloc:
+                jinja_context["modified_dag_module_name"] = get_unique_dag_module_name(self.dag.fileloc)
+
+            write_python_script(
+                jinja_context=jinja_context,
+                filename=os.fspath(script_path),
+                render_template_as_native_obj=self.dag.render_template_as_native_obj,
+            )
+
+            env_vars = dict(os.environ)
+            if fd := os.getenv("__AIRFLOW_SUPERVISOR_FD"):
+                env_vars["__AIRFLOW_SUPERVISOR_FD"] = fd
+            if self._bundle_path:
+                existing_pythonpath = env_vars.get("PYTHONPATH", "")
+                if existing_pythonpath:
+                    env_vars["PYTHONPATH"] = f"{existing_pythonpath}{os.pathsep}{self._bundle_path}"
+                else:
+                    env_vars["PYTHONPATH"] = self._bundle_path
+
+            try:
+                _execute_in_subprocess(
+                    cmd=[
+                        os.fspath(Path(sys.executable)),
+                        os.fspath(script_path),
+                        os.fspath(input_path),
+                        os.fspath(output_path),
+                        os.fspath(string_args_path),
+                        os.fspath(termination_log_path),
+                        os.fspath(airflow_context_path),
+                    ],
+                    env=env_vars,
+                )
+            except subprocess.CalledProcessError as e:
+                if termination_log_path.exists() and termination_log_path.stat().st_size > 0:
+                    error_msg = f"Process returned non-zero exit status {e.returncode}.\n"
+                    with open(termination_log_path) as file:
+                        error_msg += file.read()
+                    raise AirflowException(error_msg) from None
+                raise
+            return self._read_result(output_path)
 
 
 class BranchPythonOperator(BaseBranchOperator, PythonOperator):

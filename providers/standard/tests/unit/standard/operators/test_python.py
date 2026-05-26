@@ -227,6 +227,51 @@ class TestPythonOperator(BasePythonTest):
         ti.run()
         assert self.is_run()
 
+    def test_execute_tasks_new_python_interpreter_runs_callable_in_subprocess(self):
+        def f():
+            import os
+
+            return os.getpid()
+
+        ti = self.run_as_task(f, return_ti=True, execute_tasks_new_python_interpreter=True)
+        assert TaskInstance.xcom_pull(ti) != os.getpid()
+
+    def test_execute_tasks_new_python_interpreter_rejects_lambda(self):
+        with pytest.raises(
+            AirflowException,
+            match="PythonOperator only supports functions defined with def",
+        ):
+            self.run_as_task(lambda: 1, execute_tasks_new_python_interpreter=True)
+
+    def test_execute_tasks_new_python_interpreter_uses_global_config_by_default(self, monkeypatch):
+        def f():
+            return "done"
+
+        monkeypatch.setattr(
+            "airflow.providers.standard.operators.python.conf.getboolean",
+            lambda *args, **kwargs: True,
+        )
+        op = PythonOperator(task_id=self.task_id, python_callable=f)
+        assert op._should_execute_in_subprocess() is True
+
+    def test_execute_tasks_new_python_interpreter_filters_non_serializable_context_for_kwargs(self):
+        class NonSerializable:
+            def __reduce__(self):
+                raise TypeError("cannot pickle this")
+
+        def f(**kwargs):
+            return kwargs
+
+        op = PythonOperator(
+            task_id=self.task_id, python_callable=f, execute_tasks_new_python_interpreter=True
+        )
+        filtered_kwargs = op._filter_serializable_context_kwargs(
+            {"ti": "task-instance", "bad": NonSerializable(), "user_value": "kept"},
+            context_keys_before_merge={"ti", "bad"},
+            explicit_op_kwargs={"user_value"},
+        )
+        assert filtered_kwargs == {"ti": "task-instance", "user_value": "kept"}
+
     @pytest.mark.parametrize("not_callable", [{}, None])
     def test_python_operator_python_callable_is_callable(self, not_callable):
         """Tests that PythonOperator will only instantiate if the python_callable argument is callable."""
@@ -2627,6 +2672,23 @@ class TestPythonAsyncOperator(TestPythonOperator):
                 match=r"Async operators require Airflow 3\.2\+\. Upgrade Airflow or use a synchronous callable\.",
             ):
                 self.run_as_task(say_hello, op_kwargs={"name": "world"}, show_return_value_in_logs=True)
+
+    def test_execute_tasks_new_python_interpreter_rejects_async_callable(self):
+        async def say_hello():
+            return "hello"
+
+        if AIRFLOW_V_3_2_PLUS:
+            with pytest.raises(
+                AirflowException,
+                match="Running async python_callables in a new interpreter is not supported",
+            ):
+                self.run_as_task(say_hello, execute_tasks_new_python_interpreter=True)
+        else:
+            with pytest.raises(
+                RuntimeError,
+                match=r"Async operators require Airflow 3\.2\+\. Upgrade Airflow or use a synchronous callable\.",
+            ):
+                self.run_as_task(say_hello, execute_tasks_new_python_interpreter=True)
 
 
 @pytest.mark.parametrize(
