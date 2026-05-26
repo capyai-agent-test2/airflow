@@ -5512,6 +5512,18 @@ Improvements
 - Add sentry transport configuration option (#30419)
 - Better message on deserialization error (#30588)
 
+``dag.test()`` returns the ``DagRun`` and keeps runnable tasks scheduled after failures
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+``dag.test()`` now returns the created ``DagRun`` object instead of ``None``.
+This makes it easier to assert task-instance states in tests after the run
+finishes.
+
+The simulated run also continues scheduling tasks that are still runnable after
+another task fails, including tasks whose trigger rules allow them to proceed.
+This makes ``dag.test()`` more useful for testing teardown flows, non-default
+trigger rules, and mapped tasks without falling back to ``DebugExecutor``.
+
 Bug Fixes
 """""""""
 - Remove user sessions when resetting password (#33347)
