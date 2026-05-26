@@ -127,6 +127,7 @@ from airflow.sdk.execution_time.comms import (
     PreviousTIResult,
     PrevSuccessfulDagRunResult,
     RescheduleTask,
+    RetryTask,
     SetAssetStateByName,
     SetAssetStateByUri,
     SetRenderedFields,
@@ -4755,6 +4756,54 @@ class TestTaskRunnerCallsCallbacks:
         for index, calls in extra_exceptions:
             expected_exception_logs.insert(index, calls)
         assert log.exception.mock_calls == expected_exception_logs
+
+    def test_on_retry_callback_airflow_fail_exception_marks_task_failed(
+        self, create_runtime_ti, mock_supervisor_comms
+    ):
+        collected_results = []
+
+        def execute_impl(self, context):
+            collected_results.append("execute failure")
+            raise AirflowException("retry me")
+
+        def retry_callback(context):
+            collected_results.append("on-retry callback")
+            raise AirflowFailException("stop retrying")
+
+        def failure_callback(context):
+            collected_results.append("on-failure callback")
+            assert isinstance(context["exception"], AirflowFailException)
+
+        class CustomOperator(BaseOperator):
+            execute = execute_impl
+
+        task = CustomOperator(
+            task_id="task",
+            retries=1,
+            on_retry_callback=retry_callback,
+            on_failure_callback=failure_callback,
+        )
+        runtime_ti = create_runtime_ti(dag_id="dag", task=task, should_retry=True)
+        log = mock.MagicMock()
+        context = runtime_ti.get_template_context()
+
+        state, msg, error = run(runtime_ti, context, log)
+
+        assert state == TaskInstanceState.UP_FOR_RETRY
+        assert isinstance(msg, RetryTask)
+
+        mock_supervisor_comms.send.reset_mock()
+        finalize(runtime_ti, state, context, log, error, msg=msg)
+
+        assert runtime_ti.state == TaskInstanceState.FAILED
+        assert collected_results == ["execute failure", "on-retry callback", "on-failure callback"]
+        mock_supervisor_comms.send.assert_called_once_with(
+            TaskState(
+                state=TaskInstanceState.FAILED,
+                end_date=runtime_ti.end_date,
+                rendered_map_index=runtime_ti.rendered_map_index,
+            )
+        )
 
 
 class TestTriggerDagRunOperator:
