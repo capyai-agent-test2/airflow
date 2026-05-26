@@ -104,6 +104,12 @@ class SnowflakeHook(DbApiHook):
         (IdP) that has been defined for your account
         ``https://<your_okta_account_name>.okta.com`` to authenticate
         through native Okta.
+        'WORKLOAD_IDENTITY' to authenticate with Snowflake Workload Identity Federation
+    :param workload_identity_provider: workload identity provider for Snowflake Workload Identity
+        Federation. Supported values depend on the Snowflake connector and include
+        AWS, AZURE, GCP, and OIDC.
+    :param workload_identity_entra_resource: custom Azure Entra resource to use for
+        Snowflake Workload Identity Federation.
     :param warehouse: name of snowflake warehouse
     :param database: name of snowflake database
     :param region: name of snowflake region
@@ -160,6 +166,12 @@ class SnowflakeHook(DbApiHook):
             ),
             "proxy_user": StringField(lazy_gettext("Proxy User"), widget=BS3TextFieldWidget()),
             "proxy_password": PasswordField(lazy_gettext("Proxy Password"), widget=BS3PasswordFieldWidget()),
+            "workload_identity_provider": StringField(
+                lazy_gettext("Workload Identity Provider"), widget=BS3TextFieldWidget()
+            ),
+            "workload_identity_entra_resource": StringField(
+                lazy_gettext("Workload Identity Entra Resource"), widget=BS3TextFieldWidget()
+            ),
         }
 
     @classmethod
@@ -186,6 +198,8 @@ class SnowflakeHook(DbApiHook):
                         "proxy_port": "8080",
                         "proxy_user": "proxy_username",
                         "proxy_password": "proxy_password",
+                        "workload_identity_provider": "AWS",
+                        "workload_identity_entra_resource": "api://snowflake_oauth_server",
                     },
                     indent=1,
                 ),
@@ -204,6 +218,8 @@ class SnowflakeHook(DbApiHook):
                 "proxy_port": "Proxy server port",
                 "proxy_user": "Proxy username (optional)",
                 "proxy_password": "Proxy password (optional)",
+                "workload_identity_provider": "Workload identity provider (AWS, AZURE, GCP, OIDC)",
+                "workload_identity_entra_resource": "Custom Azure Entra resource for workload identity",
             },
         }
 
@@ -219,6 +235,8 @@ class SnowflakeHook(DbApiHook):
         self.session_parameters = kwargs.pop("session_parameters", None)
         self.client_request_mfa_token = kwargs.pop("client_request_mfa_token", None)
         self.client_store_temporary_credential = kwargs.pop("client_store_temporary_credential", None)
+        self.workload_identity_provider = kwargs.pop("workload_identity_provider", None)
+        self.workload_identity_entra_resource = kwargs.pop("workload_identity_entra_resource", None)
         self.query_ids: list[str] = []
 
         # Access token and expiration timestamp persisted
@@ -467,6 +485,18 @@ class SnowflakeHook(DbApiHook):
             conn_config["proxy_user"] = proxy_user
         if proxy_password:
             conn_config["proxy_password"] = proxy_password
+
+        workload_identity_provider = self._get_field(extra_dict, "workload_identity_provider")
+        if self.workload_identity_provider or workload_identity_provider:
+            conn_config["workload_identity_provider"] = (
+                self.workload_identity_provider or workload_identity_provider
+            )
+
+        workload_identity_entra_resource = self._get_field(extra_dict, "workload_identity_entra_resource")
+        if self.workload_identity_entra_resource or workload_identity_entra_resource:
+            conn_config["workload_identity_entra_resource"] = (
+                self.workload_identity_entra_resource or workload_identity_entra_resource
+            )
 
         return conn_config
 
