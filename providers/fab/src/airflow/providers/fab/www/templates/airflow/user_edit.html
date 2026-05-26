@@ -1,0 +1,53 @@
+{#
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
+#}
+{% extends "appbuilder/general/model/edit.html" %}
+{% import 'appbuilder/baselib.html' as baselib %}
+
+{% block edit_form %}
+    {% if can_reset_password %}
+        {% set endpoint = modelview_name + '.action' %}
+        {% set path = endpoint | safe_url_for(name='resetpasswords', pk=pk) %}
+        {% if path %}
+            <div class="well well-sm">
+                <form id="action_form" action="{{ path }}" method="POST" style="display: none">
+                    {% if csrf_token is defined and csrf_token %}
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    {% endif %}
+                    <input type="hidden" id="action" name="action" />
+                </form>
+                <a
+                    id="btn-action-{{ endpoint }}-resetpasswords"
+                    href="#"
+                    class="btn btn-sm btn-primary"
+                >
+                    <i class="fa fa-lock"></i>
+                    {{ _("Reset Password") }}
+                </a>
+                <script nonce="{{ baselib.get_nonce() }}">
+                    document.getElementById("btn-action-{{ endpoint }}-resetpasswords")
+                        .addEventListener("click", function () {
+                            const adminAction = new AdminActions();
+                            return adminAction.execute_single('{{ path }}', false);
+                        })
+                </script>
+            </div>
+        {% endif %}
+    {% endif %}
+    {{ super() }}
+{% endblock %}

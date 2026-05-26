@@ -155,6 +155,7 @@ class CustomUserDBModelView(MultiResourceUserMixin, UserDBModelView):
     """Customize permission names for FAB's builtin UserDBModelView."""
 
     _class_permission_name = permissions.RESOURCE_USER
+    edit_template = "airflow/user_edit.html"
 
     class_permission_name_mapping = {
         "resetmypassword": permissions.RESOURCE_MY_PASSWORD,
@@ -204,3 +205,23 @@ class CustomUserDBModelView(MultiResourceUserMixin, UserDBModelView):
         permissions.ACTION_CAN_EDIT,
         permissions.ACTION_CAN_DELETE,
     ]
+
+    @expose("/edit/<pk>", methods=["GET", "POST"])
+    @has_access
+    def edit(self, pk):
+        pk = self._deserialize_pk_if_composite(pk)
+        widgets = self._edit(pk)
+        if not widgets:
+            return self.post_edit_redirect()
+        return self.render_template(
+            self.edit_template,
+            title=self.edit_title,
+            widgets=widgets,
+            related_views=self._related_views,
+            modelview_name=self.__class__.__name__,
+            pk=pk,
+            can_reset_password=self.appbuilder.sm.has_access(
+                self.get_action_permission_name("resetpasswords"),
+                self.class_permission_name_mapping["resetpasswords"],
+            ),
+        )
