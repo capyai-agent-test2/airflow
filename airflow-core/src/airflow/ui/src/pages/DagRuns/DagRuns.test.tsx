@@ -18,7 +18,7 @@
  */
 import "@testing-library/jest-dom";
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { AppWrapper } from "src/utils/AppWrapper";
 
@@ -26,10 +26,15 @@ import { AppWrapper } from "src/utils/AppWrapper";
 //   - run_before_filter (logical_date: 2024-12-31) — excluded when filtering Jan 2025
 //   - run_in_range      (logical_date: 2025-01-15) — included when filtering Jan 2025
 describe("DagRuns logical date filter", () => {
+  beforeEach(() => {
+    localStorage.removeItem("dataTable:common:dagRun:columnVisibility");
+  });
+
   it("shows all runs when no logical date filter is applied", async () => {
     render(<AppWrapper initialEntries={["/dag_runs"]} />);
 
     await waitFor(() => expect(screen.getByText("run_in_range")).toBeInTheDocument());
+    expect(screen.getAllByTestId("table-cell-conf")).toHaveLength(2);
     expect(screen.getByText("run_before_filter")).toBeInTheDocument();
   });
 
