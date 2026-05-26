@@ -323,6 +323,9 @@ apache-airflow = "airflow.__main__:main"
 "postgres" = [
     "apache-airflow-providers-postgres>=5.13.1"
 ]
+"prometheus" = [
+    "apache-airflow-providers-prometheus>=0.1.0"
+]
 "presto" = [
     "apache-airflow-providers-presto>=5.7.0"
 ]
@@ -1224,6 +1227,8 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/providers/pinecone/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/postgres/src",
     "$MYPY_CONFIG_FILE_DIR/providers/postgres/tests",
+    "$MYPY_CONFIG_FILE_DIR/providers/prometheus/src",
+    "$MYPY_CONFIG_FILE_DIR/providers/prometheus/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/presto/src",
     "$MYPY_CONFIG_FILE_DIR/providers/presto/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/qdrant/src",
@@ -1485,6 +1490,7 @@ apache-airflow-providers-papermill = false
 apache-airflow-providers-pgvector = false
 apache-airflow-providers-pinecone = false
 apache-airflow-providers-postgres = false
+apache-airflow-providers-prometheus = false
 apache-airflow-providers-presto = false
 apache-airflow-providers-qdrant = false
 apache-airflow-providers-redis = false
@@ -1635,6 +1641,7 @@ apache-airflow-providers-papermill = false
 apache-airflow-providers-pgvector = false
 apache-airflow-providers-pinecone = false
 apache-airflow-providers-postgres = false
+apache-airflow-providers-prometheus = false
 apache-airflow-providers-presto = false
 apache-airflow-providers-qdrant = false
 apache-airflow-providers-redis = false
@@ -1796,6 +1803,7 @@ apache-airflow-providers-papermill = { workspace = true }
 apache-airflow-providers-pgvector = { workspace = true }
 apache-airflow-providers-pinecone = { workspace = true }
 apache-airflow-providers-postgres = { workspace = true }
+apache-airflow-providers-prometheus = { workspace = true }
 apache-airflow-providers-presto = { workspace = true }
 apache-airflow-providers-qdrant = { workspace = true }
 apache-airflow-providers-redis = { workspace = true }
@@ -1933,6 +1941,7 @@ members = [
     "providers/pgvector",
     "providers/pinecone",
     "providers/postgres",
+    "providers/prometheus",
     "providers/presto",
     "providers/qdrant",
     "providers/redis",
