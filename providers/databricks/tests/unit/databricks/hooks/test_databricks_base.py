@@ -110,6 +110,15 @@ class TestBaseDatabricksHook:
     def test_parse_host(self, input_url, expected_host):
         assert BaseDatabricksHook._parse_host(input_url) == expected_host
 
+    def test_proxies_from_connection_extra(self):
+        hook = BaseDatabricksHook()
+        hook.databricks_conn = Connection(
+            extra=json.dumps({"proxies": {"http": "http://proxy:8080", "https": "http://proxy:8443"}})
+        )
+
+        assert hook.proxies == {"http": "http://proxy:8080", "https": "http://proxy:8443"}
+        assert hook._get_aiohttp_proxy("https://example.com") == "http://proxy:8443"
+
     @mock.patch("requests.post")
     @time_machine.travel("2025-07-12 12:00:00", tick=False)
     def test_get_sp_token(self, mock_post):
@@ -125,6 +134,7 @@ class TestBaseDatabricksHook:
         mock_conn = mock.Mock()
         mock_conn.login = "client_id"
         mock_conn.password = "client_secret"
+        mock_conn.extra_dejson = {"proxies": {"https": "http://proxy:8443"}}
         hook = BaseDatabricksHook()
         hook.databricks_conn = mock_conn
         hook.user_agent_header = {"User-Agent": "test-agent"}
@@ -143,6 +153,7 @@ class TestBaseDatabricksHook:
                 "User-Agent": "test-agent",
                 "Content-Type": "application/x-www-form-urlencoded",
             },
+            proxies={"https": "http://proxy:8443"},
             timeout=hook.token_timeout_seconds,
         )
 
@@ -204,6 +215,7 @@ class TestBaseDatabricksHook:
         mock_conn = mock.Mock()
         mock_conn.login = "client_id"
         mock_conn.password = "client_secret"
+        mock_conn.extra_dejson = {"proxies": {"https": "http://proxy:8443"}}
 
         hook = BaseDatabricksHook()
         hook.databricks_conn = mock_conn
@@ -235,6 +247,7 @@ class TestBaseDatabricksHook:
                     "User-Agent": "test-agent",
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
+                proxy="http://proxy:8443",
                 timeout=10,
             )
 
@@ -499,6 +512,38 @@ class TestBaseDatabricksHook:
         assert token == "the-token"
         mock_credential.assert_called_once_with(client_id="cli-id-abc")
 
+    @mock.patch("azure.identity.ClientSecretCredential")
+    def test_get_aad_token_uses_proxies(self, mock_credential):
+        conn = Connection(
+            login="spn_client_id",
+            password="spn_client_secret",
+            extra=json.dumps(
+                {
+                    "azure_tenant_id": "tenant-id",
+                    "proxies": {"https": "http://proxy:8443"},
+                }
+            ),
+        )
+        token_mock = mock.Mock(token="the-token", expires_on=8888888888)
+        mock_credential.return_value.get_token.return_value = token_mock
+
+        hook = BaseDatabricksHook()
+        hook.databricks_conn = conn
+        hook.oauth_tokens = {}
+        hook._get_retry_object = lambda: [
+            mock.Mock(__enter__=lambda s: None, __exit__=lambda s, a, b, c: None)
+        ]
+
+        token = hook._get_aad_token(DEFAULT_DATABRICKS_SCOPE)
+
+        assert token == "the-token"
+        mock_credential.assert_called_once_with(
+            client_id="spn_client_id",
+            client_secret="spn_client_secret",
+            tenant_id="tenant-id",
+            proxies={"https": "http://proxy:8443"},
+        )
+
     @mock.patch(
         "airflow.providers.databricks.hooks.databricks_base.BaseDatabricksHook.databricks_conn",
         new_callable=mock.PropertyMock,
@@ -611,6 +656,48 @@ class TestBaseDatabricksHook:
             mock_log_debug.assert_called_once_with("Using AAD Token for SPN.")
 
     @pytest.mark.asyncio
+    @mock.patch("azure.identity.aio.ClientSecretCredential")
+    async def test_a_get_aad_token_uses_proxies(self, mock_credential):
+        conn = Connection(
+            login="spn_client_id",
+            password="spn_client_secret",
+            extra=json.dumps(
+                {
+                    "azure_tenant_id": "tenant-id",
+                    "proxies": {"https": "http://proxy:8443"},
+                }
+            ),
+        )
+        token_mock = mock.Mock(token="the-token", expires_on=8888888888)
+        credential = mock.AsyncMock()
+        credential.__aenter__.return_value = credential
+        credential.get_token.return_value = token_mock
+        mock_credential.return_value = credential
+
+        hook = BaseDatabricksHook()
+        hook.databricks_conn = conn
+        hook.oauth_tokens = {}
+
+        mock_attempt = mock.Mock()
+        mock_attempt.__enter__ = mock.Mock(return_value=None)
+        mock_attempt.__exit__ = mock.Mock(return_value=None)
+
+        async def mock_retry_generator():
+            yield mock_attempt
+
+        hook._a_get_retry_object = mock.Mock(return_value=mock_retry_generator())
+
+        token = await hook._a_get_aad_token(DEFAULT_DATABRICKS_SCOPE)
+
+        assert token == "the-token"
+        mock_credential.assert_called_once_with(
+            client_id="spn_client_id",
+            client_secret="spn_client_secret",
+            tenant_id="tenant-id",
+            proxies={"https": "http://proxy:8443"},
+        )
+
+    @pytest.mark.asyncio
     @mock.patch(
         "airflow.providers.databricks.hooks.databricks_base.BaseDatabricksHook.databricks_conn",
         new_callable=mock.PropertyMock,
@@ -719,6 +806,25 @@ class TestBaseDatabricksHook:
     def test_requests_connection_error_is_retryable(self):
         exception = requests_exceptions.ConnectionError()
         assert BaseDatabricksHook._retryable_error(exception)
+
+    @mock.patch("requests.post")
+    def test_do_api_call_uses_proxies(self, mock_post):
+        mock_response = mock.Mock()
+        mock_response.json.return_value = {"run_id": "1"}
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        hook = BaseDatabricksHook()
+        hook.databricks_conn = Connection(
+            host="example.databricks.com",
+            login="user",
+            password="secret",
+            extra=json.dumps({"proxies": {"https": "http://proxy:8443"}}),
+        )
+
+        hook._do_api_call(("POST", "2.1/jobs/runs/submit"), json={"job_id": 1})
+
+        assert mock_post.call_args.kwargs["proxies"] == {"https": "http://proxy:8443"}
 
     def test_requests_timeout_is_retryable(self):
         exception = requests_exceptions.Timeout()
