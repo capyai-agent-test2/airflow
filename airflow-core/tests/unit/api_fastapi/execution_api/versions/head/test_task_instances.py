@@ -289,6 +289,43 @@ class TestTIRunState:
         )
         assert response.status_code == 409
 
+    def test_ti_run_state_emits_queued_duration_metric(
+        self, client, session, create_task_instance, time_machine
+    ):
+        instant = timezone.parse("2024-09-30T12:00:00Z")
+        time_machine.move_to(instant, tick=False)
+
+        ti = create_task_instance(
+            task_id="test_ti_run_state_emits_queued_duration_metric",
+            state=State.QUEUED,
+            dagrun_state=DagRunState.RUNNING,
+            session=session,
+            dag_id=str(uuid4()),
+        )
+        ti.queued_dttm = instant.subtract(minutes=2)
+        session.commit()
+
+        with mock.patch("airflow.api_fastapi.execution_api.routes.task_instances.stats.timing") as timing:
+            response = client.patch(
+                f"/execution/task-instances/{ti.id}/run",
+                json={
+                    "state": "running",
+                    "hostname": "random-hostname",
+                    "unixname": "random-unixname",
+                    "pid": 100,
+                    "start_date": instant.to_iso8601_string(),
+                },
+            )
+
+        assert response.status_code == 200
+        timing.assert_called_once()
+        assert timing.call_args.args[0] == "task.queued_duration"
+        assert timing.call_args.kwargs["tags"] == {
+            "task_id": ti.task_id,
+            "dag_id": ti.dag_id,
+            "queue": ti.queue,
+        }
+
     def test_ti_run_returns_execution_token(
         self, client, exec_app, session, create_task_instance, time_machine
     ):

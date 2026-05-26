@@ -40,6 +40,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import select
 from structlog.contextvars import bind_contextvars
 
+from airflow._shared.observability.metrics import stats
 from airflow._shared.observability.traces import override_ids
 from airflow._shared.state import TaskScope
 from airflow._shared.timezones import timezone
@@ -148,6 +149,8 @@ def ti_run(
             TI.max_tries,
             TI.start_date,
             TI.next_method,
+            TI.queued_dttm,
+            TI.queue,
             TI.hostname,
             TI.unixname,
             TI.pid,
@@ -230,6 +233,18 @@ def ti_run(
                 extra=json.dumps({"host_name": ti_run_payload.hostname}) if ti_run_payload.hostname else None,
             )
         )
+        if previous_state == TaskInstanceState.QUEUED:
+            if ti.queued_dttm is None:
+                log.warning(
+                    "cannot record queued_duration because previous state change time has not been saved",
+                    task_id=ti.task_id,
+                )
+            else:
+                stats.timing(
+                    "task.queued_duration",
+                    timezone.utcnow() - ti.queued_dttm,
+                    tags={"task_id": ti.task_id, "dag_id": ti.dag_id, "queue": ti.queue},
+                )
     # Ensure there is no end date set and clear retry policy overrides from the previous attempt.
     query = query.values(
         end_date=None,
