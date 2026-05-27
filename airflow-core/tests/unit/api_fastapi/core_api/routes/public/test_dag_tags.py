@@ -100,8 +100,9 @@ class TestDagEndpoint:
 
     def _create_dag_tags(self, session=None):
         session.add(DagTag(dag_id=DAG1_ID, name="tag_2"))
-        session.add(DagTag(dag_id=DAG2_ID, name="tag_1"))
+        session.add(DagTag(dag_id=DAG1_ID, name="tag_1"))
         session.add(DagTag(dag_id=DAG3_ID, name="tag_1"))
+        session.add(DagTag(dag_id=DAG3_ID, name="stale_only"))
 
     @pytest.fixture(autouse=True)
     @provide_session
@@ -201,6 +202,12 @@ class TestDagTags(TestDagEndpoint):
                 200,
                 ["tag_1"],
                 1,
+            ),
+            (
+                {"tag_name_pattern": "stale"},
+                200,
+                [],
+                0,
             ),
             (
                 {"tag_name_pattern": "tag%"},
