@@ -22,6 +22,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import functools
+import importlib
 import io
 import logging
 import os
@@ -502,13 +503,34 @@ FDs survive the upcoming exec because ``os.dup2(inheritable=True)`` (the default
 clears ``FD_CLOEXEC`` on the destination FDs.  The log channel is obtained after
 startup via the existing ``ResendLoggingFD`` mechanism.
 
-Currently only task execution opts in (via ``ActivitySubprocess.start``).  DAG
-processor and triggerer can also hit this crash and will need the same treatment
-as a follow-up (see https://github.com/apache/airflow/issues/65691).
-
 See: https://github.com/python/cpython/issues/105912
      https://github.com/apache/airflow/discussions/24463
 """
+
+_AIRFLOW_CHILD_TARGET_ENV = "_AIRFLOW_CHILD_TARGET"
+
+
+def _encode_fork_exec_target(target: Callable[[], None]) -> str:
+    """Encode an importable child target as ``module:qualname`` for exec handoff."""
+    qualname = getattr(target, "__qualname__", None)
+    module = getattr(target, "__module__", None)
+    if not qualname or not module or "<locals>" in qualname:
+        raise ValueError(f"Target must be an importable top-level callable for use_exec=True; got {target!r}")
+    return f"{module}:{qualname}"
+
+
+def _resolve_fork_exec_target(target: str) -> Callable[[], None]:
+    """Resolve a ``module:qualname`` child target encoded for exec handoff."""
+    module_name, separator, qualname = target.partition(":")
+    if not separator or not module_name or not qualname:
+        raise ValueError(f"Invalid fork+exec child target {target!r}")
+
+    obj: Any = importlib.import_module(module_name)
+    for attr in qualname.split("."):
+        obj = getattr(obj, attr)
+    if not callable(obj):
+        raise TypeError(f"Fork+exec child target {target!r} resolved to non-callable {obj!r}")
+    return obj
 
 
 def _child_exec_main():
@@ -525,6 +547,8 @@ def _child_exec_main():
     child_stdout = socket(fileno=1)
     child_stderr = socket(fileno=2)
 
+    target = _resolve_fork_exec_target(os.environ[_AIRFLOW_CHILD_TARGET_ENV])
+
     # _fork_main always exits via os._exit(), so the socket objects above are
     # never GC'd (which would close their underlying FDs). This is safe but
     # depends on that invariant -- do not refactor _fork_main to return.
@@ -532,7 +556,7 @@ def _child_exec_main():
     # log_fd=0 tells _fork_main to skip structured log channel setup.
     # Signal to the task runner to request it via ResendLoggingFD after startup.
     os.environ["_AIRFLOW_FORK_EXEC"] = "1"
-    _fork_main(child_requests, child_stdout, child_stderr, 0, _subprocess_main)
+    _fork_main(child_requests, child_stdout, child_stderr, 0, target)
 
 
 class NeverRaised(Exception):
@@ -668,15 +692,9 @@ class WatchedSubprocess:
         :param use_exec: If True, on platforms that need it (currently macOS),
             immediately ``os.execv`` a fresh Python interpreter after ``os.fork``.
             This avoids macOS fork-safety issues with Objective-C frameworks.
-            Task execution opts in; DAG processor and triggerer do not.
+            The child target must be importable so it can be rehydrated after exec.
 
-        The exec'd child always runs ``_subprocess_main``, so ``use_exec=True``
-        is only valid when ``target is _subprocess_main``.
         """
-        if use_exec and target is not _subprocess_main:
-            raise ValueError(
-                f"use_exec=True is only supported with target=_subprocess_main; got target={target!r}"
-            )
         # Create socketpairs/"pipes" to connect to the stdin and out from the subprocess
         child_stdout, read_stdout = socketpair()
         child_stderr, read_stderr = socketpair()
@@ -699,11 +717,13 @@ class WatchedSubprocess:
 
             try:
                 if use_exec:
+                    child_target = _encode_fork_exec_target(target)
                     # macOS: exec a fresh Python interpreter to replace the
                     # inherited ObjC/CoreFoundation state that is not fork-safe.
                     # dup2 copies the socketpairs onto FDs 0/1/2; os.dup2 clears
                     # FD_CLOEXEC on the destination FDs, so they survive exec.
                     # The log channel is requested later via ResendLoggingFD.
+                    os.environ[_AIRFLOW_CHILD_TARGET_ENV] = child_target
                     os.dup2(child_requests.fileno(), 0)
                     os.dup2(child_stdout.fileno(), 1)
                     os.dup2(child_stderr.fileno(), 2)

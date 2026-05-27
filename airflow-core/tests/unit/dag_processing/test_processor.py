@@ -771,6 +771,32 @@ class TestExecuteCallbacks:
         mock_execute.assert_called_once_with(dagbag, callbacks[0], log)
 
 
+def test_start_uses_fork_exec_on_macos(mocker, monkeypatch, tmp_path):
+    fake_proc = mocker.Mock()
+    super_start = mocker.patch(
+        "airflow.dag_processing.processor.WatchedSubprocess.start", return_value=fake_proc
+    )
+    logger = mocker.Mock(spec=FilteringBoundLogger)
+    client = mocker.Mock(spec=Client)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    path = tmp_path / "test_dag.py"
+    path.write_text("from airflow.sdk import DAG\nwith DAG('test'):\n    ...\n")
+
+    DagFileProcessorProcess.start(
+        id=1,
+        path=path,
+        bundle_path=tmp_path,
+        bundle_name="testing",
+        dag_file_rel_path=path.name,
+        callbacks=[],
+        logger=logger,
+        logger_filehandle=mocker.Mock(spec=BinaryIO),
+        client=client,
+    )
+
+    assert super_start.call_args.kwargs["use_exec"] is True
+
+
 class TestExecuteDagCallbacks:
     """Test the _execute_dag_callbacks function with context_from_server"""
 
