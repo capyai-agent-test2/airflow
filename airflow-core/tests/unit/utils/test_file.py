@@ -212,6 +212,13 @@ class TestListPyFilesPath:
             f"Detected files mismatched expected files:\ndetected_files: {pformat(detected_files)}\nexpected_files: {pformat(expected_files)}"
         )
 
+    def test_list_py_file_paths_reads_safe_mode_from_current_config(self, tmp_path):
+        path = tmp_path / "testfile.py"
+        path.write_text("")
+
+        with conf_vars({("core", "DAG_DISCOVERY_SAFE_MODE"): "False"}):
+            assert list_py_file_paths(path.parent) == [str(path)]
+
 
 @pytest.mark.parametrize(
     ("edge_filename", "expected_modification"),

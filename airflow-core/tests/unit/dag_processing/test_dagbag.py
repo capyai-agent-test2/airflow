@@ -415,6 +415,22 @@ class TestDagBag:
         assert len(dagbag.dagbag_stats) == 1
         assert dagbag.dagbag_stats[0].file == path.name
 
+    def test_collect_dags_reads_safe_mode_from_current_config(self, tmp_path):
+        path = tmp_path / "testfile.py"
+        path.write_text("")
+
+        with conf_vars(
+            {
+                ("core", "dags_folder"): os.fspath(path.parent),
+                ("core", "DAG_DISCOVERY_SAFE_MODE"): "False",
+            }
+        ):
+            dagbag = DagBag(include_examples=False, collect_dags=False)
+            dagbag.collect_dags(include_examples=False)
+
+        assert len(dagbag.dagbag_stats) == 1
+        assert dagbag.dagbag_stats[0].file == path.name
+
     def test_dagbag_stats_file_is_relative_path_with_mixed_separators(self, tmp_path):
         """
         Test that dagbag_stats.file contains a relative path even when DAGS_FOLDER
