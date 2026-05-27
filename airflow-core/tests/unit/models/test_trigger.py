@@ -28,6 +28,7 @@ import pytz
 from cryptography.fernet import Fernet
 from sqlalchemy import delete, func, select
 
+import airflow.models.trigger as trigger_module
 from airflow._shared.timezones import timezone
 from airflow.jobs.job import Job
 from airflow.jobs.triggerer_job_runner import TriggererJobRunner
@@ -162,6 +163,32 @@ def test_clean_unused(session, dag_maker):
     results = session.scalars(select(Trigger)).all()
     assert len(results) == 4
     assert {result.id for result in results} == {trigger1.id, trigger4.id, trigger5.id, trigger6.id}
+
+
+def test_clean_unused_clears_trigger_ids_in_batches(session, dag_maker, monkeypatch):
+    monkeypatch.setattr(trigger_module, "_TRIGGER_ID_CLEANUP_BATCH_SIZE", 2)
+
+    triggers = [Trigger(classpath=f"airflow.triggers.testing.SuccessTrigger{i}", kwargs={}) for i in range(5)]
+    session.add_all(triggers)
+    session.flush()
+
+    with dag_maker(session=session, dag_id="test_clean_unused_clears_trigger_ids_in_batches"):
+        for i in range(5):
+            EmptyOperator(task_id=f"fake{i}")
+
+    dag_run = dag_maker.create_dagrun(logical_date=timezone.utcnow())
+    task_instances = {task_instance.task_id: task_instance for task_instance in dag_run.task_instances}
+    for i, trigger in enumerate(triggers):
+        task_instance = task_instances[f"fake{i}"]
+        task_instance.state = State.SUCCESS
+        task_instance.trigger_id = trigger.id
+        session.flush()
+
+    Trigger.clean_unused(session=session)
+
+    for task_instance in task_instances.values():
+        session.refresh(task_instance)
+        assert task_instance.trigger_id is None
 
 
 @patch.object(TriggererCallback, "handle_event")
