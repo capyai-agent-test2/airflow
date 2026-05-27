@@ -2932,7 +2932,11 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                         break
                     result = session.execute(
                         update(TI)
-                        .where(TI.id.in_(task_instance_ids))
+                        .where(
+                            TI.id.in_(task_instance_ids),
+                            TI.state == TaskInstanceState.DEFERRED,
+                            TI.trigger_timeout < now,
+                        )
                         .values(
                             state=TaskInstanceState.SCHEDULED,
                             next_method=TRIGGER_FAIL_REPR,

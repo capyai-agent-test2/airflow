@@ -7264,6 +7264,47 @@ class TestSchedulerJob:
             assert task_instance.state == State.SCHEDULED
             assert task_instance.next_method == "__fail__"
 
+    def test_timeout_triggers_rechecks_predicates_during_update(self, dag_maker, monkeypatch, session):
+        with dag_maker(
+            dag_id="test_timeout_triggers_rechecks_predicates_during_update",
+            start_date=DEFAULT_DATE,
+            schedule="@once",
+            max_active_runs=2,
+            session=session,
+        ):
+            EmptyOperator(task_id="dummy1")
+
+        timed_out_dag_run = dag_maker.create_dagrun(run_id="timed_out")
+        still_running_dag_run = dag_maker.create_dagrun(
+            run_id="still_running", logical_date=DEFAULT_DATE + datetime.timedelta(seconds=1)
+        )
+        timed_out_task = timed_out_dag_run.get_task_instance("dummy1", session)
+        timed_out_task.state = State.DEFERRED
+        timed_out_task.trigger_timeout = timezone.utcnow() - datetime.timedelta(seconds=60)
+        still_running_task = still_running_dag_run.get_task_instance("dummy1", session)
+        still_running_task.state = State.SUCCESS
+        still_running_task.trigger_timeout = timezone.utcnow() - datetime.timedelta(seconds=60)
+        session.flush()
+
+        task_instance_ids_batches = [[timed_out_task.id, still_running_task.id], []]
+        monkeypatch.setattr(
+            scheduler_job_runner_module,
+            "_locked_task_instance_ids",
+            lambda query, batch_size, session: task_instance_ids_batches.pop(0),
+        )
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+        self.job_runner.check_trigger_timeouts(session=session)
+
+        session.refresh(timed_out_task)
+        session.refresh(still_running_task)
+        assert timed_out_task.state == State.SCHEDULED
+        assert timed_out_task.next_method == "__fail__"
+        assert still_running_task.state == State.SUCCESS
+        assert still_running_task.next_method is None
+
     def test_retry_on_db_error_when_update_timeout_triggers(self, dag_maker, testing_dag_bundle, session):
         """
         Tests that it will retry on DB error like deadlock when updating timeout triggers.

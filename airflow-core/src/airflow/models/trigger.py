@@ -257,7 +257,11 @@ class Trigger(Base):
                         break
                     session.execute(
                         update(TaskInstance)
-                        .where(TaskInstance.id.in_(task_instance_ids))
+                        .where(
+                            TaskInstance.id.in_(task_instance_ids),
+                            TaskInstance.state != TaskInstanceState.DEFERRED,
+                            TaskInstance.trigger_id.is_not(None),
+                        )
                         .values(trigger_id=None)
                         .execution_options(synchronize_session=False)
                     )
