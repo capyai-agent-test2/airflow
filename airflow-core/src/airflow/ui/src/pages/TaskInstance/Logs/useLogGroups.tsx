@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ParsedLogEntry } from "src/queries/useLogs";
 
@@ -38,15 +38,18 @@ export const useLogGroups = ({
   parsedLogs: Array<ParsedLogEntry>;
   searchMatchIndices?: Set<number>;
 }) => {
-  // Build parent map for nested visibility checks
-  const groupHeaders = parsedLogs.filter(
-    (entry): entry is { group: NonNullable<ParsedLogEntry["group"]> } & ParsedLogEntry =>
-      entry.group?.type === "header",
+  const groupHeaders = useMemo(
+    () =>
+      parsedLogs.filter(
+        (entry): entry is { group: NonNullable<ParsedLogEntry["group"]> } & ParsedLogEntry =>
+          entry.group?.type === "header",
+      ),
+    [parsedLogs],
   );
-  const allGroupIds = new Set(groupHeaders.map((entry) => entry.group.id));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- React Compiler auto-memoizes this
-  const groupParentMap = new Map<number, number | undefined>(
-    groupHeaders.map((entry) => [entry.group.id, entry.group.parentId]),
+  const allGroupIds = useMemo(() => new Set(groupHeaders.map((entry) => entry.group.id)), [groupHeaders]);
+  const groupParentMap = useMemo(
+    () => new Map<number, number | undefined>(groupHeaders.map((entry) => [entry.group.id, entry.group.parentId])),
+    [groupHeaders],
   );
 
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(() =>
@@ -64,7 +67,7 @@ export const useLogGroups = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded]);
 
-  const toggleGroup = (groupId: number) => {
+  const toggleGroup = useCallback((groupId: number) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
 
@@ -76,55 +79,73 @@ export const useLogGroups = ({
 
       return next;
     });
-  };
+  }, []);
 
   // Check if all ancestors of a group are expanded
-  const isGroupAncestryExpanded = (groupId: number): boolean => {
-    const parentId = groupParentMap.get(groupId);
+  const isGroupAncestryExpanded = useCallback(
+    (groupId: number): boolean => {
+      const parentId = groupParentMap.get(groupId);
 
-    if (parentId === undefined) {
-      return true;
+      if (parentId === undefined) {
+        return true;
+      }
+
+      return expandedGroups.has(parentId) && isGroupAncestryExpanded(parentId);
+    },
+    [expandedGroups, groupParentMap],
+  );
+
+  const isEntryVisible = useCallback(
+    (entry: ParsedLogEntry): boolean => {
+      if (!entry.group) {
+        return true;
+      }
+
+      if (entry.group.type === "header") {
+        return isGroupAncestryExpanded(entry.group.id);
+      }
+
+      return expandedGroups.has(entry.group.id) && isGroupAncestryExpanded(entry.group.id);
+    },
+    [expandedGroups, isGroupAncestryExpanded],
+  );
+
+  const { originalToVisibleIndex, visibleItems } = useMemo(() => {
+    const nextVisibleItems: Array<VisibleItem> = [];
+    const nextOriginalToVisibleIndex = new Map<number, number>();
+
+    for (let idx = 0; idx < parsedLogs.length; idx += 1) {
+      const entry = parsedLogs[idx];
+
+      if (entry && isEntryVisible(entry)) {
+        nextOriginalToVisibleIndex.set(idx, nextVisibleItems.length);
+        nextVisibleItems.push({ entry, originalIndex: idx });
+      }
     }
 
-    return expandedGroups.has(parentId) && isGroupAncestryExpanded(parentId);
-  };
-
-  const isEntryVisible = (entry: ParsedLogEntry): boolean => {
-    if (!entry.group) {
-      return true;
-    }
-
-    if (entry.group.type === "header") {
-      return isGroupAncestryExpanded(entry.group.id);
-    }
-
-    return expandedGroups.has(entry.group.id) && isGroupAncestryExpanded(entry.group.id);
-  };
-
-  // Build visible items list with index mapping
-  const visibleItems: Array<VisibleItem> = [];
-  const originalToVisibleIndex = new Map<number, number>();
-
-  for (let idx = 0; idx < parsedLogs.length; idx += 1) {
-    const entry = parsedLogs[idx];
-
-    if (entry && isEntryVisible(entry)) {
-      originalToVisibleIndex.set(idx, visibleItems.length);
-      visibleItems.push({ entry, originalIndex: idx });
-    }
-  }
+    return {
+      originalToVisibleIndex: nextOriginalToVisibleIndex,
+      visibleItems: nextVisibleItems,
+    };
+  }, [isEntryVisible, parsedLogs]);
 
   // Map search match indices from original to visible indices
-  const visibleSearchMatchIndices = searchMatchIndices
-    ? new Set(
-        [...searchMatchIndices]
-          .map((idx) => originalToVisibleIndex.get(idx))
-          .filter((idx): idx is number => idx !== undefined),
-      )
-    : undefined;
+  const visibleSearchMatchIndices = useMemo(
+    () =>
+      searchMatchIndices
+        ? new Set(
+            [...searchMatchIndices]
+              .map((idx) => originalToVisibleIndex.get(idx))
+              .filter((idx): idx is number => idx !== undefined),
+          )
+        : undefined,
+    [originalToVisibleIndex, searchMatchIndices],
+  );
 
-  const visibleCurrentMatchIndex =
-    currentMatchLineIndex === undefined ? undefined : originalToVisibleIndex.get(currentMatchLineIndex);
+  const visibleCurrentMatchIndex = useMemo(
+    () => (currentMatchLineIndex === undefined ? undefined : originalToVisibleIndex.get(currentMatchLineIndex)),
+    [currentMatchLineIndex, originalToVisibleIndex],
+  );
 
   // Auto-expand group (and all ancestors) when search navigates to a match inside a collapsed group
   useEffect(() => {
