@@ -1014,6 +1014,44 @@ class TestWatchedSubprocess:
                 target=subprocess_main,
             )
 
+    def test_start_retries_psutil_lookup_once_when_child_is_running(self, monkeypatch, client_with_ti_start):
+        original_process = psutil.Process
+        calls = 0
+
+        def flaky_process(pid):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise psutil.NoSuchProcess(pid)
+            return original_process(pid)
+
+        def subprocess_main():
+            CommsDecoder()._get_response()
+            sleep(0.2)
+
+        monkeypatch.setattr(supervisor.psutil, "Process", flaky_process)
+
+        proc = ActivitySubprocess.start(
+            dag_rel_path=os.devnull,
+            bundle_info=FAKE_BUNDLE,
+            what=TaskInstanceDTO(
+                id=uuid7(),
+                task_id="b",
+                dag_id="c",
+                run_id="d",
+                try_number=1,
+                dag_version_id=uuid7(),
+                pool_slots=1,
+                queue="default",
+                priority_weight=1,
+            ),
+            client=client_with_ti_start,
+            target=subprocess_main,
+        )
+
+        assert proc.wait() == 0
+        assert calls == 2
+
     @pytest.mark.parametrize("captured_logs", [logging.WARNING], indirect=True)
     def test_heartbeat_failures_handling(self, monkeypatch, mocker, captured_logs, time_machine):
         """
