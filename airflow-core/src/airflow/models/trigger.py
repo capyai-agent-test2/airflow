@@ -58,6 +58,20 @@ Internal use only.
 
 log = logging.getLogger(__name__)
 
+_TRIGGER_ID_CLEANUP_BATCH_SIZE = 1000
+"""Maximum number of task instances to lock per trigger-id cleanup batch."""
+
+
+def _locked_task_instance_ids(query: Select, batch_size: int, session: Session):
+    return session.scalars(
+        with_row_locks(
+            query.order_by(TaskInstance.id).limit(batch_size),
+            of=TaskInstance,
+            session=session,
+            skip_locked=True,
+        )
+    ).all()
+
 
 class TriggerFailureReason(str, Enum):
     """
@@ -238,16 +252,28 @@ class Trigger(Base):
         Triggers have a one-to-many relationship to task instances, so we need to clean those up first.
         Afterward we can drop the triggers not referenced by anyone.
         """
-        # Update all task instances with trigger IDs that are not DEFERRED to remove them
-        for attempt in run_with_db_retries():
-            with attempt:
-                session.execute(
-                    update(TaskInstance)
-                    .where(
-                        TaskInstance.state != TaskInstanceState.DEFERRED, TaskInstance.trigger_id.is_not(None)
+        while True:
+            task_instance_ids = []
+            for attempt in run_with_db_retries():
+                with attempt:
+                    task_instance_ids = _locked_task_instance_ids(
+                        select(TaskInstance.id).where(
+                            TaskInstance.state != TaskInstanceState.DEFERRED,
+                            TaskInstance.trigger_id.is_not(None),
+                        ),
+                        _TRIGGER_ID_CLEANUP_BATCH_SIZE,
+                        session,
                     )
-                    .values(trigger_id=None)
-                )
+                    if not task_instance_ids:
+                        break
+                    session.execute(
+                        update(TaskInstance)
+                        .where(TaskInstance.id.in_(task_instance_ids))
+                        .values(trigger_id=None)
+                        .execution_options(synchronize_session=False)
+                    )
+            if not task_instance_ids:
+                break
 
         # Get all triggers that have no task instances, assets, or callbacks depending on them and delete them
         ids = (
