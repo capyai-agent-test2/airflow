@@ -133,7 +133,7 @@ def action_cli(func=None, check_db=True):
                     from airflow.utils.db import check_and_run_migrations, synchronize_log_template
 
                     redirect_pre_command_stdout = nullcontext()
-                    if getattr(args[0], "output", None) in {"json", "yaml"} and not verbose:
+                    if getattr(args[0], "output", None) in {"json", "yaml"}:
                         redirect_pre_command_stdout = redirect_stdout_to_stderr()
 
                     with redirect_pre_command_stdout:
