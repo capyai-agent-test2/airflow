@@ -83,6 +83,8 @@ class SambaHook(BaseHook):
             "port": conn.port or 445,
             "connection_cache": connection_cache,
         }
+        if auth_protocol := conn.extra_dejson.get("auth_protocol") or conn.extra_dejson.get("auth"):
+            self._conn_kwargs["auth_protocol"] = auth_protocol
 
     def __enter__(self):
         # This immediately connects to the host (which can be
