@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest import mock
 
 import pytest
@@ -58,9 +58,9 @@ TEST_DAG_RUNS_RESULT_OUTSIDE_RANGE = lambda state, date_key, run_id_key: [
         "dag_id": "test_dag_id",
         run_id_key: TEST_COMPOSER_DAG_RUN_ID,
         "state": state,
-        date_key: "2024-05-21T11:10:00+00:00",
-        "start_date": "2024-05-21T11:20:01.531988+00:00",
-        "end_date": "2024-05-21T11:20:11.997479+00:00",
+        date_key: "2024-05-20T11:10:00+00:00",
+        "start_date": "2024-05-20T11:20:01.531988+00:00",
+        "end_date": "2024-05-20T11:20:11.997479+00:00",
     }
 ]
 TEST_COMPOSER_EXTERNAL_TASK_ID = "test_external_task_id"
@@ -175,8 +175,8 @@ class TestCloudComposerDAGRunSensor:
 
         assert not task._check_dag_runs_states(
             dag_runs=TEST_DAG_RUNS_RESULT_OUTSIDE_RANGE("success", date_key, "dag_run_id"),
-            start_date=datetime(2024, 5, 22, 0, 0, 0),
-            end_date=datetime(2024, 5, 23, 0, 0, 0),
+            start_date=datetime(2024, 5, 22, 0, 0, 0, tzinfo=timezone.utc),
+            end_date=datetime(2024, 5, 23, 0, 0, 0, tzinfo=timezone.utc),
         )
 
     @pytest.mark.parametrize("use_rest_api", [True, False])
