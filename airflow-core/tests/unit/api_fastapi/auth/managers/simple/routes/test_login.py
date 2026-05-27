@@ -115,6 +115,13 @@ class TestLogin:
             assert response.headers["location"] == "/prefix/dags/example"
             assert response.cookies.get("_token") is not None
 
+    def test_login_all_admins_normalizes_same_origin_url_without_path(self, test_client):
+        with conf_vars({("core", "simple_auth_manager_all_admins"): "true", ("api", "ssl_cert"): "false"}):
+            response = test_client.get("/auth/token/login?next=http://testserver", follow_redirects=False)
+            assert response.status_code == 307
+            assert response.headers["location"] == "/"
+            assert response.cookies.get("_token") is not None
+
     def test_login_all_admins_rejects_unsafe_next_url(self, test_client):
         with conf_vars({("core", "simple_auth_manager_all_admins"): "true"}):
             response = test_client.get(

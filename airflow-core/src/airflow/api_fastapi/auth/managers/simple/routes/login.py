@@ -95,7 +95,7 @@ def login_all_admins(request: Request) -> RedirectResponse:
     if next_url:
         base_url = conf.get("api", "base_url", fallback=str(request.base_url)).rstrip("/") + "/"
         redirect_url = urlsplit(urljoin(base_url, next_url))
-        location = urlunsplit(("", "", redirect_url.path, redirect_url.query, redirect_url.fragment))
+        location = urlunsplit(("", "", redirect_url.path or "/", redirect_url.query, redirect_url.fragment))
     else:
         location = conf.get("api", "base_url", fallback="/")
 
