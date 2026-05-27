@@ -44,6 +44,9 @@ class NotPreviouslySkippedDep(BaseTIDep):
     IS_TASK_DEP = True
 
     def _get_dep_statuses(self, ti, session, dep_context):
+        from airflow.exceptions import NotMapped
+        from airflow.models.expandinput import NotFullyPopulated
+        from airflow.serialization.definitions.mappedoperator import get_mapped_ti_count
         from airflow.utils.state import TaskInstanceState
 
         upstream = ti.task.get_direct_relatives(upstream=True)
@@ -58,10 +61,23 @@ class NotPreviouslySkippedDep(BaseTIDep):
                     # This can happen if the parent task has not yet run.
                     continue
 
-                # Use the parent's map context to look up the XCom. An unmapped parent
-                # (e.g. LatestOnlyOperator) writes XCom with map_index=-1, so we must
-                # query with -1 instead of the child's map_index.
-                xcom_map_index = ti.map_index if parent.is_mapped else -1
+                # Use the map indexes relevant to this task instance when the parent and
+                # child share a mapped task group. Otherwise fall back to the parent's own
+                # map context, where unmapped parents write XCom with map_index=-1.
+                try:
+                    expanded_ti_count = get_mapped_ti_count(ti.task, ti.run_id, session=session)
+                except (NotFullyPopulated, NotMapped):
+                    expanded_ti_count = None
+
+                if expanded_ti_count is None:
+                    xcom_map_index = ti.map_index if parent.is_mapped else -1
+                else:
+                    relevant_map_indexes = ti.get_relevant_upstream_map_indexes(
+                        upstream=parent,
+                        ti_count=expanded_ti_count,
+                        session=session,
+                    )
+                    xcom_map_index = relevant_map_indexes if relevant_map_indexes is not None else -1
                 prev_result = ti.xcom_pull(
                     task_ids=parent.task_id,
                     key=XCOM_SKIPMIXIN_KEY,

@@ -214,3 +214,53 @@ def test_unmapped_parent_skip_mapped_downstream(session, dag_maker):
     assert len(list(dep.get_dep_statuses(tis["op2"], session, DepContext()))) == 1
     assert not dep.is_met(tis["op2"], session)
     assert tis["op2"].state == State.SKIPPED
+
+
+@pytest.mark.need_serialized_dag
+def test_branch_in_mapped_task_group_skips_only_matching_map_index(session, dag_maker):
+    from airflow.sdk import task, task_group
+
+    start_date = pendulum.datetime(2020, 1, 1)
+    with dag_maker(
+        "test_branch_in_mapped_task_group_skips_only_matching_map_index",
+        schedule=None,
+        start_date=start_date,
+        session=session,
+        serialized=True,
+    ):
+
+        @task_group(group_id="handle_item")
+        def handle_item(item_type: str):
+            @task.branch(task_id="select_optional_step")
+            def select_optional_step(value: str):
+                if value == "full":
+                    return "handle_item.run_optional_step"
+                return None
+
+            branch = select_optional_step(item_type)
+            run_optional_step = EmptyOperator(task_id="run_optional_step")
+            branch >> run_optional_step
+
+        handle_item.expand(item_type=["full", "partial"])
+
+    dr = dag_maker.create_dagrun(run_type=DagRunType.MANUAL, state=State.RUNNING)
+    decision = dr.task_instance_scheduling_decisions(session=session)
+
+    assert {(ti.task_id, ti.map_index) for ti in decision.schedulable_tis} == {
+        ("handle_item.select_optional_step", 0),
+        ("handle_item.select_optional_step", 1),
+    }
+
+    for ti in decision.schedulable_tis:
+        dag_maker.run_ti(ti.task_id, dr, map_index=ti.map_index, session=session)
+
+    session.flush()
+
+    decision = dr.task_instance_scheduling_decisions(session=session)
+    schedulable = {(ti.task_id, ti.map_index) for ti in decision.schedulable_tis}
+
+    assert ("handle_item.run_optional_step", 0) in schedulable
+    assert ("handle_item.run_optional_step", 1) not in schedulable
+    skipped_ti = dr.get_task_instance("handle_item.run_optional_step", map_index=1, session=session)
+    assert skipped_ti is not None
+    assert skipped_ti.state == State.SKIPPED
