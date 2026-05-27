@@ -763,6 +763,42 @@ def test_task_group_edge_modifier_chain():
     dag.topological_sort()
 
 
+def test_topological_sort_honors_listed_task_group_dependencies():
+    from airflow.sdk.exceptions import AirflowDagCycleException
+    from airflow.serialization.serialized_objects import DagSerialization
+
+    with DAG(dag_id="test", schedule=None, start_date=DEFAULT_DATE) as dag:
+        with TaskGroup(group_id="a") as a:
+            even = EmptyOperator(task_id="get_even")
+            odd = EmptyOperator(task_id="get_odd")
+            even >> odd
+
+        groups = []
+        for i in range(3):
+            with TaskGroup(group_id=f"b_{i}") as group:
+                even = EmptyOperator(task_id="get_even")
+                odd = EmptyOperator(task_id="get_odd")
+                even >> odd
+            groups.append(group)
+
+        groups >> a
+
+    assert [node.node_id for node in dag.task_group.topological_sort()] == ["b_0", "b_1", "b_2", "a"]
+    serialized_dag = DagSerialization.from_dict(DagSerialization.to_dict(dag))
+    assert [node.node_id for node in serialized_dag.task_group.topological_sort()] == [
+        "b_0",
+        "b_1",
+        "b_2",
+        "a",
+    ]
+
+    serialized_dag.task_group.children["a"].upstream_group_ids.add("b_0")
+    serialized_dag.task_group.children["b_0"].upstream_group_ids.add("a")
+
+    with pytest.raises(AirflowDagCycleException):
+        serialized_dag.task_group.topological_sort()
+
+
 def test_mapped_task_group_id_prefix_task_id():
     from tests_common.test_utils.mock_operators import MockOperator
 

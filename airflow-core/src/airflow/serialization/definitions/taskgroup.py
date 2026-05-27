@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 import attrs
 import methodtools
 
+from airflow.sdk.exceptions import AirflowDagCycleException
 from airflow.serialization.definitions.node import DAGNode
 
 if TYPE_CHECKING:
@@ -228,7 +229,12 @@ class SerializedTaskGroup(DAGNode):
         if not self.children:
             return graph_sorted
         while graph_unsorted:
+            acyclic = False
             for node in list(graph_unsorted.values()):
+                if isinstance(node, SerializedTaskGroup) and any(
+                    group_id in graph_unsorted for group_id in node.upstream_group_ids
+                ):
+                    continue
                 for edge in node.upstream_list:
                     if edge.node_id in graph_unsorted:
                         break
@@ -243,8 +249,11 @@ class SerializedTaskGroup(DAGNode):
                         # We are already going to visit that TG
                         break
                 else:
+                    acyclic = True
                     del graph_unsorted[node.node_id]
                     graph_sorted.append(node)
+            if not acyclic:
+                raise AirflowDagCycleException(f"A cyclic dependency occurred in dag: {self.dag_id}")
         return graph_sorted
 
     def add(self, node: DAGNode) -> DAGNode:
