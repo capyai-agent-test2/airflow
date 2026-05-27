@@ -212,8 +212,27 @@ class TriggerRuleDep(BaseTIDep):
             )
 
         @functools.lru_cache
+        def _has_removed_placeholder(upstream_id: str) -> bool:
+            return (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskInstance)
+                    .where(
+                        TaskInstance.dag_id == ti.dag_id,
+                        TaskInstance.run_id == ti.run_id,
+                        TaskInstance.task_id == upstream_id,
+                        TaskInstance.map_index == -1,
+                        TaskInstance.state == TaskInstanceState.REMOVED,
+                    )
+                )
+                > 0
+            )
+
+        @functools.lru_cache
         def _get_effective_upstream_count(upstream_id: str, counted_tis: int) -> int:
-            if not _should_ignore_removed_placeholder(upstream_id):
+            if not _should_ignore_removed_placeholder(upstream_id) or not _has_removed_placeholder(
+                upstream_id
+            ):
                 return counted_tis
             return counted_tis - 1
 
