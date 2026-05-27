@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import os
 import sys
 from argparse import Namespace
@@ -109,7 +110,15 @@ class TestCliUtil:
         )
         monkeypatch.setattr("airflow.utils.db.synchronize_log_template", lambda: None)
 
-        command(Namespace(output="json", verbose=True))
+        root_logger = logging.getLogger()
+        original_root_level = root_logger.level
+        original_handler_levels = [handler.level for handler in root_logger.handlers]
+        try:
+            command(Namespace(output="json", verbose=True))
+        finally:
+            root_logger.setLevel(original_root_level)
+            for handler, level in zip(root_logger.handlers, original_handler_levels):
+                handler.setLevel(level)
 
         captured = capsys.readouterr()
         assert captured.out == "[]\n"

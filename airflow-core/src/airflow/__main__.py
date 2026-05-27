@@ -24,7 +24,6 @@ from __future__ import annotations
 import io
 import os
 import sys
-from argparse import ArgumentParser, Namespace
 from collections.abc import Iterable
 from contextlib import contextmanager
 
@@ -41,45 +40,6 @@ import argcomplete
 from airflow import configuration
 
 MACHINE_READABLE_OUTPUTS = {"json", "yaml"}
-
-
-class _MachineReadableOutputParser(ArgumentParser):
-    """ArgumentParser variant that does not exit on parse errors."""
-
-    def error(self, message):
-        raise ValueError(message)
-
-
-def _build_machine_readable_output_parser_from_commands(commands: Iterable) -> ArgumentParser:
-    from airflow.cli import cli_config
-
-    def has_output_arg(command_args) -> bool:
-        return any("-o" in arg.flags and "--output" in arg.flags for arg in command_args)
-
-    def add_command(subparsers, command) -> None:
-        if isinstance(command, cli_config.ActionCommand):
-            parser = subparsers.add_parser(command.name, add_help=False)
-            for arg in command.args:
-                arg.add_to_parser(parser)
-            parser.set_defaults(_has_output_arg=has_output_arg(command.args))
-            return
-
-        parser = subparsers.add_parser(command.name, add_help=False)
-        nested_subparsers = parser.add_subparsers(dest=f"{command.name}_subcommand")
-        for subcommand in command.subcommands:
-            add_command(nested_subparsers, subcommand)
-
-    parser = _MachineReadableOutputParser(add_help=False)
-    subparsers = parser.add_subparsers(dest="subcommand")
-    for command in commands:
-        add_command(subparsers, command)
-    return parser
-
-
-def _build_machine_readable_output_parser() -> ArgumentParser:
-    from airflow.cli import cli_config
-
-    return _build_machine_readable_output_parser_from_commands(cli_config.core_commands)
 
 
 @contextmanager
@@ -104,43 +64,65 @@ def _redirect_stdout_to_stderr():
         sys.stdout = original_stdout
 
 
+def _has_output_arg(command_args) -> bool:
+    return any("-o" in arg.flags and "--output" in arg.flags for arg in command_args)
+
+
+def _find_selected_action(commands: Iterable, argv: list[str]):
+    from airflow.cli import cli_config
+
+    selected_commands = list(commands)
+    selected_action = None
+
+    for arg in argv:
+        command = next((command for command in selected_commands if command.name == arg), None)
+        if command is None:
+            continue
+        if isinstance(command, cli_config.GroupCommand):
+            selected_commands = list(command.subcommands)
+            continue
+        selected_action = command
+        break
+
+    return selected_action
+
+
+def _find_machine_readable_output_value(argv: list[str]) -> str | None:
+    selected_output = None
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg in {"-o", "--output"}:
+            if index + 1 < len(argv):
+                selected_output = argv[index + 1]
+                index += 2
+                continue
+            break
+        if arg.startswith("--output="):
+            selected_output = arg.partition("=")[2]
+        elif arg.startswith("-o") and len(arg) > 2:
+            selected_output = arg[2:]
+        index += 1
+    return selected_output
+
+
 def _has_machine_readable_output(argv: list[str]) -> bool:
     """Check whether CLI args request machine-readable output."""
-    has_output_flag = (
-        "--output" in argv
-        or "-o" in argv
-        or any(arg.startswith("--output=") for arg in argv)
-        or any(arg.startswith("-o") and len(arg) > 2 for arg in argv)
-    )
-
-    try:
-        parsed_args, _ = _build_machine_readable_output_parser().parse_known_args(argv, namespace=Namespace())
-    except ValueError:
-        if not has_output_flag:
-            return False
-    else:
-        if (
-            getattr(parsed_args, "_has_output_arg", False)
-            and getattr(parsed_args, "output", None) in MACHINE_READABLE_OUTPUTS
-        ):
-            return True
-        if not has_output_flag:
-            return False
-
-    try:
-        with _redirect_stdout_to_stderr():
-            from airflow.cli import cli_parser
-
-            parsed_args, _ = _build_machine_readable_output_parser_from_commands(
-                cli_parser.airflow_commands
-            ).parse_known_args(argv, namespace=Namespace())
-    except ValueError:
+    output_value = _find_machine_readable_output_value(argv)
+    if output_value not in MACHINE_READABLE_OUTPUTS:
         return False
 
-    return (
-        getattr(parsed_args, "_has_output_arg", False)
-        and getattr(parsed_args, "output", None) in MACHINE_READABLE_OUTPUTS
-    )
+    from airflow.cli import cli_config
+
+    if action := _find_selected_action(cli_config.core_commands, argv):
+        return _has_output_arg(action.args)
+
+    with _redirect_stdout_to_stderr():
+        from airflow.cli import cli_parser
+
+        if action := _find_selected_action(cli_parser.airflow_commands, argv):
+            return _has_output_arg(action.args)
+    return False
 
 
 def main():

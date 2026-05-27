@@ -141,11 +141,6 @@ def test_has_machine_readable_output_detects_provider_short_flag(monkeypatch):
     )
 
     monkeypatch.setattr(
-        airflow_main,
-        "_build_machine_readable_output_parser",
-        lambda: airflow_main._build_machine_readable_output_parser_from_commands(()),
-    )
-    monkeypatch.setattr(
         real_cli_parser,
         "airflow_commands",
         provider_commands,
