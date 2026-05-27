@@ -2514,7 +2514,18 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         if TYPE_CHECKING:
             assert latest_dag_version
 
-        if dag_run.check_version_id_exists_in_dr(latest_dag_version.id, session):
+        stale_unfinished_tis = (
+            select(TI.id)
+            .where(
+                TI.dag_id == dag_run.dag_id,
+                TI.run_id == dag_run.run_id,
+                TI.state.in_(State.unfinished),
+                or_(TI.dag_version_id.is_(None), TI.dag_version_id != latest_dag_version.id),
+            )
+            .limit(1)
+        )
+
+        if not session.scalar(stale_unfinished_tis):
             self.log.debug("DAG %s not changed structure, skipping dagrun.verify_integrity", dag_run.dag_id)
             return True
         # Refresh the DAG
@@ -2549,8 +2560,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 .values(dag_version_id=latest_dag_version.id)
                 .execution_options(synchronize_session=False)
             )
-            if len(task_instance_ids) < _DAG_VERSION_REFRESH_BATCH_SIZE:
-                break
         # Expire task_instances relationship so next access fetches fresh data from DB
         session.expire(dag_run, ["task_instances"])
         # Verify integrity also takes care of session.flush
