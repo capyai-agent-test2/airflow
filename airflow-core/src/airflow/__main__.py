@@ -25,6 +25,8 @@ import io
 import os
 import sys
 from argparse import ArgumentParser, Namespace
+from collections.abc import Iterable
+from contextlib import contextmanager
 
 import argcomplete
 
@@ -48,7 +50,7 @@ class _MachineReadableOutputParser(ArgumentParser):
         raise ValueError(message)
 
 
-def _build_machine_readable_output_parser() -> ArgumentParser:
+def _build_machine_readable_output_parser_from_commands(commands: Iterable) -> ArgumentParser:
     from airflow.cli import cli_config
 
     def add_command(subparsers, command) -> None:
@@ -66,13 +68,43 @@ def _build_machine_readable_output_parser() -> ArgumentParser:
 
     parser = _MachineReadableOutputParser(add_help=False)
     subparsers = parser.add_subparsers(dest="subcommand")
-    for command in cli_config.core_commands:
+    for command in commands:
         add_command(subparsers, command)
     return parser
 
 
+def _build_machine_readable_output_parser() -> ArgumentParser:
+    from airflow.cli import cli_config
+
+    return _build_machine_readable_output_parser_from_commands(cli_config.core_commands)
+
+
+@contextmanager
+def _redirect_stdout_to_stderr():
+    original_stdout = sys.stdout
+    saved_stdout_fd: int | None = None
+    try:
+        try:
+            saved_stdout_fd = os.dup(original_stdout.fileno())
+        except (AttributeError, OSError, io.UnsupportedOperation):
+            sys.stdout = sys.stderr
+            yield
+            return
+
+        os.dup2(sys.stderr.fileno(), original_stdout.fileno())
+        sys.stdout = sys.stderr
+        yield
+    finally:
+        if saved_stdout_fd is not None:
+            os.dup2(saved_stdout_fd, original_stdout.fileno())
+            os.close(saved_stdout_fd)
+        sys.stdout = original_stdout
+
+
 def _has_machine_readable_output(argv: list[str]) -> bool:
     """Check whether CLI args request machine-readable output."""
+    has_short_output_flag = "-o" in argv or any(arg.startswith("-o") and len(arg) > 2 for arg in argv)
+
     if "--output" in argv or any(arg.startswith("--output=") for arg in argv):
         for index, arg in enumerate(argv):
             if arg == "--output":
@@ -82,6 +114,25 @@ def _has_machine_readable_output(argv: list[str]) -> bool:
 
     try:
         parsed_args, _ = _build_machine_readable_output_parser().parse_known_args(argv, namespace=Namespace())
+    except ValueError:
+        if not has_short_output_flag:
+            return False
+    else:
+        if (
+            getattr(parsed_args, "_has_output_arg", False)
+            and getattr(parsed_args, "output", None) in MACHINE_READABLE_OUTPUTS
+        ):
+            return True
+        if not has_short_output_flag:
+            return False
+
+    try:
+        with _redirect_stdout_to_stderr():
+            from airflow.cli import cli_parser
+
+            parsed_args, _ = _build_machine_readable_output_parser_from_commands(
+                cli_parser.airflow_commands
+            ).parse_known_args(argv, namespace=Namespace())
     except ValueError:
         return False
 

@@ -23,6 +23,7 @@ from argparse import Namespace
 import pytest
 
 from airflow import __main__ as airflow_main
+from airflow.cli import cli_config
 from airflow.cli.utils import get_structured_output_stream
 
 
@@ -75,3 +76,35 @@ def test_main_redirects_pre_command_stdout_for_machine_readable_output(monkeypat
     captured = capsys.readouterr()
     assert captured.out == '[{"dag_id": "example"}]\n'
     assert "pre-command log line" in captured.err
+
+
+def test_has_machine_readable_output_detects_provider_short_flag(monkeypatch):
+    from airflow.cli import cli_parser as real_cli_parser
+
+    provider_commands = (
+        cli_config.GroupCommand(
+            name="provider",
+            help="provider",
+            subcommands=(
+                cli_config.ActionCommand(
+                    name="list",
+                    help="list",
+                    func=lambda _: None,
+                    args=(cli_config.ARG_OUTPUT,),
+                ),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        airflow_main,
+        "_build_machine_readable_output_parser",
+        lambda: airflow_main._build_machine_readable_output_parser_from_commands(()),
+    )
+    monkeypatch.setattr(
+        real_cli_parser,
+        "airflow_commands",
+        provider_commands,
+    )
+
+    assert airflow_main._has_machine_readable_output(["provider", "list", "-o", "json"]) is True
