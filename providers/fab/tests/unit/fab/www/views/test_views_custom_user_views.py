@@ -299,13 +299,14 @@ class TestResetUserSessions:
             assert self.get_session_by_id("session_id_1") is not None
 
     @pytest.mark.parametrize(
-        ("session_data", "test_id"),
+        ("serializer", "test_id"),
         [
-            pytest.param(pickle.dumps({"_user_id": 1}), "pickled_session", id="pickle"),
-            pytest.param(json.dumps({"_user_id": 1}).encode(), "json_session", id="json"),
+            pytest.param(pickle.dumps, "pickled_session", id="pickle"),
+            pytest.param(lambda data: json.dumps(data).encode(), "json_session", id="json"),
         ],
     )
-    def test_reset_user_sessions_delete_legacy_serialized_data(self, session_data: bytes, test_id: str):
+    def test_reset_user_sessions_delete_legacy_serialized_data(self, serializer, test_id: str):
+        session_data = serializer({"_user_id": self.user_1.id})
         self.session.add(
             self.model(
                 session_id=test_id,
