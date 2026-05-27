@@ -490,6 +490,62 @@ class TestSchedulerJob:
             any_order=True,
         )
 
+    @mock.patch("airflow.jobs.scheduler_job_runner.with_row_locks")
+    def test_process_executor_events_queued_event_skips_row_locks(
+        self, mock_with_row_locks, dag_maker, session
+    ):
+        dag_id = "test_process_executor_events_queued_event_skips_row_locks"
+        task_id = "dummy_task"
+
+        with dag_maker(dag_id=dag_id, fileloc="/test_path1/"):
+            task = EmptyOperator(task_id=task_id)
+        ti = dag_maker.create_dagrun().get_task_instance(task.task_id)
+
+        executor = MockExecutor(do_update=False)
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[executor])
+
+        ti.state = State.QUEUED
+        session.merge(ti)
+        session.commit()
+
+        executor.event_buffer[ti.key] = State.QUEUED, "executor-123"
+
+        self.job_runner._process_executor_events(executor=executor, session=session)
+
+        session.flush()
+        ti.refresh_from_db(session=session)
+        assert ti.external_executor_id == "executor-123"
+        mock_with_row_locks.assert_not_called()
+
+    def test_process_executor_events_stale_running_does_not_overwrite_queued_executor_id(
+        self, dag_maker, session
+    ):
+        dag_id = "test_process_executor_events_stale_running_does_not_overwrite_queued_executor_id"
+        task_id = "dummy_task"
+
+        with dag_maker(dag_id=dag_id, fileloc="/test_path1/"):
+            task = EmptyOperator(task_id=task_id)
+        ti = dag_maker.create_dagrun().get_task_instance(task.task_id)
+
+        executor = MockExecutor(do_update=False)
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[executor])
+
+        ti.state = State.QUEUED
+        ti.try_number = 2
+        session.merge(ti)
+        session.commit()
+
+        executor.event_buffer[ti.key.with_try_number(1)] = State.RUNNING, "stale-executor-id"
+        executor.event_buffer[ti.key.with_try_number(2)] = State.QUEUED, "current-executor-id"
+
+        self.job_runner._process_executor_events(executor=executor, session=session)
+
+        session.flush()
+        ti.refresh_from_db(session=session)
+        assert ti.external_executor_id == "current-executor-id"
+
     @mock.patch("airflow.jobs.scheduler_job_runner.TaskCallbackRequest", spec=TaskCallbackRequest)
     def test_process_executor_events_restarting_cleared_task(self, mock_task_callback, dag_maker):
         """
