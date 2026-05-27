@@ -695,6 +695,8 @@ class WatchedSubprocess:
             The child target must be importable so it can be rehydrated after exec.
 
         """
+        child_target = _encode_fork_exec_target(target) if use_exec else None
+
         # Create socketpairs/"pipes" to connect to the stdin and out from the subprocess
         child_stdout, read_stdout = socketpair()
         child_stderr, read_stderr = socketpair()
@@ -717,7 +719,6 @@ class WatchedSubprocess:
 
             try:
                 if use_exec:
-                    child_target = _encode_fork_exec_target(target)
                     # macOS: exec a fresh Python interpreter to replace the
                     # inherited ObjC/CoreFoundation state that is not fork-safe.
                     # dup2 copies the socketpairs onto FDs 0/1/2; os.dup2 clears

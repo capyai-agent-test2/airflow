@@ -4000,6 +4000,22 @@ class TestChildExecMain:
         assert resolved.__func__ is _ImportableExecTarget.run.__func__
         assert resolved.__self__ is _ImportableExecTarget.run.__self__
 
+    def test_start_rejects_unimportable_exec_target_before_fork(self, monkeypatch):
+        """use_exec should fail in the parent before forking unsupported targets."""
+
+        def local_target():
+            return None
+
+        fork = MagicMock()
+        monkeypatch.setattr(supervisor.os, "fork", fork)
+
+        with pytest.raises(ValueError, match="importable top-level callable"):
+            supervisor.WatchedSubprocess.start(
+                id=TI_ID, process_log=MagicMock(), target=local_target, use_exec=True
+            )
+
+        fork.assert_not_called()
+
     def test_uses_fds_012_and_requests_log_channel(self, monkeypatch):
         """_child_exec_main wraps FDs 0/1/2 as sockets, passes log_fd=0, sets _AIRFLOW_FORK_EXEC."""
         # _child_exec_main expects FDs 0/1/2 to be sockets (dup2'd by the
