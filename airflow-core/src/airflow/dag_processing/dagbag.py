@@ -452,7 +452,7 @@ class DagBag(LoggingMixin):
         dag_folder: str | Path | None = None,
         only_if_updated: bool = True,
         include_examples: bool = conf.getboolean("core", "LOAD_EXAMPLES"),
-        safe_mode: bool = conf.getboolean("core", "DAG_DISCOVERY_SAFE_MODE"),
+        safe_mode: bool | None = None,
     ):
         """
         Look for python modules in a given path, import them, and add them to the dagbag collection.
@@ -468,6 +468,8 @@ class DagBag(LoggingMixin):
         """
         self.log.info("Filling up the DagBag from %s", dag_folder)
         dag_folder = dag_folder or self.dag_folder
+        if safe_mode is None:
+            safe_mode = conf.getboolean("core", "DAG_DISCOVERY_SAFE_MODE")
         # Used to store stats around DagBag processing
         stats = []
 
