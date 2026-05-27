@@ -637,6 +637,7 @@ class WatchedSubprocess:
 
     _exit_code: int | None = attrs.field(default=None, init=False)
     _process_exit_monotonic: float | None = attrs.field(default=None, init=False)
+    _tracked_pid_create_time: float | None = attrs.field(default=None, init=False, repr=False)
     _open_sockets: weakref.WeakKeyDictionary[socket, str] = attrs.field(
         factory=weakref.WeakKeyDictionary, init=False
     )
@@ -689,6 +690,8 @@ class WatchedSubprocess:
 
         pid = os.fork()
         if pid == 0:
+            with suppress(OSError):
+                os.setsid()
             # Close and delete of the parent end of the sockets.
             cls._close_unused_sockets(read_requests, read_stdout, read_stderr, read_logs)
 
@@ -745,6 +748,7 @@ class WatchedSubprocess:
             start_time=time.monotonic(),
             **constructor_kwargs,
         )
+        proc._tracked_pid_create_time = psutil.Process(pid).create_time()
 
         proc._register_pipe_readers(
             read_stdout,
@@ -1006,7 +1010,7 @@ class WatchedSubprocess:
 
         for sig in escalation_path:
             try:
-                self._process.send_signal(sig)
+                self._signal_process_tree(sig)
 
                 start = time.monotonic()
                 end = start + escalation_delay
@@ -1035,6 +1039,38 @@ class WatchedSubprocess:
                 return
 
         log.error("Failed to terminate process after full escalation", pid=self.pid)
+
+    def _signal_process_tree(self, signal_to_send: signal.Signals) -> None:
+        self._verify_tracked_process_identity()
+
+        try:
+            process_group_id = os.getpgid(self._process.pid)
+        except ProcessLookupError as err:
+            raise self._process.ProcessNotFound(self._process.pid) from err
+
+        if process_group_id == os.getpgrp():
+            self._process.send_signal(signal_to_send)
+            return
+
+        try:
+            os.killpg(process_group_id, signal_to_send)
+        except PermissionError:
+            self._process.send_signal(signal_to_send)
+        except ProcessLookupError as err:
+            raise self._process.ProcessNotFound(self._process.pid) from err
+
+    def _verify_tracked_process_identity(self) -> None:
+        if self._tracked_pid_create_time is None:
+            return
+
+        try:
+            current_process = psutil.Process(self._process.pid)
+            current_create_time = current_process.create_time()
+        except psutil.NoSuchProcess as err:
+            raise self._process.ProcessNotFound(self._process.pid) from err
+
+        if current_create_time != self._tracked_pid_create_time:
+            raise self._process.ProcessNotFound(self._process.pid)
 
     def wait(self) -> int:
         raise NotImplementedError()
