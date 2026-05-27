@@ -20,6 +20,7 @@ import contextlib
 import importlib
 import logging
 import os
+import sys
 import traceback
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -84,7 +85,7 @@ from airflow.sdk.execution_time.request_handlers import (
     handle_mask_secret,
     handle_put_variable,
 )
-from airflow.sdk.execution_time.supervisor import WatchedSubprocess
+from airflow.sdk.execution_time.supervisor import _FORK_EXEC_PLATFORMS, WatchedSubprocess
 from airflow.sdk.execution_time.task_runner import RuntimeTaskInstance, _send_error_email_notification
 from airflow.sdk.log import mask_secret
 from airflow.serialization.serialized_objects import DagSerialization, LazyDeserializedDAG
@@ -571,6 +572,7 @@ class DagFileProcessorProcess(WatchedSubprocess):
         **kwargs,
     ) -> Self:
         logger = kwargs["logger"]
+        use_exec = sys.platform in _FORK_EXEC_PLATFORMS
 
         _pre_import_airflow_modules(os.fspath(path), logger)
 
@@ -579,6 +581,7 @@ class DagFileProcessorProcess(WatchedSubprocess):
             client=client,
             bundle_name=bundle_name,
             dag_file_rel_path=dag_file_rel_path,
+            use_exec=use_exec,
             **kwargs,
         )
         proc.had_callbacks = bool(callbacks)  # Track if this process had callbacks

@@ -105,7 +105,11 @@ from airflow.sdk.execution_time.request_handlers import (
     handle_put_variable,
     handle_set_xcom,
 )
-from airflow.sdk.execution_time.supervisor import WatchedSubprocess, make_buffered_socket_reader
+from airflow.sdk.execution_time.supervisor import (
+    _FORK_EXEC_PLATFORMS,
+    WatchedSubprocess,
+    make_buffered_socket_reader,
+)
 from airflow.sdk.execution_time.task_runner import RuntimeTaskInstance
 from airflow.serialization.serialized_objects import DagSerialization
 from airflow.triggers.base import BaseEventTrigger, BaseTrigger, DiscrimatedTriggerEvent, TriggerEvent
@@ -481,7 +485,14 @@ class TriggerRunnerSupervisor(WatchedSubprocess):
         **kwargs,
     ):
         proc_id = job.id if job is not None else uuid4()
-        proc = super().start(id=proc_id, job=job, target=cls.run_in_process, logger=logger, **kwargs)
+        proc = super().start(
+            id=proc_id,
+            job=job,
+            target=cls.run_in_process,
+            logger=logger,
+            use_exec=sys.platform in _FORK_EXEC_PLATFORMS,
+            **kwargs,
+        )
 
         msg = messages.StartTriggerer()
         proc.send_msg(msg, request_id=0)

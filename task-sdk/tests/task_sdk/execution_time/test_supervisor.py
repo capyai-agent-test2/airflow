@@ -183,6 +183,17 @@ log = logging.getLogger(__name__)
 TI_ID = uuid7()
 
 
+class _ImportableExecTarget:
+    @classmethod
+    def run(cls):
+        return None
+
+
+class _BoundExecTarget:
+    def run(self):
+        return None
+
+
 def lineno():
     """Returns the current line number in our program."""
     return inspect.currentframe().f_back.f_lineno
@@ -3985,6 +3996,46 @@ def test_api_client_clears_dag_bag_override_when_dag_is_none():
 class TestChildExecMain:
     """Test the macOS fork+exec child entry point."""
 
+    def test_resolves_classmethod_targets(self):
+        """fork+exec target encoding must round-trip importable class methods."""
+        encoded = supervisor._encode_fork_exec_target(_ImportableExecTarget.run)
+
+        resolved = supervisor._resolve_fork_exec_target(encoded)
+
+        assert resolved.__func__ is _ImportableExecTarget.run.__func__
+        assert resolved.__self__ is _ImportableExecTarget.run.__self__
+
+    def test_start_rejects_unimportable_exec_target_before_fork(self, monkeypatch):
+        """use_exec should fail in the parent before forking unsupported targets."""
+
+        def local_target():
+            return None
+
+        fork = MagicMock()
+        monkeypatch.setattr(supervisor.os, "fork", fork)
+
+        with pytest.raises(ValueError, match="importable top-level callable"):
+            supervisor.WatchedSubprocess.start(
+                id=TI_ID, process_log=MagicMock(), target=local_target, use_exec=True
+            )
+
+        fork.assert_not_called()
+
+    def test_start_rejects_bound_instance_method_before_fork(self, monkeypatch):
+        """use_exec should fail in the parent for bound instance methods."""
+        fork = MagicMock()
+        monkeypatch.setattr(supervisor.os, "fork", fork)
+
+        with pytest.raises(ValueError, match="must not be a bound instance method"):
+            supervisor.WatchedSubprocess.start(
+                id=TI_ID,
+                process_log=MagicMock(),
+                target=_BoundExecTarget().run,
+                use_exec=True,
+            )
+
+        fork.assert_not_called()
+
     def test_uses_fds_012_and_requests_log_channel(self, monkeypatch):
         """_child_exec_main wraps FDs 0/1/2 as sockets, passes log_fd=0, sets _AIRFLOW_FORK_EXEC."""
         # _child_exec_main expects FDs 0/1/2 to be sockets (dup2'd by the
@@ -4005,6 +4056,10 @@ class TestChildExecMain:
             os.dup2(err_a.fileno(), 2)
 
             captured = {}
+            monkeypatch.setenv(
+                supervisor._AIRFLOW_CHILD_TARGET_ENV,
+                supervisor._encode_fork_exec_target(supervisor._subprocess_main),
+            )
 
             def mock_fork_main(requests, stdout, stderr, log_fd, target):
                 captured["requests_fd"] = requests.fileno()
@@ -4030,6 +4085,7 @@ class TestChildExecMain:
             # _child_exec_main sets this so the task runner knows to request
             # the log channel via ResendLoggingFD.
             assert os.environ.pop("_AIRFLOW_FORK_EXEC") == "1"
+            assert os.environ.pop(supervisor._AIRFLOW_CHILD_TARGET_ENV).endswith(":_subprocess_main")
         finally:
             # Restore original FDs.
             os.dup2(saved_0, 0)

@@ -24,6 +24,7 @@ import itertools
 import os
 import random
 import selectors
+import sys
 import threading
 import time
 import typing
@@ -397,6 +398,27 @@ def test_start_without_job_generates_uuid_id(mocker):
 
     assert isinstance(captured["id"], uuid.UUID)
     assert captured["job"] is None
+    fake_proc.send_msg.assert_called_once()
+
+
+def test_start_uses_fork_exec_on_macos(mocker, monkeypatch):
+    """start() must opt the trigger subprocess into fork+exec on macOS."""
+    from airflow.sdk.execution_time.supervisor import WatchedSubprocess
+
+    fake_proc = mocker.Mock()
+    captured: dict[str, Any] = {}
+
+    @classmethod
+    def fake_super_start(cls, **kwargs):
+        captured.update(kwargs)
+        return fake_proc
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    mocker.patch.object(WatchedSubprocess, "start", fake_super_start)
+
+    TriggerRunnerSupervisor.start(capacity=10)
+
+    assert captured["use_exec"] is True
     fake_proc.send_msg.assert_called_once()
 
 
