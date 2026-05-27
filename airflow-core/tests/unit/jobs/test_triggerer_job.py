@@ -706,7 +706,7 @@ def test_trigger_logger_fd_closed_when_upload_to_remote_raises(jobless_superviso
     assert 42 not in jobless_supervisor.logger_cache
 
 
-def test_finished_trigger_keeps_logger_until_log_close_marker(jobless_supervisor):
+def test_finished_trigger_falls_back_to_logger_cleanup_without_close_signal(jobless_supervisor):
     factory = MagicMock(spec=TriggerLoggingFactory)
     jobless_supervisor.logger_cache[42] = factory
     jobless_supervisor.running_triggers.add(42)
@@ -714,17 +714,24 @@ def test_finished_trigger_keeps_logger_until_log_close_marker(jobless_supervisor
     msg = messages.TriggerStateChanges(finished=[42])
     jobless_supervisor._handle_request(msg, log=MagicMock(spec=FilteringBoundLogger), req_id=0)
 
-    factory.upload_to_remote.assert_not_called()
-    factory.close.assert_not_called()
-    assert 42 in jobless_supervisor.logger_cache
+    factory.upload_to_remote.assert_called_once()
+    factory.close.assert_called_once()
+    assert 42 not in jobless_supervisor.logger_cache
     assert 42 not in jobless_supervisor.running_triggers
 
-    msg = messages.TriggerStateChanges(closed_logs=[42])
+
+def test_finished_trigger_does_not_double_cleanup_when_close_signal_present(jobless_supervisor):
+    factory = MagicMock(spec=TriggerLoggingFactory)
+    jobless_supervisor.logger_cache[42] = factory
+    jobless_supervisor.running_triggers.add(42)
+
+    msg = messages.TriggerStateChanges(finished=[42], closed_logs=[42])
     jobless_supervisor._handle_request(msg, log=MagicMock(spec=FilteringBoundLogger), req_id=0)
 
     factory.upload_to_remote.assert_called_once()
     factory.close.assert_called_once()
     assert 42 not in jobless_supervisor.logger_cache
+    assert 42 not in jobless_supervisor.running_triggers
 
 
 class TestTriggerRunner:

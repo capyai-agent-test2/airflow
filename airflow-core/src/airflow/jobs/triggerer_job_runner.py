@@ -525,15 +525,18 @@ class TriggerRunnerSupervisor(WatchedSubprocess):
         self._last_runner_comms = time.monotonic()
 
         if isinstance(msg, messages.TriggerStateChanges):
+            closed_logs = set(msg.closed_logs or ())
             if msg.events:
                 self.events.extend(msg.events)
             if msg.failures:
                 self.failed_triggers.extend(msg.failures)
-            for id in msg.closed_logs or ():
+            for id in closed_logs:
                 self._cleanup_trigger_logger(id, log)
             for id in msg.finished or ():
                 self.running_triggers.discard(id)
                 self.cancelling_triggers.discard(id)
+                if id not in closed_logs:
+                    self._cleanup_trigger_logger(id, log)
 
             response = messages.TriggerStateSync(
                 to_create=[],
