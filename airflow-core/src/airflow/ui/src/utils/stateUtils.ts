@@ -40,6 +40,11 @@ export const STATE_PRIORITY: Array<string> = [
   "removed",
 ];
 
+export const normalizeStateColorKey = (state: string): string => (state === "None" ? "none" : state);
+
+export const normalizeStateLabelKey = (state: string): string =>
+  normalizeStateColorKey(state) === "none" ? "no_status" : state;
+
 /**
  * Sort child_states entries by priority (highest priority first) and filter out
  * entries with zero counts.  Unknown states are sorted to the end.

@@ -215,4 +215,25 @@ describe("TaskInstanceTooltip", () => {
     expect(screen.getByText(/runId/iu)).toBeInTheDocument();
     expect(screen.getByText(/manual__2025-01-01T00:00:00\+00:00/iu)).toBeInTheDocument();
   });
+
+  it("normalizes serialized None child state labels in the breakdown", () => {
+    const taskInstance: LightGridTaskInstanceSummary = {
+      child_states: { None: 2, success: 1 },
+      max_end_date: "2025-01-01T02:00:00Z",
+      min_start_date: "2025-01-01T00:00:00Z",
+      state: "success",
+      task_display_name: "Grouped Task",
+      task_id: "grouped_task",
+    };
+
+    render(
+      <TaskInstanceTooltip open taskInstance={taskInstance}>
+        <span>trigger</span>
+      </TaskInstanceTooltip>,
+      { wrapper: Wrapper },
+    );
+
+    expect(screen.getByText("2 common:states.no_status")).toBeInTheDocument();
+    expect(screen.queryByText("2 common:states.None")).toBeNull();
+  });
 });
