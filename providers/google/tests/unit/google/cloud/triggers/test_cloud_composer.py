@@ -59,6 +59,16 @@ TEST_EXEC_RESULT = {
     "output_end": True,
     "exit_info": {"exit_code": 0, "error": ""},
 }
+TEST_DAG_RUNS_RESULT_OUTSIDE_RANGE = lambda state, date_key, run_id_key: [
+    {
+        "dag_id": TEST_COMPOSER_DAG_ID,
+        run_id_key: TEST_COMPOSER_DAG_RUN_ID,
+        "state": state,
+        date_key: "2024-03-21T11:10:00+00:00",
+        "start_date": "2024-03-21T11:20:01.531988+00:00",
+        "end_date": "2024-03-21T11:20:11.997479+00:00",
+    }
+]
 
 
 @pytest.fixture
@@ -183,6 +193,13 @@ class TestCloudComposerDAGRunTrigger:
             },
         )
         assert actual_data == expected_data
+
+    def test_dag_runs_outside_execution_range(self, dag_run_trigger):
+        assert not dag_run_trigger._check_dag_runs_states(
+            dag_runs=TEST_DAG_RUNS_RESULT_OUTSIDE_RANGE("success", "logical_date", "dag_run_id"),
+            start_date=TEST_START_DATE,
+            end_date=TEST_END_DATE,
+        )
 
 
 class TestCloudComposerExternalTaskTrigger:
