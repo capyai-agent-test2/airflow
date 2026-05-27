@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import os
 import sys
 from argparse import Namespace
@@ -78,6 +79,50 @@ class TestCliUtil:
         """
         with fail_action_logger_callback():
             success_func(Namespace())
+
+    def test_action_cli_redirects_pre_command_stdout_for_machine_readable_output(self, monkeypatch, capsys):
+        @cli.action_cli(check_db=True)
+        def command(_):
+            print("[]")
+
+        monkeypatch.setattr("airflow.configuration.conf.getboolean", lambda *_, **__: True)
+        monkeypatch.setattr(
+            "airflow.utils.db.check_and_run_migrations", lambda: print("pre-command log line")
+        )
+        monkeypatch.setattr("airflow.utils.db.synchronize_log_template", lambda: None)
+
+        command(Namespace(output="json", verbose=False))
+
+        captured = capsys.readouterr()
+        assert captured.out == "[]\n"
+        assert "pre-command log line" in captured.err
+
+    def test_action_cli_redirects_pre_command_stdout_for_machine_readable_output_in_verbose_mode(
+        self, monkeypatch, capsys
+    ):
+        @cli.action_cli(check_db=True)
+        def command(_):
+            print("[]")
+
+        monkeypatch.setattr("airflow.configuration.conf.getboolean", lambda *_, **__: True)
+        monkeypatch.setattr(
+            "airflow.utils.db.check_and_run_migrations", lambda: print("pre-command log line")
+        )
+        monkeypatch.setattr("airflow.utils.db.synchronize_log_template", lambda: None)
+
+        root_logger = logging.getLogger()
+        original_root_level = root_logger.level
+        original_handler_levels = [handler.level for handler in root_logger.handlers]
+        try:
+            command(Namespace(output="json", verbose=True))
+        finally:
+            root_logger.setLevel(original_root_level)
+            for handler, level in zip(root_logger.handlers, original_handler_levels):
+                handler.setLevel(level)
+
+        captured = capsys.readouterr()
+        assert captured.out == "[]\n"
+        assert "pre-command log line" in captured.err
 
     def test_process_subdir_path_with_placeholder(self):
         assert os.path.join(settings.DAGS_FOLDER, "abc") == cli.process_subdir("DAGS_FOLDER/abc")

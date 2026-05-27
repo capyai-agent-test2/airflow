@@ -27,6 +27,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from tabulate import tabulate
 
+from airflow.cli.utils import get_structured_output_stream
 from airflow.plugins_manager import PluginsDirectorySource
 from airflow.utils import yaml
 from airflow.utils.platform import is_tty
@@ -43,6 +44,7 @@ class AirflowConsole(Console):
     """Airflow rich console."""
 
     def __init__(self, show_header: bool = True, *args, **kwargs):
+        kwargs.setdefault("file", get_structured_output_stream())
         super().__init__(*args, **kwargs)
         # Set the width to constant to pipe whole output from console
         self._width = 200 if not is_tty() else self._width
@@ -81,7 +83,7 @@ class AirflowConsole(Console):
             return
         rows = [d.values() for d in data]
         output = tabulate(rows, tablefmt="plain", headers=list(data[0]))
-        print(output)
+        print(output, file=get_structured_output_stream())
 
     def _normalize_data(self, value: Any, output: str) -> list | str | dict | None:
         if isinstance(value, (tuple, list)):
