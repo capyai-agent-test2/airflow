@@ -526,9 +526,13 @@ class TestDBCleanup:
         session.scalars.return_value.one.side_effect = [1, 0]
         session.execute.side_effect = [None, None, SQLAlchemyError("Deletion failed")]
         drop_connection = object()
+        call_order: list[str] = []
         session.connection.return_value = drop_connection
+        session.rollback.side_effect = lambda: call_order.append("rollback")
+        session.connection.side_effect = lambda: call_order.append("connection") or drop_connection
 
         with patch.object(archive_table, "drop") as drop_mock:
+            drop_mock.side_effect = lambda *, bind: call_order.append(f"drop:{bind is drop_connection}")
             with patch("airflow.utils.db_cleanup.timezone.utcnow", return_value=timestamp):
                 with pytest.raises(SQLAlchemyError, match="Deletion failed"):
                     _do_delete(
@@ -543,6 +547,7 @@ class TestDBCleanup:
         drop_mock.assert_called_once_with(bind=drop_connection)
         session.connection.assert_called_once_with()
         assert session.commit.call_count == 2
+        assert call_order == ["rollback", "connection", "drop:True"]
 
     def test_no_models_missing(self):
         """
