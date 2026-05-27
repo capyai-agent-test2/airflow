@@ -698,9 +698,8 @@ def test_trigger_logger_fd_closed_when_upload_to_remote_raises(jobless_superviso
 
     assert 42 not in jobless_supervisor.running_triggers
 
-    gen = jobless_supervisor._process_log_messages_from_subprocess()
-    next(gen)
-    gen.send(b'{"trigger_id":42,"level":"critical","event":"marker","_close_trigger_log":true}\n')
+    msg = messages.TriggerStateChanges(closed_logs=[42])
+    jobless_supervisor._handle_request(msg, log=MagicMock(spec=FilteringBoundLogger), req_id=0)
 
     factory.upload_to_remote.assert_called_once()
     factory.close.assert_called_once()
@@ -720,9 +719,8 @@ def test_finished_trigger_keeps_logger_until_log_close_marker(jobless_supervisor
     assert 42 in jobless_supervisor.logger_cache
     assert 42 not in jobless_supervisor.running_triggers
 
-    gen = jobless_supervisor._process_log_messages_from_subprocess()
-    next(gen)
-    gen.send(b'{"trigger_id":42,"level":"critical","event":"marker","_close_trigger_log":true}\n')
+    msg = messages.TriggerStateChanges(closed_logs=[42])
+    jobless_supervisor._handle_request(msg, log=MagicMock(spec=FilteringBoundLogger), req_id=0)
 
     factory.upload_to_remote.assert_called_once()
     factory.close.assert_called_once()
