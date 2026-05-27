@@ -595,6 +595,14 @@ class PsutilTracker(ProcessTracker):
         return self._impl.wait(timeout)
 
 
+def _create_process_tracker(pid: int) -> PsutilTracker:
+    try:
+        return PsutilTracker(psutil.Process(pid))
+    except psutil.NoSuchProcess:
+        time.sleep(0.1)
+        return PsutilTracker(psutil.Process(pid))
+
+
 def _validate_schema_version(instance, _, value) -> str | None:
     if value is None:
         return None
@@ -740,7 +748,7 @@ class WatchedSubprocess:
         proc = cls(
             pid=pid,
             stdin=read_requests,
-            process=PsutilTracker(psutil.Process(pid)),
+            process=_create_process_tracker(pid),
             process_log=logger,
             start_time=time.monotonic(),
             **constructor_kwargs,
