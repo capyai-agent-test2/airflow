@@ -233,6 +233,8 @@ class TestSecurity:
 
 
 class TestResetUserSessions:
+    _LEGACY_SESSION_EXPIRY = datetime(2099, 1, 1)
+
     @pytest.fixture(autouse=True)
     def app_context(self, app):
         self.app = app
@@ -311,7 +313,7 @@ class TestResetUserSessions:
             self.model(
                 session_id=test_id,
                 data=session_data,
-                expiry=datetime.now() + timedelta(hours=1),
+                expiry=self._LEGACY_SESSION_EXPIRY,
             )
         )
         self.session.commit()
