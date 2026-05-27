@@ -148,6 +148,26 @@ class TestPodLauncher:
             "namespace": "airflow",
         }
 
+    @pytest.mark.parametrize("executor", ["CeleryExecutor", "CeleryExecutor,KubernetesExecutor"])
+    def test_worker_role_binding_should_use_celery_service_account_name(self, executor):
+        docs = render_chart(
+            name="prod",
+            namespace="airflow",
+            values={
+                "rbac": {"create": True},
+                "allowPodLaunching": True,
+                "executor": executor,
+                "workers": {"celery": {"serviceAccount": {"name": "custom-worker"}}},
+            },
+            show_only=["templates/rbac/pod-launcher-rolebinding.yaml"],
+        )
+
+        assert jmespath.search("subjects[?name=='custom-worker'] | [0]", docs[0]) == {
+            "kind": "ServiceAccount",
+            "name": "custom-worker",
+            "namespace": "airflow",
+        }
+
     def test_worker_role_binding_should_not_exists(self):
         docs = render_chart(
             name="prod",
