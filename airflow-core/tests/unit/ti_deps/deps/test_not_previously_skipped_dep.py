@@ -17,6 +17,8 @@
 # under the License.
 from __future__ import annotations
 
+from unittest import mock
+
 import pendulum
 import pytest
 from sqlalchemy import delete
@@ -214,3 +216,86 @@ def test_unmapped_parent_skip_mapped_downstream(session, dag_maker):
     assert len(list(dep.get_dep_statuses(tis["op2"], session, DepContext()))) == 1
     assert not dep.is_met(tis["op2"], session)
     assert tis["op2"].state == State.SKIPPED
+
+
+@pytest.mark.need_serialized_dag
+def test_branch_in_mapped_task_group_skips_only_matching_map_index(session, dag_maker):
+    from airflow.sdk import task, task_group
+
+    start_date = pendulum.datetime(2020, 1, 1)
+    with dag_maker(
+        "test_branch_in_mapped_task_group_skips_only_matching_map_index",
+        schedule=None,
+        start_date=start_date,
+        session=session,
+        serialized=True,
+    ):
+
+        @task_group(group_id="handle_item")
+        def handle_item(item_type: str):
+            @task.branch(task_id="select_optional_step")
+            def select_optional_step(value: str):
+                if value == "full":
+                    return "handle_item.run_optional_step"
+                return None
+
+            branch = select_optional_step(item_type)
+            run_optional_step = EmptyOperator(task_id="run_optional_step")
+            branch >> run_optional_step
+
+        handle_item.expand(item_type=["full", "partial"])
+
+    dr = dag_maker.create_dagrun(run_type=DagRunType.MANUAL, state=State.RUNNING)
+    decision = dr.task_instance_scheduling_decisions(session=session)
+
+    assert {(ti.task_id, ti.map_index) for ti in decision.schedulable_tis} == {
+        ("handle_item.select_optional_step", 0),
+        ("handle_item.select_optional_step", 1),
+    }
+
+    for ti in decision.schedulable_tis:
+        dag_maker.run_ti(ti.task_id, dr, map_index=ti.map_index, session=session)
+
+    session.flush()
+
+    decision = dr.task_instance_scheduling_decisions(session=session)
+    schedulable = {(ti.task_id, ti.map_index) for ti in decision.schedulable_tis}
+
+    assert ("handle_item.run_optional_step", 0) in schedulable
+    assert ("handle_item.run_optional_step", 1) not in schedulable
+    skipped_ti = dr.get_task_instance("handle_item.run_optional_step", map_index=1, session=session)
+    assert skipped_ti is not None
+    assert skipped_ti.state == State.SKIPPED
+
+
+def test_skipmixin_sequence_result_marks_task_skipped(session):
+    ti = mock.Mock()
+    ti.task_id = "child"
+    ti.run_id = "run"
+    ti.map_index = 3
+    ti.task = mock.Mock()
+    parent = mock.Mock(task_id="parent", inherits_from_skipmixin=True, is_mapped=True)
+    ti.task.get_direct_relatives.return_value = [parent]
+    ti.get_dagrun.return_value = mock.sentinel.dagrun
+    ti.get_relevant_upstream_map_indexes.return_value = range(2, 4)
+    ti.xcom_pull.side_effect = [
+        [{"followed": ["other"]}, {"followed": ["child"]}],
+        False,
+    ]
+
+    dep_context = mock.Mock()
+    dep_context.ensure_finished_tis.return_value = [mock.Mock(task_id="parent")]
+    dep_context.wait_for_past_depends_before_skipping = False
+
+    with mock.patch("airflow.serialization.definitions.mappedoperator.get_mapped_ti_count", return_value=4):
+        dep = NotPreviouslySkippedDep()
+        statuses = list(dep._get_dep_statuses(ti, session, dep_context))
+
+    assert len(statuses) == 1
+    ti.xcom_pull.assert_called_once_with(
+        task_ids="parent",
+        key=XCOM_SKIPMIXIN_KEY,
+        session=session,
+        map_indexes=range(2, 4),
+    )
+    ti.set_state.assert_called_once_with(State.SKIPPED, session)
