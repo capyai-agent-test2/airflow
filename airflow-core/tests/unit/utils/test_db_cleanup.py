@@ -21,12 +21,13 @@ from contextlib import suppress
 from importlib import import_module
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 from uuid import uuid4
 
 import pendulum
 import pytest
-from sqlalchemy import func, inspect, select, text
+from sqlalchemy import Column, Integer, MetaData, Table, func, inspect, select, text
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
@@ -45,6 +46,7 @@ from airflow.utils.db_cleanup import (
     _build_query,
     _cleanup_table,
     _confirm_drop_archives,
+    _do_delete,
     _dump_table_to_file,
     _get_archived_table_names,
     config_dict,
@@ -506,6 +508,41 @@ class TestDBCleanup:
             pass
         archived_table_names = _get_archived_table_names(["dag_run"], session)
         assert len(archived_table_names) == 0
+
+    @patch("airflow.utils.db_cleanup.reflect_tables")
+    def test_do_delete_rolls_back_before_dropping_skip_archive_table(self, reflect_tables_mock):
+        timestamp = pendulum.DateTime(2022, 1, 1, tzinfo=pendulum.timezone("UTC"))
+        metadata = MetaData()
+        source_table = Table("dag_run", metadata, Column("id", Integer, primary_key=True))
+        archive_table = Table("_airflow_deleted__dag_run__20220101000000", metadata, Column("id", Integer))
+        reflect_tables_mock.side_effect = [
+            SimpleNamespace(tables={archive_table.name: archive_table}),
+            SimpleNamespace(tables={source_table.name: source_table, archive_table.name: archive_table}),
+        ]
+
+        query = select(source_table.c.id)
+        session = MagicMock()
+        session.get_bind.return_value.dialect.name = "mysql"
+        session.scalars.return_value.one.side_effect = [1, 0]
+        session.execute.side_effect = [None, None, SQLAlchemyError("Deletion failed")]
+        drop_connection = object()
+        session.connection.return_value = drop_connection
+
+        with patch.object(archive_table, "drop") as drop_mock:
+            with patch("airflow.utils.db_cleanup.timezone.utcnow", return_value=timestamp):
+                with pytest.raises(SQLAlchemyError, match="Deletion failed"):
+                    _do_delete(
+                        query=query,
+                        orm_model=source_table,
+                        skip_archive=True,
+                        session=session,
+                        batch_size=None,
+                    )
+
+        session.rollback.assert_called_once_with()
+        drop_mock.assert_called_once_with(bind=drop_connection)
+        session.connection.assert_called_once_with()
+        assert session.commit.call_count == 2
 
     def test_no_models_missing(self):
         """
