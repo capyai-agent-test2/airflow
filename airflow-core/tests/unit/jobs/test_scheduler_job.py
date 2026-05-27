@@ -4557,6 +4557,73 @@ class TestSchedulerJob:
             for task_instance in task_instances_list2
         )
 
+    def test_scheduler_microbatches_when_pool_starts_starving(self, dag_maker, mock_executor):
+        session = settings.Session()
+        session.add(Pool(pool="microbatch_p1", slots=1, include_deferred=False))
+        session.add(Pool(pool="microbatch_p2", slots=10, include_deferred=False))
+        session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+        with dag_maker(dag_id="microbatch_pool_d1"):
+            high_priority = EmptyOperator(task_id="high_priority", pool="microbatch_p1", priority_weight=2)
+        first_dagrun = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED)
+        second_dagrun = dag_maker.create_dagrun_after(first_dagrun, run_type=DagRunType.SCHEDULED)
+        for dagrun in (first_dagrun, second_dagrun):
+            ti = dagrun.get_task_instance(high_priority.task_id, session)
+            ti.state = State.SCHEDULED
+            session.merge(ti)
+
+        with dag_maker(dag_id="microbatch_pool_d2"):
+            lower_priority = EmptyOperator(task_id="lower_priority", pool="microbatch_p2", priority_weight=1)
+        third_dagrun = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED)
+        third_ti = third_dagrun.get_task_instance(lower_priority.task_id, session)
+        third_ti.state = State.SCHEDULED
+        session.merge(third_ti)
+        session.flush()
+
+        queued_tis = self.job_runner._executable_task_instances_to_queued(max_tis=2, session=session)
+
+        assert len(queued_tis) == 2
+        assert Counter(ti.pool for ti in queued_tis) == {"microbatch_p1": 1, "microbatch_p2": 1}
+
+    def test_scheduler_microbatches_when_dag_starts_starving(self, dag_maker, mock_executor):
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+        session = settings.Session()
+
+        with dag_maker(dag_id="microbatch_dag_limited", max_active_tasks=2):
+            running_task = EmptyOperator(task_id="running_task", priority_weight=3)
+            EmptyOperator(task_id="queued_high_priority_1", priority_weight=2)
+            EmptyOperator(task_id="queued_high_priority_2", priority_weight=2)
+        limited_dagrun = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED, state=State.RUNNING)
+
+        limited_running_ti = limited_dagrun.get_task_instance(running_task.task_id, session)
+        limited_running_ti.state = State.RUNNING
+        session.merge(limited_running_ti)
+        for task_id in ("queued_high_priority_1", "queued_high_priority_2"):
+            ti = limited_dagrun.get_task_instance(task_id, session)
+            ti.state = State.SCHEDULED
+            session.merge(ti)
+
+        with dag_maker(dag_id="microbatch_dag_available"):
+            EmptyOperator(task_id="queued_lower_priority", priority_weight=1)
+        available_dagrun = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED, state=State.RUNNING)
+
+        available_ti = available_dagrun.get_task_instance("queued_lower_priority", session)
+        available_ti.state = State.SCHEDULED
+        session.merge(available_ti)
+        session.flush()
+
+        queued_tis = self.job_runner._executable_task_instances_to_queued(max_tis=2, session=session)
+
+        assert len(queued_tis) == 2
+        assert Counter(ti.dag_id for ti in queued_tis) == {
+            "microbatch_dag_limited": 1,
+            "microbatch_dag_available": 1,
+        }
+
     def test_scheduler_verify_priority_and_slots(self, dag_maker, mock_executor):
         """
         Test task instances with higher priority are not queued
