@@ -192,6 +192,53 @@ class TriggerRuleDep(BaseTIDep):
                 session=session,
             )
 
+        @functools.lru_cache
+        def _should_ignore_removed_placeholder(upstream_id: str) -> bool:
+            upstream_task = task.dag.task_dict[upstream_id]
+            if not upstream_task.get_needs_expansion():
+                return False
+            return (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskInstance)
+                    .where(
+                        TaskInstance.dag_id == ti.dag_id,
+                        TaskInstance.run_id == ti.run_id,
+                        TaskInstance.task_id == upstream_id,
+                        TaskInstance.map_index >= 0,
+                    )
+                )
+                > 0
+            )
+
+        @functools.lru_cache
+        def _has_removed_placeholder(upstream_id: str) -> bool:
+            return (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskInstance)
+                    .where(
+                        TaskInstance.dag_id == ti.dag_id,
+                        TaskInstance.run_id == ti.run_id,
+                        TaskInstance.task_id == upstream_id,
+                        TaskInstance.map_index == -1,
+                        TaskInstance.state == TaskInstanceState.REMOVED,
+                    )
+                )
+                > 0
+            )
+
+        @functools.lru_cache
+        def _get_effective_upstream_count(upstream_id: str, counted_tis: int) -> int:
+            if not _should_ignore_removed_placeholder(upstream_id) or not _has_removed_placeholder(
+                upstream_id
+            ):
+                return counted_tis
+            return counted_tis - 1
+
+        def _should_adjust_removed_placeholders() -> bool:
+            return task.trigger_rule in {TR.NONE_FAILED, TR.NONE_FAILED_MIN_ONE_SUCCESS}
+
         def _is_relevant_upstream(upstream: TaskInstance, relevant_ids: set[str] | KeysView[str]) -> bool:
             """
             Whether a task instance is a "relevant upstream" of the current task.
@@ -212,6 +259,12 @@ class TriggerRuleDep(BaseTIDep):
             # The upstream ti is not expanded. The upstream may be mapped or
             # not, but the ti is relevant either way.
             if upstream.map_index < 0:
+                if (
+                    _should_adjust_removed_placeholders()
+                    and upstream.state == TaskInstanceState.REMOVED
+                    and _should_ignore_removed_placeholder(upstream.task_id)
+                ):
+                    return False
                 return True
             # Now we need to perform fine-grained check on whether this specific
             # upstream ti's map index is relevant.
@@ -243,7 +296,10 @@ class TriggerRuleDep(BaseTIDep):
                 # of this upstream task. Since the upstream may not have been
                 # expanded at this point, we also depend on the non-expanded ti
                 # to ensure at least one ti is included for the task.
-                yield and_(TaskInstance.task_id == upstream_id, TaskInstance.map_index < 0)
+                if not (
+                    _should_adjust_removed_placeholders() and _should_ignore_removed_placeholder(upstream_id)
+                ):
+                    yield and_(TaskInstance.task_id == upstream_id, TaskInstance.map_index < 0)
                 if isinstance(map_indexes, range) and map_indexes.step == 1:
                     yield and_(
                         TaskInstance.task_id == upstream_id,
@@ -293,7 +349,6 @@ class TriggerRuleDep(BaseTIDep):
                     .group_by(TaskInstance.task_id)
                 ).all()
                 upstream = sum(count for _, count in task_id_counts)
-
             new_state = None
             changed = False
 
@@ -381,6 +436,15 @@ class TriggerRuleDep(BaseTIDep):
                 ).all()
                 upstream = sum(count for _, count in task_id_counts)
                 upstream_setup = sum(c for t, c in task_id_counts if upstream_tasks[t].is_setup)
+                if _should_adjust_removed_placeholders() and task.get_closest_mapped_task_group() is None:
+                    upstream = sum(
+                        _get_effective_upstream_count(task_id, count) for task_id, count in task_id_counts
+                    )
+                    upstream_setup = sum(
+                        _get_effective_upstream_count(task_id, count)
+                        for task_id, count in task_id_counts
+                        if upstream_tasks[task_id].is_setup
+                    )
 
             upstream_done = done >= upstream
 
