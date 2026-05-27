@@ -84,7 +84,7 @@ def create_token_all_admins() -> LoginResponse:
 @login_router.get(
     "/token/login",
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-    responses=create_openapi_http_exception_doc([status.HTTP_403_FORBIDDEN]),
+    responses=create_openapi_http_exception_doc([status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN]),
 )
 def login_all_admins(request: Request) -> RedirectResponse:
     """Login the user with no credentials."""
