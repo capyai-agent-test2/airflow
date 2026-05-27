@@ -24,6 +24,7 @@ from __future__ import annotations
 import io
 import os
 import sys
+from argparse import ArgumentParser, Namespace
 
 import argcomplete
 
@@ -40,16 +41,54 @@ from airflow import configuration
 MACHINE_READABLE_OUTPUTS = {"json", "yaml"}
 
 
+class _MachineReadableOutputParser(ArgumentParser):
+    """ArgumentParser variant that does not exit on parse errors."""
+
+    def error(self, message):
+        raise ValueError(message)
+
+
+def _build_machine_readable_output_parser() -> ArgumentParser:
+    from airflow.cli import cli_config
+
+    def add_command(subparsers, command) -> None:
+        if isinstance(command, cli_config.ActionCommand):
+            parser = subparsers.add_parser(command.name, add_help=False)
+            for arg in command.args:
+                arg.add_to_parser(parser)
+            parser.set_defaults(_has_output_arg=cli_config.ARG_OUTPUT in command.args)
+            return
+
+        parser = subparsers.add_parser(command.name, add_help=False)
+        nested_subparsers = parser.add_subparsers(dest=f"{command.name}_subcommand")
+        for subcommand in command.subcommands:
+            add_command(nested_subparsers, subcommand)
+
+    parser = _MachineReadableOutputParser(add_help=False)
+    subparsers = parser.add_subparsers(dest="subcommand")
+    for command in cli_config.core_commands:
+        add_command(subparsers, command)
+    return parser
+
+
 def _has_machine_readable_output(argv: list[str]) -> bool:
     """Check whether CLI args request machine-readable output."""
-    for index, arg in enumerate(argv):
-        if arg in {"-o", "--output"}:
-            return index + 1 < len(argv) and argv[index + 1] in MACHINE_READABLE_OUTPUTS
-        if arg.startswith("--output="):
-            return arg.partition("=")[2] in MACHINE_READABLE_OUTPUTS
-        if arg.startswith("-o") and len(arg) > 2:
-            return arg[2:] in MACHINE_READABLE_OUTPUTS
-    return False
+    if "--output" in argv or any(arg.startswith("--output=") for arg in argv):
+        for index, arg in enumerate(argv):
+            if arg == "--output":
+                return index + 1 < len(argv) and argv[index + 1] in MACHINE_READABLE_OUTPUTS
+            if arg.startswith("--output="):
+                return arg.partition("=")[2] in MACHINE_READABLE_OUTPUTS
+
+    try:
+        parsed_args, _ = _build_machine_readable_output_parser().parse_known_args(argv, namespace=Namespace())
+    except ValueError:
+        return False
+
+    return (
+        getattr(parsed_args, "_has_output_arg", False)
+        and getattr(parsed_args, "output", None) in MACHINE_READABLE_OUTPUTS
+    )
 
 
 def main():
@@ -96,7 +135,7 @@ def main():
                 os.dup2(saved_stdout_fd, original_stdout.fileno())
                 os.close(saved_stdout_fd)
             sys.stdout = original_stdout
-            if structured_output_stream is not original_stdout:
+            if structured_output_stream is not None and structured_output_stream is not original_stdout:
                 structured_output_stream.close()
             set_structured_output_stream(None)
 

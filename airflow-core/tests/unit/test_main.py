@@ -34,6 +34,7 @@ from airflow.cli.utils import get_structured_output_stream
         (["dags", "list", "--output=json"], True),
         (["dags", "list", "-ojson"], True),
         (["dags", "list", "-o", "table"], False),
+        (["kerberos", "-o", "json"], False),
     ],
 )
 def test_has_machine_readable_output(argv, expected):
@@ -52,6 +53,7 @@ def test_main_redirects_pre_command_stdout_for_machine_readable_output(monkeypat
         airflow_main.configuration, "conf", types.SimpleNamespace(get=lambda *_, **__: "none")
     )
     monkeypatch.setattr(airflow_main.argcomplete, "autocomplete", lambda _: None)
+    monkeypatch.setattr(airflow_main, "_has_machine_readable_output", lambda _: True)
     monkeypatch.setattr(
         "airflow.configuration.write_default_airflow_configuration_if_needed",
         lambda: airflow_main.configuration.conf,
