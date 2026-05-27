@@ -285,7 +285,7 @@ class PagerdutyEventsAsyncHook(HttpAsyncHook):
             return self.integration_key
 
         if self.pagerduty_events_conn_id is not None:
-            conn = await get_async_connection(self.pagerduty_events_conn_id)
+            conn = await get_async_connection(self.pagerduty_events_conn_id, hook=self)
             self.integration_key = conn.password
             if self.integration_key:
                 return self.integration_key

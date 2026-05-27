@@ -786,7 +786,7 @@ class SFTPHookAsync(BaseHook):
         - known_hosts
         - passphrase
         """
-        conn = await get_async_connection(self.sftp_conn_id)
+        conn = await get_async_connection(self.sftp_conn_id, hook=self)
         if conn.extra is not None:
             self._parse_extras(conn)  # type: ignore[arg-type]
 

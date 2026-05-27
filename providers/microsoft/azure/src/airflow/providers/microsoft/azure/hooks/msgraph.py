@@ -401,7 +401,7 @@ class KiotaRequestAdapterHook(BaseHook):
         api_version, request_adapter = self.cached_request_adapters.get(self.conn_id, (None, None))
 
         if not request_adapter:
-            connection = await get_async_connection(conn_id=self.conn_id)
+            connection = await get_async_connection(conn_id=self.conn_id, hook=self)
             api_version, request_adapter = self._build_request_adapter(connection)
         self.api_version = api_version
         return request_adapter

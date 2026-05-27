@@ -602,7 +602,7 @@ class SSHHookAsync(BaseHook):
         """
         import asyncssh
 
-        conn = await get_async_connection(self.ssh_conn_id)
+        conn = await get_async_connection(self.ssh_conn_id, hook=self)
         if conn.extra is not None:
             self._parse_extras(conn)
 

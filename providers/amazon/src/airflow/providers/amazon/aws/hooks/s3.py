@@ -91,7 +91,7 @@ def provide_bucket_name(func: Callable) -> Callable:
         if not bound_args.arguments.get("bucket_name"):
             self = args[0]
             if self.aws_conn_id:
-                connection = await get_async_connection(self.aws_conn_id)
+                connection = await get_async_connection(self.aws_conn_id, hook=self)
                 if connection.schema:
                     bound_args.arguments["bucket_name"] = connection.schema
         return bound_args

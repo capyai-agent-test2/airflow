@@ -147,7 +147,7 @@ class AppriseHook(BaseHook):
         if config:
             apprise_obj.add(config)
         else:
-            conn = await get_async_connection(self.apprise_conn_id)
+            conn = await get_async_connection(self.apprise_conn_id, hook=self)
             self.set_config_from_conn(conn=conn, apprise_obj=apprise_obj)
         await apprise_obj.async_notify(
             body=body,

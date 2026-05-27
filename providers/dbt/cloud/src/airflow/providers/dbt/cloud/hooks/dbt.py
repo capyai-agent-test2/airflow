@@ -442,7 +442,7 @@ class DbtCloudHook(HttpHook):
         """Resolve and cache the dbt Cloud account ID (async)."""
         # Lazily initialized; absence means "not resolved yet".
         if not hasattr(self, "_cached_account_id"):
-            conn = await get_async_connection(self.dbt_cloud_conn_id)
+            conn = await get_async_connection(self.dbt_cloud_conn_id, hook=self)
             if not conn.login:
                 raise AirflowException("Could not determine the dbt Cloud account.")
 

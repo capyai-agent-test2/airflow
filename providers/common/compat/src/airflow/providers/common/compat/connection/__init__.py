@@ -29,20 +29,33 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-async def get_async_connection(conn_id: str) -> Connection:
+def _unwrap_method(method):
+    return getattr(method, "__func__", method)
+
+
+async def get_async_connection(conn_id: str, hook: BaseHook | type[BaseHook] | None = None) -> Connection:
     """
     Get an asynchronous Airflow connection that is backwards compatible.
 
     :param conn_id: The provided connection ID.
+    :param hook: Hook instance or class used to resolve the connection.
     :returns: Connection
     """
     from asgiref.sync import sync_to_async
 
-    if hasattr(BaseHook, "aget_connection"):
-        log.debug("Get connection using `BaseHook.aget_connection().")
-        return await BaseHook.aget_connection(conn_id=conn_id)
-    log.debug("Get connection using `BaseHook.get_connection().")
-    return await sync_to_async(BaseHook.get_connection)(conn_id=conn_id)
+    hook = hook or BaseHook
+    hook_cls = hook if isinstance(hook, type) else type(hook)
+    base_hook_cls = BaseHook if isinstance(BaseHook, type) else type(BaseHook)
+    hook_async = _unwrap_method(getattr(hook_cls, "aget_connection", None))
+    base_hook_async = _unwrap_method(getattr(base_hook_cls, "aget_connection", None))
+
+    if hook_async and (
+        hook_cls is base_hook_cls or base_hook_async is None or hook_async is not base_hook_async
+    ):
+        log.debug("Get connection using `hook.aget_connection().")
+        return await hook.aget_connection(conn_id=conn_id)
+    log.debug("Get connection using `hook.get_connection().")
+    return await sync_to_async(hook.get_connection)(conn_id=conn_id)
 
 
 __all__ = [

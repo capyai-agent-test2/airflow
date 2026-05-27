@@ -1089,7 +1089,7 @@ def provide_targeted_factory_async(func: T) -> T:
             # Check if arg was not included in the function signature or, if it is, the value is not provided.
             if arg not in bound_args.arguments or bound_args.arguments[arg] is None:
                 self = args[0]
-                conn = await get_async_connection(self.conn_id)
+                conn = await get_async_connection(self.conn_id, hook=self)
                 extras = conn.extra_dejson
                 default_value = extras.get(default_key) or extras.get(
                     f"extra__azure_data_factory__{default_key}"
@@ -1140,7 +1140,7 @@ class AzureDataFactoryAsyncHook(AzureDataFactoryHook):
         if self._async_conn is not None:
             return self._async_conn
 
-        conn = await get_async_connection(self.conn_id)
+        conn = await get_async_connection(self.conn_id, hook=self)
         extras = conn.extra_dejson
         tenant = get_field(extras, "tenantId")
 

@@ -1030,7 +1030,7 @@ class AsyncKubernetesHook(KubernetesHook):
         if self._extras is None:
             if self.conn_id:
                 try:
-                    connection = await get_async_connection(self.conn_id)
+                    connection = await get_async_connection(self.conn_id, hook=self)
                 except AirflowNotFoundException:
                     if self.conn_id == self.default_conn_name:
                         connection = Connection(conn_id=self.default_conn_name)
