@@ -229,6 +229,10 @@ class SerializedTaskGroup(DAGNode):
             return graph_sorted
         while graph_unsorted:
             for node in list(graph_unsorted.values()):
+                if isinstance(node, SerializedTaskGroup) and any(
+                    group_id in graph_unsorted for group_id in node.upstream_group_ids
+                ):
+                    continue
                 for edge in node.upstream_list:
                     if edge.node_id in graph_unsorted:
                         break
