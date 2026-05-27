@@ -16,6 +16,9 @@
 # under the License.
 from __future__ import annotations
 
+import pickle
+from contextlib import suppress
+
 import msgspec
 from flask import request
 from flask.sessions import SecureCookieSessionInterface
@@ -30,6 +33,10 @@ class _LazySafeSerializer:
     Returns bytes (suitable for database BLOB columns).
     """
 
+    def __init__(self):
+        self.msgpack_decoder = msgspec.msgpack.Decoder()
+        self.json_decoder = msgspec.json.Decoder()
+
     def dumps(self, session_dict):
         encoder = msgspec.msgpack.Encoder(
             enc_hook=lambda obj: str(obj) if isinstance(obj, LazyString) else obj
@@ -37,8 +44,13 @@ class _LazySafeSerializer:
         return encoder.encode(dict(session_dict))
 
     def loads(self, data):
-        decoder = msgspec.msgpack.Decoder()
-        return decoder.decode(data)
+        with suppress(msgspec.DecodeError):
+            return self.msgpack_decoder.decode(data)
+        with suppress(msgspec.DecodeError):
+            return self.json_decoder.decode(data)
+        with suppress(pickle.UnpicklingError):
+            return pickle.loads(data)
+        raise pickle.UnpicklingError("Failed to deserialize session data")
 
     # optional old API
     encode = dumps

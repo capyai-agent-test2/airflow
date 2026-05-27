@@ -17,6 +17,8 @@
 # under the License.
 from __future__ import annotations
 
+import json
+import pickle
 from datetime import datetime, timedelta
 from unittest import mock
 
@@ -295,6 +297,32 @@ class TestResetUserSessions:
         else:
             assert self.session.scalar(select(func.count()).select_from(self.model)) == 2
             assert self.get_session_by_id("session_id_1") is not None
+
+    @pytest.mark.parametrize(
+        ("session_data", "test_id"),
+        [
+            pytest.param(pickle.dumps({"_user_id": 1}), "pickled_session", id="pickle"),
+            pytest.param(json.dumps({"_user_id": 1}).encode(), "json_session", id="json"),
+        ],
+    )
+    def test_reset_user_sessions_delete_legacy_serialized_data(self, session_data: bytes, test_id: str):
+        self.session.add(
+            self.model(
+                session_id=test_id,
+                data=session_data,
+                expiry=datetime.now() + timedelta(hours=1),
+            )
+        )
+        self.session.commit()
+        self.session.flush()
+        assert self.get_session_by_id(test_id) is not None
+
+        with self.app.app_context():
+            self.security_manager.reset_password(self.user_1.id, "new_password")
+
+        self.session.commit()
+        self.session.flush()
+        assert self.get_session_by_id(test_id) is None
 
     def get_session_by_id(self, session_id: str):
         return self.session.scalar(select(self.model).where(self.model.session_id == session_id))
