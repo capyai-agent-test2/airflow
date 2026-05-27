@@ -1489,6 +1489,9 @@ class TestWatchedSubprocessKill:
 
             assert not psutil.pid_exists(grandchild_pid)
         finally:
+            if proc._exit_code is None:
+                proc.kill(signal_to_send=signal.SIGKILL, escalation_delay=0.1, force=True)
+                proc.wait()
             if grandchild_pid and psutil.pid_exists(grandchild_pid):
                 with suppress(ProcessLookupError):
                     os.kill(grandchild_pid, signal.SIGKILL)
