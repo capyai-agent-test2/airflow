@@ -474,6 +474,70 @@ class TestDBCleanup:
             assert session.scalar(select(func.count()).select_from(model)) == 5
             assert len(_get_archived_table_names(["dag_run"], session)) == expected_archives
 
+    def test_cleanup_dag_version_skips_rows_referenced_by_newer_task_instances(self):
+        base_date = pendulum.DateTime(2022, 1, 1, tzinfo=pendulum.timezone("UTC"))
+
+        with create_session() as session:
+            bundle_name = "testing"
+            session.add(DagBundleModel(name=bundle_name))
+            session.flush()
+
+            dag_id = f"test-dag_{uuid4()}"
+            session.add(DagModel(dag_id=dag_id, bundle_name=bundle_name))
+
+            old_referenced_version = DagVersion(
+                dag_id=dag_id,
+                version_number=1,
+                bundle_name=bundle_name,
+                created_at=base_date,
+                last_updated=base_date,
+            )
+            old_unreferenced_version = DagVersion(
+                dag_id=dag_id,
+                version_number=2,
+                bundle_name=bundle_name,
+                created_at=base_date.add(days=1),
+                last_updated=base_date.add(days=1),
+            )
+            latest_version = DagVersion(
+                dag_id=dag_id,
+                version_number=3,
+                bundle_name=bundle_name,
+                created_at=base_date.add(days=40),
+                last_updated=base_date.add(days=40),
+            )
+            session.add_all([old_referenced_version, old_unreferenced_version, latest_version])
+            session.flush()
+
+            dag_run = DagRun(
+                dag_id,
+                run_id="newer-run",
+                run_type=DagRunType.MANUAL,
+                start_date=base_date.add(days=35),
+            )
+            task_instance = create_task_instance(
+                PythonOperator(task_id="dummy-task", python_callable=print),
+                run_id=dag_run.run_id,
+                dag_version_id=old_referenced_version.id,
+            )
+            task_instance.dag_id = dag_id
+            task_instance.start_date = base_date.add(days=35)
+            session.add(dag_run)
+            session.add(task_instance)
+            session.commit()
+
+            _cleanup_table(
+                **config_dict["dag_version"].__dict__,
+                clean_before_timestamp=base_date.add(days=30),
+                dry_run=False,
+                session=session,
+            )
+
+            remaining_ids = set(session.scalars(select(DagVersion.id)))
+            assert old_referenced_version.id in remaining_ids
+            assert old_unreferenced_version.id not in remaining_ids
+            assert latest_version.id in remaining_ids
+
     @patch("airflow.utils.db.reflect_tables")
     def test_skip_archive_failure_will_remove_table(self, reflect_tables_mock):
         """
