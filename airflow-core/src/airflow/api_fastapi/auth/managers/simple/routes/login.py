@@ -93,9 +93,8 @@ def login_all_admins(request: Request) -> RedirectResponse:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or unsafe next URL")
 
     if next_url:
-        redirect_url = urlsplit(
-            urljoin(conf.get("api", "base_url", fallback=str(request.base_url)), next_url)
-        )
+        base_url = conf.get("api", "base_url", fallback=str(request.base_url)).rstrip("/") + "/"
+        redirect_url = urlsplit(urljoin(base_url, next_url))
         location = urlunsplit(("", "", redirect_url.path, redirect_url.query, redirect_url.fragment))
     else:
         location = conf.get("api", "base_url", fallback="/")
