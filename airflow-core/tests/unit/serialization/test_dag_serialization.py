@@ -4590,6 +4590,21 @@ class TestMappedOperatorSerializationAndClientDefaults:
             # Explicit values should override client_defaults
             assert deserialized_task.retries == 5  # Explicitly set value
 
+    def test_mapped_operator_keeps_template_field_rendering_kwargs(self):
+        class OrderedBashOperator(BashOperator):
+            template_fields_rendering_kwargs = {"bash_command": {"sort_keys": False}}
+
+        with DAG(dag_id="test_mapped_rendering_kwargs") as dag:
+            OrderedBashOperator.partial(task_id="mapped_task").expand(
+                bash_command=[{"b": 1, "a": 2}, {"d": 4, "c": 3}]
+            )
+
+        serialized_dag = DagSerialization.to_dict(dag)
+        deserialized_task = DagSerialization.from_dict(serialized_dag).get_task("mapped_task")
+
+        assert isinstance(deserialized_task, SerializedMappedOperator)
+        assert deserialized_task.template_fields_rendering_kwargs == {"bash_command": {"sort_keys": False}}
+
     @pytest.mark.parametrize(
         ("task_config", "dag_id", "task_id", "non_default_fields"),
         [
