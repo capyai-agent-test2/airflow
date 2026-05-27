@@ -7290,7 +7290,7 @@ class TestSchedulerJob:
         monkeypatch.setattr(
             scheduler_job_runner_module,
             "_locked_task_instance_ids",
-            lambda query, batch_size, session: task_instance_ids_batches.pop(0),
+            lambda query, batch_size, *, session: task_instance_ids_batches.pop(0),
         )
 
         scheduler_job = Job()

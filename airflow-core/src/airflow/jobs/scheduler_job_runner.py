@@ -2926,7 +2926,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                             TI.trigger_timeout < now,
                         ),
                         _TRIGGER_TIMEOUT_BATCH_SIZE,
-                        session,
+                        session=session,
                     )
                     if not task_instance_ids:
                         break
