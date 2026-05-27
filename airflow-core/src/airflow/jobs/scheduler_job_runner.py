@@ -561,6 +561,10 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         pool_num_starving_tasks: dict[str, int] = Counter()
 
         for loop_count in itertools.count(start=1):
+            remaining_tis_to_queue = max_tis - len(executable_tis)
+            if remaining_tis_to_queue <= 0:
+                break
+
             num_starved_pools = len(starved_pools)
             num_starved_dags = len(starved_dags)
             num_starved_tasks = len(starved_tasks)
@@ -653,7 +657,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 .options(selectinload(TI.dag_model))
             )
 
-            query = query.limit(max_tis)
+            query = query.limit(remaining_tis_to_queue)
 
             timer = stats.timer("scheduler.critical_section_query_duration")
             timer.start()
@@ -887,7 +891,9 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
 
                 pool_stats["open"] = open_slots
 
-            is_done = executable_tis or len(task_instances_to_examine) < max_tis
+            is_done = (
+                len(executable_tis) >= max_tis or len(task_instances_to_examine) < remaining_tis_to_queue
+            )
             # Check this to avoid accidental infinite loops
             found_new_filters = (
                 len(starved_pools) > num_starved_pools
