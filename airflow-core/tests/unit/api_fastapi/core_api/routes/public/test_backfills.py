@@ -23,6 +23,7 @@ from unittest import mock
 import pendulum
 import pytest
 from sqlalchemy import and_, func, select
+from sqlalchemy.orm import Session as SASession
 
 from airflow._shared.timezones import timezone
 from airflow.dag_processing.dagbag import DagBag
@@ -254,6 +255,30 @@ class TestCreateBackfill(TestBackfillEndpoint):
             "updated_at": mock.ANY,
         }
         check_last_log(session, dag_id="TEST_DAG_1", event="create_backfill", logical_date=None)
+
+    def test_create_backfill_reuses_request_session(self, session, dag_maker, test_client):
+        with dag_maker(session=session, dag_id="TEST_DAG_1", schedule="@daily") as dag:
+            EmptyOperator(task_id="mytask")
+        session.commit()
+
+        with mock.patch(
+            "airflow.api_fastapi.core_api.routes.public.backfills._create_backfill",
+            wraps=_create_backfill,
+        ) as create_backfill:
+            response = test_client.post(
+                url="/backfills",
+                json={
+                    "dag_id": dag.dag_id,
+                    "from_date": to_iso(pendulum.parse("2024-01-01")),
+                    "to_date": to_iso(pendulum.parse("2024-01-03")),
+                    "max_active_runs": 2,
+                    "run_backwards": False,
+                    "dag_run_conf": {},
+                },
+            )
+
+        assert response.status_code == 200
+        assert isinstance(create_backfill.call_args.kwargs["session"], SASession)
 
     def test_dag_not_exist(self, session, test_client):
         session.scalars(select(DagModel)).all()
