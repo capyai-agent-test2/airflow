@@ -23,6 +23,7 @@ import pytest
 
 from airflow.models.connection import Connection
 from airflow.providers.common.compat.connection import get_async_connection
+from airflow.providers.common.compat.sdk import BaseHook as CompatBaseHook
 
 
 class MockAgetBaseHook:
@@ -87,3 +88,23 @@ class TestGetAsyncConnection:
         assert conn.host == "override-host"
         assert conn.login == "override-login"
         assert conn.password == "override-password"
+
+    @pytest.mark.asyncio
+    async def test_get_async_connection_falls_back_to_sync_hook_override(self):
+        class TestHook(CompatBaseHook):
+            @classmethod
+            def get_connection(cls, conn_id: str):
+                return Connection(
+                    conn_id=conn_id,
+                    conn_type="http",
+                    host="sync-override-host",
+                    login="sync-override-login",
+                    password="sync-override-password",
+                )
+
+        conn = await get_async_connection("test_conn", hook=TestHook())
+
+        assert conn.conn_id == "test_conn"
+        assert conn.host == "sync-override-host"
+        assert conn.login == "sync-override-login"
+        assert conn.password == "sync-override-password"
