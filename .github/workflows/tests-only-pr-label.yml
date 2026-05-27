@@ -1,0 +1,91 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+---
+name: Tests-only PR label
+on:  # yamllint disable-line rule:truthy
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label-tests-only-pr:
+    name: "Label tests-only PR"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update tests-only label
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const labelName = "kind:tests";
+            const testFilePatterns = [
+              /(^|\/)tests\//,
+              /(^|\/)test_[^/]+\.(py)$/i,
+              /(^|\/)[^/]+_test\.(py)$/i,
+              /\.(test|spec)\.(js|jsx|ts|tsx)$/i,
+            ];
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+
+            const changedFiles = files.map((file) => file.filename);
+            const isTestsOnly =
+              changedFiles.length > 0 &&
+              changedFiles.every((filename) =>
+                testFilePatterns.some((pattern) => pattern.test(filename)),
+              );
+
+            const currentLabels = context.payload.pull_request.labels.map((label) => label.name);
+            const hasTestsLabel = currentLabels.includes(labelName);
+
+            core.info(`Changed files: ${JSON.stringify(changedFiles)}`);
+            core.info(`isTestsOnly=${isTestsOnly} hasTestsLabel=${hasTestsLabel}`);
+
+            if (isTestsOnly && !hasTestsLabel) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                labels: [labelName],
+              });
+              core.info(`Added ${labelName}`);
+              return;
+            }
+
+            if (!isTestsOnly && hasTestsLabel) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                name: labelName,
+              });
+              core.info(`Removed ${labelName}`);
+              return;
+            }
+
+            core.info("No label change needed.");

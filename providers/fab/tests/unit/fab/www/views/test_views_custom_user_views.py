@@ -17,6 +17,8 @@
 # under the License.
 from __future__ import annotations
 
+import json
+import pickle
 from datetime import datetime, timedelta
 from unittest import mock
 
@@ -231,6 +233,8 @@ class TestSecurity:
 
 
 class TestResetUserSessions:
+    _LEGACY_SESSION_EXPIRY = datetime(2099, 1, 1)
+
     @pytest.fixture(autouse=True)
     def app_context(self, app):
         self.app = app
@@ -295,6 +299,33 @@ class TestResetUserSessions:
         else:
             assert self.session.scalar(select(func.count()).select_from(self.model)) == 2
             assert self.get_session_by_id("session_id_1") is not None
+
+    @pytest.mark.parametrize(
+        ("serializer", "test_id"),
+        [
+            pytest.param(pickle.dumps, "pickled_session", id="pickle"),
+            pytest.param(lambda data: json.dumps(data).encode(), "json_session", id="json"),
+        ],
+    )
+    def test_reset_user_sessions_delete_legacy_serialized_data(self, serializer, test_id: str):
+        session_data = serializer({"_user_id": self.user_1.id})
+        self.session.add(
+            self.model(
+                session_id=test_id,
+                data=session_data,
+                expiry=self._LEGACY_SESSION_EXPIRY,
+            )
+        )
+        self.session.commit()
+        self.session.flush()
+        assert self.get_session_by_id(test_id) is not None
+
+        with self.app.app_context():
+            self.security_manager.reset_password(self.user_1.id, "new_password")
+
+        self.session.commit()
+        self.session.flush()
+        assert self.get_session_by_id(test_id) is None
 
     def get_session_by_id(self, session_id: str):
         return self.session.scalar(select(self.model).where(self.model.session_id == session_id))
