@@ -955,6 +955,31 @@ class TestTriggerRunner:
 
         mock_trigger.cleanup.assert_awaited_once()
 
+    def test_run_trigger_enqueues_closed_log_when_completion_log_fails(self, session) -> None:
+        trigger_runner = TriggerRunner()
+        trigger_runner.triggers = {
+            1: {"task": MagicMock(spec=asyncio.Task), "is_watcher": False, "name": "mock_name", "events": 0}
+        }
+        trigger_runner.log = AsyncMock()
+        trigger_runner.log.ainfo.side_effect = RuntimeError("logging transport failed")
+
+        mock_trigger = MagicMock(spec=BaseTrigger)
+        mock_trigger.task_instance = MagicMock()
+        mock_trigger.task_instance.map_index = -1
+        mock_trigger.cleanup = AsyncMock()
+
+        async def empty_run():
+            if False:
+                yield
+
+        mock_trigger.run = empty_run
+
+        with pytest.raises(RuntimeError, match="logging transport failed"):
+            asyncio.run(trigger_runner.run_trigger(1, mock_trigger))
+
+        assert list(trigger_runner.closed_logs) == [1]
+        mock_trigger.cleanup.assert_awaited_once()
+
     @patch("airflow.jobs.triggerer_job_runner.Trigger._decrypt_kwargs")
     @patch(
         "airflow.jobs.triggerer_job_runner.TriggerRunner.get_trigger_by_classpath",

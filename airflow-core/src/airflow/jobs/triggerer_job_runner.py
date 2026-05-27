@@ -1568,8 +1568,10 @@ class TriggerRunner:
                 with suppress(Exception):
                     await trigger.cleanup()
 
-                await self.log.ainfo("trigger completed", name=name)
-                self.closed_logs.append(trigger_id)
+                try:
+                    await self.log.ainfo("trigger completed", name=name)
+                finally:
+                    self.closed_logs.append(trigger_id)
 
     def get_trigger_by_classpath(self, classpath: str) -> type[BaseTrigger]:
         """
