@@ -790,19 +790,15 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     serialized_dag = self.scheduler_dag_bag.get_dag_for_run(
                         dag_run=task_instance.dag_run, session=session
                     )
-                    # If the dag is missing, fail the task and continue to the next task.
+                    # If the dag is transiently missing, skip this dag for now and retry it on the next
+                    # scheduler iteration instead of failing all scheduled tasks for the dag.
                     if not serialized_dag:
-                        self.log.error(
-                            "DAG '%s' for task instance %s not found in serialized_dag table",
+                        self.log.warning(
+                            "DAG '%s' for task instance %s not found in serialized_dag table; skipping DAG for this scheduling iteration",
                             dag_id,
                             task_instance,
                         )
-                        session.execute(
-                            update(TI)
-                            .where(TI.dag_id == dag_id, TI.state == TaskInstanceState.SCHEDULED)
-                            .values(state=TaskInstanceState.FAILED)
-                            .execution_options(synchronize_session="fetch")
-                        )
+                        starved_dags.add(dag_id)
                         continue
 
                     task_concurrency_limit: int | None = None
