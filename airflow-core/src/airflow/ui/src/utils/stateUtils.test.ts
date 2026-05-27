@@ -18,7 +18,27 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { sortStateEntries } from "./stateUtils";
+import { normalizeStateColorKey, normalizeStateLabelKey, sortStateEntries } from "./stateUtils";
+
+describe("normalizeStateColorKey", () => {
+  it("maps serialized None state to none for color tokens", () => {
+    expect(normalizeStateColorKey("None")).toBe("none");
+  });
+
+  it("leaves other states unchanged", () => {
+    expect(normalizeStateColorKey("success")).toBe("success");
+  });
+});
+
+describe("normalizeStateLabelKey", () => {
+  it("maps serialized None state to no_status for translations", () => {
+    expect(normalizeStateLabelKey("None")).toBe("no_status");
+  });
+
+  it("leaves other states unchanged", () => {
+    expect(normalizeStateLabelKey("success")).toBe("success");
+  });
+});
 
 describe("sortStateEntries", () => {
   it("returns empty array for null input", () => {
