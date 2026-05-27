@@ -202,6 +202,40 @@ def test_clean_unused_clears_trigger_ids_in_batches(session, dag_maker, monkeypa
         assert task_instance.trigger_id is None
 
 
+def test_clean_unused_rechecks_predicates_during_update(session, dag_maker, monkeypatch):
+    trigger = Trigger(classpath="airflow.triggers.testing.SuccessTrigger", kwargs={})
+    session.add(trigger)
+    session.flush()
+
+    with dag_maker(session=session, dag_id="test_clean_unused_rechecks_predicates_during_update"):
+        EmptyOperator(task_id="deferred_task")
+        EmptyOperator(task_id="finished_task")
+
+    dag_run = dag_maker.create_dagrun(logical_date=timezone.utcnow())
+    task_instances = {task_instance.task_id: task_instance for task_instance in dag_run.task_instances}
+    deferred_task = task_instances["deferred_task"]
+    deferred_task.state = State.DEFERRED
+    deferred_task.trigger_id = trigger.id
+    finished_task = task_instances["finished_task"]
+    finished_task.state = State.SUCCESS
+    finished_task.trigger_id = trigger.id
+    session.flush()
+
+    task_instance_ids_batches = [[deferred_task.id, finished_task.id], []]
+    monkeypatch.setattr(
+        trigger_module,
+        "_locked_task_instance_ids",
+        lambda query, batch_size, session: task_instance_ids_batches.pop(0),
+    )
+
+    Trigger.clean_unused(session=session)
+
+    session.refresh(deferred_task)
+    session.refresh(finished_task)
+    assert deferred_task.trigger_id == trigger.id
+    assert finished_task.trigger_id is None
+
+
 @patch.object(TriggererCallback, "handle_event")
 def test_submit_event(mock_callback_handle_event, session, create_task_instance):
     """
