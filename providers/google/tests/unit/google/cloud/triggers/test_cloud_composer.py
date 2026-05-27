@@ -61,6 +61,20 @@ TEST_EXEC_RESULT = {
 }
 
 
+def build_task_instances(*, date_key, entries):
+    return [
+        {
+            "task_id": TEST_COMPOSER_EXTERNAL_TASK_IDS[0],
+            "dag_id": TEST_COMPOSER_DAG_ID,
+            "state": state,
+            date_key: logical_date,
+            "start_date": "2024-05-22T11:20:01.531988+00:00",
+            "end_date": "2024-05-22T11:20:11.997479+00:00",
+        }
+        for logical_date, state in entries
+    ]
+
+
 @pytest.fixture
 @mock.patch(
     "airflow.providers.google.common.hooks.base_google.GoogleBaseHook.get_connection",
@@ -209,3 +223,81 @@ class TestCloudComposerExternalTaskTrigger:
             },
         )
         assert actual_data == expected_data
+
+    @pytest.mark.parametrize("composer_airflow_version", [2, 3])
+    @mock.patch(
+        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook.get_connection",
+        return_value=Connection(conn_id="test_conn"),
+    )
+    def test_check_task_instances_states_waits_when_all_task_instances_are_outside_window(
+        self, mock_conn, composer_airflow_version
+    ):
+        trigger = CloudComposerExternalTaskTrigger(
+            project_id=TEST_PROJECT_ID,
+            region=TEST_LOCATION,
+            environment_id=TEST_ENVIRONMENT_ID,
+            start_date=TEST_START_DATE,
+            end_date=TEST_END_DATE,
+            allowed_states=TEST_ALLOWED_STATES,
+            skipped_states=TEST_SKIPPED_STATES,
+            failed_states=TEST_FAILED_STATES,
+            composer_external_dag_id=TEST_COMPOSER_DAG_ID,
+            composer_external_task_ids=TEST_COMPOSER_EXTERNAL_TASK_IDS,
+            gcp_conn_id=TEST_GCP_CONN_ID,
+            impersonation_chain=TEST_IMPERSONATION_CHAIN,
+            poll_interval=TEST_POLL_INTERVAL,
+            composer_airflow_version=composer_airflow_version,
+        )
+        date_key = "execution_date" if composer_airflow_version < 3 else "logical_date"
+
+        assert not trigger._check_task_instances_states(
+            task_instances=build_task_instances(
+                date_key=date_key,
+                entries=[
+                    ("2024-03-22T11:00:00+00:00", "success"),
+                    ("2024-03-22T12:00:00+00:00", "success"),
+                ],
+            ),
+            start_date=TEST_START_DATE,
+            end_date=TEST_END_DATE,
+            states=TEST_ALLOWED_STATES,
+        )
+
+    @pytest.mark.parametrize("composer_airflow_version", [2, 3])
+    @mock.patch(
+        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook.get_connection",
+        return_value=Connection(conn_id="test_conn"),
+    )
+    def test_check_task_instances_states_succeeds_with_outside_window_mismatch_and_in_window_match(
+        self, mock_conn, composer_airflow_version
+    ):
+        trigger = CloudComposerExternalTaskTrigger(
+            project_id=TEST_PROJECT_ID,
+            region=TEST_LOCATION,
+            environment_id=TEST_ENVIRONMENT_ID,
+            start_date=TEST_START_DATE,
+            end_date=TEST_END_DATE,
+            allowed_states=TEST_ALLOWED_STATES,
+            skipped_states=TEST_SKIPPED_STATES,
+            failed_states=TEST_FAILED_STATES,
+            composer_external_dag_id=TEST_COMPOSER_DAG_ID,
+            composer_external_task_ids=TEST_COMPOSER_EXTERNAL_TASK_IDS,
+            gcp_conn_id=TEST_GCP_CONN_ID,
+            impersonation_chain=TEST_IMPERSONATION_CHAIN,
+            poll_interval=TEST_POLL_INTERVAL,
+            composer_airflow_version=composer_airflow_version,
+        )
+        date_key = "execution_date" if composer_airflow_version < 3 else "logical_date"
+
+        assert trigger._check_task_instances_states(
+            task_instances=build_task_instances(
+                date_key=date_key,
+                entries=[
+                    ("2024-03-22T10:59:59+00:00", "running"),
+                    ("2024-03-22T11:30:00+00:00", "success"),
+                ],
+            ),
+            start_date=TEST_START_DATE,
+            end_date=TEST_END_DATE,
+            states=TEST_ALLOWED_STATES,
+        )

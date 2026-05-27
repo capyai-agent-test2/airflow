@@ -444,6 +444,7 @@ class CloudComposerExternalTaskTrigger(BaseTrigger):
         end_date: datetime,
         states: Iterable[str],
     ) -> bool:
+        matched_task_instance = False
         for task_instance in task_instances:
             if (
                 start_date.timestamp()
@@ -451,9 +452,11 @@ class CloudComposerExternalTaskTrigger(BaseTrigger):
                     task_instance["execution_date" if self.composer_airflow_version < 3 else "logical_date"]
                 ).timestamp()
                 < end_date.timestamp()
-            ) and task_instance["state"] not in states:
-                return False
-        return True
+            ):
+                matched_task_instance = True
+                if task_instance["state"] not in states:
+                    return False
+        return matched_task_instance
 
     def _get_async_hook(self) -> CloudComposerAsyncHook:
         return CloudComposerAsyncHook(

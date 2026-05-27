@@ -201,6 +201,23 @@ class TestCloudComposerDAGRunSensor:
 
 
 class TestCloudComposerExternalTaskSensor:
+    @staticmethod
+    def _build_task_instances(*, task_id, date_key, entries):
+        return {
+            "task_instances": [
+                {
+                    "task_id": task_id,
+                    "dag_id": "test_dag_id",
+                    "state": state,
+                    date_key: logical_date,
+                    "start_date": "2024-05-22T11:20:01.531988+00:00",
+                    "end_date": "2024-05-22T11:20:11.997479+00:00",
+                }
+                for logical_date, state in entries
+            ],
+            "total_entries": len(entries),
+        }
+
     @pytest.mark.parametrize("composer_airflow_version", [2, 3])
     @mock.patch("airflow.providers.google.cloud.sensors.cloud_composer.CloudComposerHook")
     def test_wait_ready(self, mock_hook, composer_airflow_version):
@@ -350,3 +367,59 @@ class TestCloudComposerExternalTaskSensor:
         task._composer_airflow_version = composer_airflow_version
 
         assert not task.poke(context={"logical_date": datetime(2024, 5, 23, 0, 0, 0)})
+
+    @pytest.mark.parametrize("composer_airflow_version", [2, 3])
+    @mock.patch("airflow.providers.google.cloud.sensors.cloud_composer.CloudComposerHook")
+    def test_execution_range_waits_when_all_task_instances_are_outside_window(
+        self, mock_hook, composer_airflow_version
+    ):
+        date_key = "execution_date" if composer_airflow_version < 3 else "logical_date"
+        mock_hook.return_value.get_task_instances.return_value = self._build_task_instances(
+            task_id=TEST_COMPOSER_EXTERNAL_TASK_ID,
+            date_key=date_key,
+            entries=[
+                ("2024-05-21T23:59:59+00:00", "success"),
+                ("2024-05-23T00:00:00+00:00", "success"),
+            ],
+        )
+
+        task = CloudComposerExternalTaskSensor(
+            task_id="task-id",
+            project_id=TEST_PROJECT_ID,
+            region=TEST_REGION,
+            environment_id=TEST_ENVIRONMENT_ID,
+            composer_external_dag_id="test_dag_id",
+            composer_external_task_id=TEST_COMPOSER_EXTERNAL_TASK_ID,
+            allowed_states=["success"],
+        )
+        task._composer_airflow_version = composer_airflow_version
+
+        assert not task.poke(context={"logical_date": datetime(2024, 5, 23, 0, 0, 0)})
+
+    @pytest.mark.parametrize("composer_airflow_version", [2, 3])
+    @mock.patch("airflow.providers.google.cloud.sensors.cloud_composer.CloudComposerHook")
+    def test_execution_range_succeeds_when_in_window_task_instances_match_allowed_states(
+        self, mock_hook, composer_airflow_version
+    ):
+        date_key = "execution_date" if composer_airflow_version < 3 else "logical_date"
+        mock_hook.return_value.get_task_instances.return_value = self._build_task_instances(
+            task_id=TEST_COMPOSER_EXTERNAL_TASK_ID,
+            date_key=date_key,
+            entries=[
+                ("2024-05-21T23:59:59+00:00", "running"),
+                ("2024-05-22T12:00:00+00:00", "success"),
+            ],
+        )
+
+        task = CloudComposerExternalTaskSensor(
+            task_id="task-id",
+            project_id=TEST_PROJECT_ID,
+            region=TEST_REGION,
+            environment_id=TEST_ENVIRONMENT_ID,
+            composer_external_dag_id="test_dag_id",
+            composer_external_task_id=TEST_COMPOSER_EXTERNAL_TASK_ID,
+            allowed_states=["success"],
+        )
+        task._composer_airflow_version = composer_airflow_version
+
+        assert task.poke(context={"logical_date": datetime(2024, 5, 23, 0, 0, 0)})
