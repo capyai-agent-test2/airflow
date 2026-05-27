@@ -542,6 +542,70 @@ class TestGetImportErrors:
             FILENAME3: STACKTRACE3,
         }
 
+    @mock.patch("airflow.api_fastapi.core_api.routes.public.import_error.get_auth_manager")
+    def test_total_entries_counts_distinct_import_errors_when_file_has_multiple_dags(
+        self,
+        mock_get_auth_manager,
+        test_client,
+        testing_dag_bundle,
+        session: Session,
+    ):
+        shared_filename = "shared_file.py"
+        import_error = ParseImportError(
+            bundle_name=BUNDLE_NAME,
+            filename=shared_filename,
+            stacktrace="shared stacktrace",
+            timestamp=TIMESTAMP1,
+        )
+        session.add(import_error)
+        session.add_all(
+            [
+                DagModel(
+                    fileloc=shared_filename,
+                    relative_fileloc=shared_filename,
+                    dag_id="shared_dag_1",
+                    is_paused=False,
+                    bundle_name=BUNDLE_NAME,
+                ),
+                DagModel(
+                    fileloc=shared_filename,
+                    relative_fileloc=shared_filename,
+                    dag_id="shared_dag_2",
+                    is_paused=False,
+                    bundle_name=BUNDLE_NAME,
+                ),
+                DagModel(
+                    fileloc=shared_filename,
+                    relative_fileloc=shared_filename,
+                    dag_id="shared_dag_3",
+                    is_paused=False,
+                    bundle_name=BUNDLE_NAME,
+                ),
+            ]
+        )
+        session.commit()
+
+        set_mock_auth_manager__get_authorized_dag_ids(
+            mock_get_auth_manager, {"shared_dag_1", "shared_dag_2", "shared_dag_3"}
+        )
+        set_mock_auth_manager__batch_is_authorized_dag(mock_get_auth_manager, True)
+
+        response = test_client.get("/importErrors", params={"filename_pattern": shared_filename})
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "total_entries": 1,
+            "import_errors": [
+                {
+                    "import_error_id": import_error.id,
+                    "timestamp": from_datetime_to_zulu_without_ms(TIMESTAMP1),
+                    "filename": shared_filename,
+                    "stack_trace": "shared stacktrace",
+                    "bundle_name": BUNDLE_NAME,
+                }
+            ],
+        }
+
 
 class TestImportErrorFileAuthorization:
     """Tests that the import error endpoints apply per-file authorization
