@@ -26,11 +26,12 @@ from uuid import UUID
 
 from cachetools import LRUCache, TTLCache
 from sqlalchemy import String, select
-from sqlalchemy.orm import Mapped, joinedload, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 
 from airflow._shared.observability.metrics import stats
 from airflow.models.base import Base, StringID
 from airflow.models.dag_version import DagVersion
+from airflow.models.serialized_dag import SerializedDagModel
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -38,7 +39,6 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from airflow.models import DagRun
-    from airflow.models.serialized_dag import SerializedDagModel
     from airflow.serialization.definitions.dag import SerializedDAG
 
 
@@ -63,19 +63,22 @@ class DBDagBag:
         Initialize DBDagBag.
 
         :param load_op_links: Should the extra operator link be loaded when de-serializing the DAG?
-        :param cache_size: Size of LRU cache. If None or 0, uses unbounded dict (no eviction).
+        :param cache_size: Size of LRU cache. If None or 0, caching is disabled.
         :param cache_ttl: Time-to-live for cache entries in seconds. If None or 0, no TTL (LRU only).
         """
         self.load_op_links = load_op_links
         self._dags: MutableMapping[UUID | str, SerializedDAG] = {}
+        self._dag_last_updated: MutableMapping[UUID | str, Any] = {}
         self._use_cache = False
 
         # Initialize bounded cache if cache_size is provided and > 0
         if cache_size and cache_size > 0:
             if cache_ttl and cache_ttl > 0:
                 self._dags = TTLCache(maxsize=cache_size, ttl=cache_ttl)
+                self._dag_last_updated = TTLCache(maxsize=cache_size, ttl=cache_ttl)
             else:
                 self._dags = LRUCache(maxsize=cache_size)
+                self._dag_last_updated = LRUCache(maxsize=cache_size)
             self._use_cache = True
 
         # Lock required for bounded caches: cachetools caches are NOT thread-safe
@@ -86,40 +89,62 @@ class DBDagBag:
     def _read_dag(self, serdag: SerializedDagModel) -> SerializedDAG | None:
         """Read and optionally cache a SerializedDAG from a SerializedDagModel."""
         serdag.load_op_links = self.load_op_links
+        if hasattr(serdag, "_SerializedDagModel__data_cache"):
+            serdag._SerializedDagModel__data_cache = None
         dag = serdag.dag
         if not dag:
             return None
-        with self._lock:
-            self._dags[serdag.dag_version_id] = dag
-            cache_size = len(self._dags)
         if self._use_cache:
+            with self._lock:
+                self._dags[serdag.dag_version_id] = dag
+                self._dag_last_updated[serdag.dag_version_id] = serdag.last_updated
+                cache_size = len(self._dags)
             stats.gauge("api_server.dag_bag.cache_size", cache_size, rate=0.1)
         return dag
 
-    def _get_dag(self, version_id: UUID | str, session: Session) -> SerializedDAG | None:
-        # Check cache first
+    def _get_cached_dag(self, version_id: UUID | str, *, session: Session) -> SerializedDAG | None:
         with self._lock:
             dag = self._dags.get(version_id)
+            cached_last_updated = self._dag_last_updated.get(version_id)
 
-        if dag:
-            if self._use_cache:
-                stats.incr("api_server.dag_bag.cache_hit")
+        if not dag or cached_last_updated is None:
+            return None
+
+        current_last_updated = session.scalar(
+            select(SerializedDagModel.last_updated).where(SerializedDagModel.dag_version_id == version_id)
+        )
+        if current_last_updated != cached_last_updated:
+            with self._lock:
+                self._dags.pop(version_id, None)
+                self._dag_last_updated.pop(version_id, None)
+            return None
+
+        stats.incr("api_server.dag_bag.cache_hit")
+        return dag
+
+    @staticmethod
+    def _get_serialized_dag_model_by_version(
+        version_id: UUID | str, *, session: Session
+    ) -> SerializedDagModel | None:
+        return session.scalar(
+            select(SerializedDagModel)
+            .where(SerializedDagModel.dag_version_id == version_id)
+            .execution_options(populate_existing=True)
+        )
+
+    def _get_dag(self, version_id: UUID | str, session: Session) -> SerializedDAG | None:
+        if self._use_cache and (dag := self._get_cached_dag(version_id=version_id, session=session)):
             return dag
 
-        dag_version = session.get(DagVersion, version_id, options=[joinedload(DagVersion.serialized_dag)])
-        if not dag_version:
-            return None
-        if not (serdag := dag_version.serialized_dag):
+        if not (serdag := self._get_serialized_dag_model_by_version(version_id=version_id, session=session)):
             return None
 
         # Double-checked locking: another thread may have cached it while we queried DB.
         # Only emit the miss metric after confirming no other thread cached it, to avoid
         # counting a single lookup as both a miss and a hit.
         if self._use_cache:
-            with self._lock:
-                if dag := self._dags.get(version_id):
-                    stats.incr("api_server.dag_bag.cache_hit")
-                    return dag
+            if dag := self._get_cached_dag(version_id=version_id, session=session):
+                return dag
             stats.incr("api_server.dag_bag.cache_miss")
         return self._read_dag(serdag)
 
@@ -135,8 +160,7 @@ class DBDagBag:
         for ``serialized_dag_model.data``, which cannot be stored in the
         LRU/TTL cache (it stores deserialized SerializedDAG objects).
         """
-        dag_version = session.get(DagVersion, version_id, options=[joinedload(DagVersion.serialized_dag)])
-        if not dag_version or not (serdag := dag_version.serialized_dag):
+        if not (serdag := self._get_serialized_dag_model_by_version(version_id=version_id, session=session)):
             return None
         serdag.load_op_links = self.load_op_links
         return serdag
@@ -150,6 +174,7 @@ class DBDagBag:
         with self._lock:
             count = len(self._dags)
             self._dags.clear()
+            self._dag_last_updated.clear()
 
         if self._use_cache:
             stats.incr("api_server.dag_bag.cache_clear")

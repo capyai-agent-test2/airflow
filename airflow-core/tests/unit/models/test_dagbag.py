@@ -26,7 +26,8 @@ from cachetools import LRUCache, TTLCache
 
 from airflow.models.dagbag import DBDagBag
 from airflow.models.serialized_dag import SerializedDagModel
-from airflow.serialization.serialized_objects import SerializedDAG
+from airflow.providers.standard.operators.empty import EmptyOperator
+from airflow.serialization.serialized_objects import LazyDeserializedDAG, SerializedDAG
 
 pytestmark = pytest.mark.db_test
 
@@ -44,7 +45,7 @@ class TestDBDagBag:
         self.session = MagicMock()
 
     def test__read_dag_stores_and_returns_dag(self):
-        """It should store the SerializedDAG in _dags and return it."""
+        """It should return the SerializedDAG without caching by default."""
         mock_dag = MagicMock(spec=SerializedDAG)
         mock_serdag = MagicMock(spec=SerializedDagModel)
         mock_serdag.dag = mock_dag
@@ -53,7 +54,7 @@ class TestDBDagBag:
         result = self.db_dag_bag._read_dag(mock_serdag)
 
         assert result == mock_dag
-        assert self.db_dag_bag._dags["v1"] == mock_dag
+        assert "v1" not in self.db_dag_bag._dags
         assert mock_serdag.load_op_links is True
 
     def test__read_dag_returns_none_when_no_dag(self):
@@ -73,28 +74,31 @@ class TestDBDagBag:
         mock_serdag = MagicMock(spec=SerializedDagModel)
         mock_serdag.dag = mock_dag
         mock_serdag.dag_version_id = "v1"
-        mock_dag_version = MagicMock()
-        mock_dag_version.serialized_dag = mock_serdag
-        self.session.get.return_value = mock_dag_version
+        self.session.scalar.return_value = mock_serdag
 
         result = self.db_dag_bag.get_dag("v1", session=self.session)
 
-        self.session.get.assert_called_once()
+        self.session.scalar.assert_called_once()
         assert result == mock_dag
 
-    def test_get_dag_returns_cached_on_hit(self):
-        """It should return cached DAG without querying DB."""
+    def test_get_dag_queries_db_again_when_caching_disabled(self):
+        """It should query the DB on repeat lookups when caching is disabled."""
         mock_dag = MagicMock(spec=SerializedDAG)
-        self.db_dag_bag._dags["v1"] = mock_dag
+        mock_serdag = MagicMock(spec=SerializedDagModel)
+        mock_serdag.dag = mock_dag
+        mock_serdag.dag_version_id = "v1"
+        self.session.scalar.return_value = mock_serdag
 
-        result = self.db_dag_bag.get_dag("v1", session=self.session)
+        first = self.db_dag_bag.get_dag("v1", session=self.session)
+        second = self.db_dag_bag.get_dag("v1", session=self.session)
 
-        assert result == mock_dag
-        self.session.get.assert_not_called()
+        assert first == mock_dag
+        assert second == mock_dag
+        assert self.session.scalar.call_count == 2
 
     def test_get_dag_returns_none_when_not_found(self):
         """It should return None if version_id not found in DB."""
-        self.session.get.return_value = None
+        self.session.scalar.return_value = None
 
         result = self.db_dag_bag.get_dag("v1", session=self.session)
 
@@ -122,8 +126,8 @@ class TestDBDagBagCache:
         assert dag_bag._use_cache is True
         assert isinstance(dag_bag._dags, TTLCache)
 
-    def test_zero_cache_size_uses_unbounded_dict(self):
-        """Test that cache_size=0 uses unbounded dict (same as no caching)."""
+    def test_zero_cache_size_disables_caching(self):
+        """Test that cache_size=0 disables caching."""
         dag_bag = DBDagBag(cache_size=0, cache_ttl=60)
         assert dag_bag._use_cache is False
         assert isinstance(dag_bag._dags, dict)
@@ -147,11 +151,13 @@ class TestDBDagBagCache:
 
         mock_dag = MagicMock()
         dag_bag._dags["version_1"] = mock_dag
+        dag_bag._dag_last_updated["version_1"] = MagicMock()
         assert len(dag_bag._dags) == 1
 
         count = dag_bag.clear_cache()
         assert count == 1
         assert len(dag_bag._dags) == 0
+        assert len(dag_bag._dag_last_updated) == 0
 
     def test_ttl_cache_expiry(self):
         """Test that cached DAGs expire after TTL."""
@@ -187,16 +193,17 @@ class TestDBDagBagCache:
         errors = []
         mock_session = MagicMock()
 
-        def make_dag_version(version_id):
+        def get_serialized_dag(version_id):
             serdag = MagicMock()
             serdag.dag = MagicMock()
             serdag.dag_version_id = version_id
-            return MagicMock(serialized_dag=serdag)
+            return serdag
 
-        def get_dag_version(model, version_id, options=None):
-            return make_dag_version(version_id)
+        def scalar_side_effect(statement):
+            version_id = statement.whereclause.right.value
+            return get_serialized_dag(version_id)
 
-        mock_session.get.side_effect = get_dag_version
+        mock_session.scalar.side_effect = scalar_side_effect
 
         def access_cache(i):
             try:
@@ -224,8 +231,8 @@ class TestDBDagBagCache:
         assert result == mock_sdm.dag
         assert "test_version" in dag_bag._dags
 
-    def test_read_dag_stores_in_unbounded_dict(self):
-        """Test that _read_dag stores DAG in unbounded dict when no cache_size."""
+    def test_read_dag_does_not_store_without_cache(self):
+        """Test that _read_dag skips caching when no cache_size is configured."""
         dag_bag = DBDagBag()
 
         mock_sdm = MagicMock()
@@ -235,7 +242,7 @@ class TestDBDagBagCache:
         result = dag_bag._read_dag(mock_sdm)
 
         assert result == mock_sdm.dag
-        assert "test_version" in dag_bag._dags
+        assert "test_version" not in dag_bag._dags
 
     def test_iter_all_latest_version_dags_does_not_cache(self):
         """Test that iter_all_latest_version_dags does not cache to prevent thrashing."""
@@ -258,6 +265,8 @@ class TestDBDagBagCache:
         dag_bag = DBDagBag(cache_size=10, cache_ttl=60)
         mock_session = MagicMock()
         dag_bag._dags["test_version"] = MagicMock()
+        dag_bag._dag_last_updated["test_version"] = "updated"
+        mock_session.scalar.return_value = "updated"
 
         dag_bag._get_dag("test_version", mock_session)
 
@@ -273,12 +282,33 @@ class TestDBDagBagCache:
         mock_serdag = MagicMock(spec=SerializedDagModel)
         mock_serdag.dag = MagicMock(spec=SerializedDAG)
         mock_serdag.dag_version_id = "uncached_version"
-        mock_dag_version = MagicMock()
-        mock_dag_version.serialized_dag = mock_serdag
-        mock_session.get.return_value = mock_dag_version
+        mock_session.scalar.return_value = mock_serdag
 
         dag_bag._get_dag("uncached_version", mock_session)
 
+        mock_stats.incr.assert_any_call("api_server.dag_bag.cache_miss")
+
+    @patch("airflow.models.dagbag.stats")
+    def test_stale_cached_dag_is_refreshed(self, mock_stats):
+        """Test that a cached DAG is refreshed when the serialized row changes in place."""
+        dag_bag = DBDagBag(cache_size=10, cache_ttl=60)
+        mock_session = MagicMock()
+        stale_dag = MagicMock(spec=SerializedDAG)
+        fresh_dag = MagicMock(spec=SerializedDAG)
+        dag_bag._dags["version_1"] = stale_dag
+        dag_bag._dag_last_updated["version_1"] = "old"
+
+        mock_serdag = MagicMock(spec=SerializedDagModel)
+        mock_serdag.dag = fresh_dag
+        mock_serdag.dag_version_id = "version_1"
+        mock_serdag.last_updated = "new"
+        mock_session.scalar.side_effect = ["new", mock_serdag]
+
+        result = dag_bag._get_dag("version_1", mock_session)
+
+        assert result is fresh_dag
+        assert dag_bag._dags["version_1"] is fresh_dag
+        assert dag_bag._dag_last_updated["version_1"] == "new"
         mock_stats.incr.assert_any_call("api_server.dag_bag.cache_miss")
 
     @patch("airflow.models.dagbag.stats")
@@ -303,3 +333,36 @@ class TestDBDagBagCache:
         dag_bag._read_dag(mock_serdag)
 
         mock_stats.gauge.assert_called_with("api_server.dag_bag.cache_size", 1, rate=0.1)
+
+    def test_default_dag_bag_reloads_in_place_serialized_updates(self, dag_maker, session):
+        """Test that default DBDagBag sees in-place serialized DAG updates."""
+        with dag_maker(dag_id="test_in_place_update", session=session) as dag:
+            EmptyOperator(task_id="task_1")
+
+        SerializedDagModel.write_dag(
+            dag=LazyDeserializedDAG.from_dag(dag),
+            bundle_name="test_bundle",
+            bundle_version=None,
+            session=session,
+        )
+        session.commit()
+
+        dag_version = SerializedDagModel.get("test_in_place_update", session=session).dag_version_id
+        dag_bag = DBDagBag()
+
+        initial_dag = dag_bag.get_dag(dag_version, session=session)
+        assert initial_dag is not None
+        assert set(initial_dag.task_dict) == {"task_1"}
+
+        EmptyOperator(task_id="task_2", dag=dag)
+        SerializedDagModel.write_dag(
+            dag=LazyDeserializedDAG.from_dag(dag),
+            bundle_name="test_bundle",
+            bundle_version=None,
+            session=session,
+        )
+        session.commit()
+
+        updated_dag = dag_bag.get_dag(dag_version, session=session)
+        assert updated_dag is not None
+        assert set(updated_dag.task_dict) == {"task_1", "task_2"}
