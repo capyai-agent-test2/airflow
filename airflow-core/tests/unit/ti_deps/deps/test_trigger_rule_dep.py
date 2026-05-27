@@ -1605,6 +1605,81 @@ def test_upstream_in_mapped_group_when_mapped_tasks_list_is_empty(dag_maker, ses
     assert tis == {}
 
 
+@pytest.mark.parametrize("trigger_rule", [TriggerRule.NONE_FAILED, TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS])
+@pytest.mark.parametrize("flag_upstream_failed", [True, False])
+def test_mapped_task_upstream_removed_dep_check_uses_relevant_upstream_count(
+    session,
+    get_mapped_task_dagrun,
+    trigger_rule,
+    flag_upstream_failed,
+):
+    dr, task, _ = get_mapped_task_dagrun(trigger_rule=trigger_rule)
+
+    ti = dr.get_task_instance(task_id="do_something_else", map_index=3, session=session)
+    ti.task = task
+
+    _test_trigger_rule(ti=ti, session=session, flag_upstream_failed=flag_upstream_failed)
+
+
+def test_none_failed_min_one_success_mapped_task_group_waits_for_relevant_upstream(dag_maker, session):
+    with dag_maker(
+        session=session,
+        serialized=True,
+        default_args={"trigger_rule": TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS},
+    ):
+
+        @task
+        def get_the_list():
+            return ["one", "two", "three"]
+
+        @task
+        def process_something(x: str, y: str | None = None):
+            return f"{x}_{y}" if y is not None else x
+
+        @task_group
+        def tg(x: str, y: str):
+            start = EmptyOperator(task_id="start")
+            something = process_something(x, y)
+            another = process_something(something)
+            end = EmptyOperator(task_id="end")
+            start >> something >> another >> end
+
+        start = EmptyOperator(task_id="start")
+        end = EmptyOperator(task_id="end")
+        the_list = get_the_list()
+        mapped_group = tg.partial(x="base").expand(y=the_list)
+        start >> the_list >> mapped_group >> end
+
+    dr: DagRun = dag_maker.create_dagrun()
+
+    def _one_scheduling_decision_iteration() -> dict[tuple[str, int], TaskInstance]:
+        decision = dr.task_instance_scheduling_decisions(session=session)
+        return {(ti.task_id, ti.map_index): ti for ti in decision.schedulable_tis}
+
+    assert sorted(_one_scheduling_decision_iteration()) == [("start", -1)]
+    dag_maker.run_ti(task_id="start", map_index=-1, dag_run=dr)
+    assert sorted(_one_scheduling_decision_iteration()) == [("get_the_list", -1)]
+    dag_maker.run_ti(task_id="get_the_list", map_index=-1, dag_run=dr)
+    assert sorted(_one_scheduling_decision_iteration()) == [
+        ("tg.start", 0),
+        ("tg.start", 1),
+        ("tg.start", 2),
+    ]
+
+    for map_index in range(3):
+        dag_maker.run_ti(task_id="tg.start", map_index=map_index, dag_run=dr)
+        assert ("tg.end", map_index) not in _one_scheduling_decision_iteration()
+        dag_maker.run_ti(task_id="tg.process_something", map_index=map_index, dag_run=dr)
+        assert ("tg.end", map_index) not in _one_scheduling_decision_iteration()
+        dag_maker.run_ti(task_id="tg.process_something__1", map_index=map_index, dag_run=dr)
+        assert ("tg.end", map_index) in _one_scheduling_decision_iteration()
+        dag_maker.run_ti(task_id="tg.end", map_index=map_index, dag_run=dr)
+        if map_index < 2:
+            assert ("end", -1) not in _one_scheduling_decision_iteration()
+
+    assert ("end", -1) in _one_scheduling_decision_iteration()
+
+
 @pytest.mark.parametrize("flag_upstream_failed", [True, False])
 @pytest.mark.need_serialized_dag
 def test_mapped_task_check_before_expand(dag_maker, session, flag_upstream_failed):
