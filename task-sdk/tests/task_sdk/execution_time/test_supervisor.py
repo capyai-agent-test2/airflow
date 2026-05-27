@@ -1320,6 +1320,10 @@ class TestWatchedSubprocessKill:
     ):
         """Avoid killpg when the child failed to move into its own process group."""
         mock_process.wait.return_value = 0
+        watched_subprocess._tracked_pid_create_time = time.time()
+        mock_current_process = mock.Mock()
+        mock_current_process.create_time.return_value = watched_subprocess._tracked_pid_create_time
+        monkeypatch.setattr(psutil, "Process", lambda _pid: mock_current_process)
         monkeypatch.setattr(os, "getpgid", lambda _pid: os.getpgrp())
         mock_killpg = mock.Mock()
         monkeypatch.setattr(os, "killpg", mock_killpg)
@@ -1328,6 +1332,21 @@ class TestWatchedSubprocessKill:
 
         mock_killpg.assert_not_called()
         mock_process.send_signal.assert_called_once_with(signal.SIGTERM)
+
+    def test_kill_ignores_reused_pid(self, watched_subprocess, mock_process, monkeypatch):
+        """Avoid signaling unrelated process groups after PID reuse."""
+        watched_subprocess._tracked_pid_create_time = 1.0
+        mock_current_process = mock.Mock()
+        mock_current_process.create_time.return_value = 2.0
+        monkeypatch.setattr(psutil, "Process", lambda _pid: mock_current_process)
+        mock_killpg = mock.Mock()
+        monkeypatch.setattr(os, "killpg", mock_killpg)
+
+        watched_subprocess.kill(signal.SIGTERM, force=False)
+
+        mock_killpg.assert_not_called()
+        mock_process.send_signal.assert_not_called()
+        assert watched_subprocess._exit_code == -1
 
     @pytest.mark.parametrize(
         ("signal_to_send", "exit_after"),
