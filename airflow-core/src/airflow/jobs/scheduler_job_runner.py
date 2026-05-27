@@ -1308,6 +1308,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                             ti.state,
                             job_id,
                         )
+                        continue
                     _, info = event_buffer.pop(buffer_key)
                     ti.external_executor_id = info
                     cls.logger().info("Setting external_executor_id for %s to %s", ti, info)

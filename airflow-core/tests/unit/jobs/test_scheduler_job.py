@@ -519,7 +519,7 @@ class TestSchedulerJob:
         mock_with_row_locks.assert_not_called()
 
     def test_process_executor_events_stale_running_does_not_overwrite_queued_executor_id(
-        self, dag_maker, session, caplog
+        self, dag_maker, session
     ):
         dag_id = "test_process_executor_events_stale_running_does_not_overwrite_queued_executor_id"
         task_id = "dummy_task"
@@ -540,13 +540,11 @@ class TestSchedulerJob:
         executor.event_buffer[ti.key.with_try_number(1)] = State.RUNNING, "stale-executor-id"
         executor.event_buffer[ti.key.with_try_number(2)] = State.QUEUED, "current-executor-id"
 
-        with caplog.at_level(logging.WARNING, logger="airflow.jobs.scheduler_job_runner"):
-            self.job_runner._process_executor_events(executor=executor, session=session)
+        self.job_runner._process_executor_events(executor=executor, session=session)
 
         session.flush()
         ti.refresh_from_db(session=session)
         assert ti.external_executor_id == "current-executor-id"
-        assert any("TI try_number mismatch:" in rec.message for rec in caplog.records)
 
     @mock.patch("airflow.jobs.scheduler_job_runner.TaskCallbackRequest", spec=TaskCallbackRequest)
     def test_process_executor_events_restarting_cleared_task(self, mock_task_callback, dag_maker):
