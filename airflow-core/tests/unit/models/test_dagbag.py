@@ -193,16 +193,17 @@ class TestDBDagBagCache:
         errors = []
         mock_session = MagicMock()
 
-        def make_dag_version(version_id):
+        def get_serialized_dag(version_id):
             serdag = MagicMock()
             serdag.dag = MagicMock()
             serdag.dag_version_id = version_id
-            return MagicMock(serialized_dag=serdag)
+            return serdag
 
-        def get_dag_version(model, version_id, options=None, **kwargs):
-            return make_dag_version(version_id)
+        def scalar_side_effect(statement):
+            version_id = statement.whereclause.right.value
+            return get_serialized_dag(version_id)
 
-        mock_session.get.side_effect = get_dag_version
+        mock_session.scalar.side_effect = scalar_side_effect
 
         def access_cache(i):
             try:

@@ -102,7 +102,7 @@ class DBDagBag:
             stats.gauge("api_server.dag_bag.cache_size", cache_size, rate=0.1)
         return dag
 
-    def _get_cached_dag(self, version_id: UUID | str, session: Session) -> SerializedDAG | None:
+    def _get_cached_dag(self, version_id: UUID | str, *, session: Session) -> SerializedDAG | None:
         with self._lock:
             dag = self._dags.get(version_id)
             cached_last_updated = self._dag_last_updated.get(version_id)
