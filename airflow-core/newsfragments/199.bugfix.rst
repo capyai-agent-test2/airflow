@@ -1,0 +1,1 @@
+Fixed ``airflow db clean --skip-archive`` so failed deletes roll back before dropping the temporary archive table, avoiding a stuck cleanup command when the delete cannot proceed.
