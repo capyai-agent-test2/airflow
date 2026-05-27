@@ -40,6 +40,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import joinedload
 
+import airflow.jobs.scheduler_job_runner as scheduler_job_runner_module
 from airflow import settings
 from airflow._shared.module_loading import qualname
 from airflow._shared.observability.metrics.base_stats_logger import StatsLogger
@@ -7246,6 +7247,83 @@ class TestSchedulerJob:
         assert ti1.state == State.SCHEDULED
         assert ti1.next_method == "__fail__"
         assert ti2.state == State.DEFERRED
+
+    def test_timeout_triggers_processes_more_than_one_batch(self, dag_maker, monkeypatch):
+        monkeypatch.setattr(scheduler_job_runner_module, "_TRIGGER_TIMEOUT_BATCH_SIZE", 2)
+
+        session = settings.Session()
+        with dag_maker(
+            dag_id="test_timeout_triggers_processes_more_than_one_batch",
+            start_date=DEFAULT_DATE,
+            schedule="@once",
+            max_active_runs=5,
+            session=session,
+        ):
+            EmptyOperator(task_id="dummy1")
+
+        past = timezone.utcnow() - datetime.timedelta(seconds=60)
+        task_instances = []
+        for index in range(5):
+            dag_run = dag_maker.create_dagrun(
+                run_id=f"test_batch_{index}",
+                logical_date=DEFAULT_DATE + datetime.timedelta(seconds=index),
+            )
+            task_instance = dag_run.get_task_instance("dummy1", session)
+            task_instance.state = State.DEFERRED
+            task_instance.trigger_timeout = past
+            task_instances.append(task_instance)
+            session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+        self.job_runner.check_trigger_timeouts(session=session)
+
+        for task_instance in task_instances:
+            session.refresh(task_instance)
+            assert task_instance.state == State.SCHEDULED
+            assert task_instance.next_method == "__fail__"
+
+    def test_timeout_triggers_rechecks_predicates_during_update(self, dag_maker, monkeypatch, session):
+        with dag_maker(
+            dag_id="test_timeout_triggers_rechecks_predicates_during_update",
+            start_date=DEFAULT_DATE,
+            schedule="@once",
+            max_active_runs=2,
+            session=session,
+        ):
+            EmptyOperator(task_id="dummy1")
+
+        timed_out_dag_run = dag_maker.create_dagrun(run_id="timed_out")
+        still_running_dag_run = dag_maker.create_dagrun(
+            run_id="still_running", logical_date=DEFAULT_DATE + datetime.timedelta(seconds=1)
+        )
+        timed_out_task = timed_out_dag_run.get_task_instance("dummy1", session)
+        timed_out_task.state = State.DEFERRED
+        timed_out_task.trigger_timeout = timezone.utcnow() - datetime.timedelta(seconds=60)
+        still_running_task = still_running_dag_run.get_task_instance("dummy1", session)
+        still_running_task.state = State.SUCCESS
+        still_running_task.trigger_timeout = timezone.utcnow() - datetime.timedelta(seconds=60)
+        session.flush()
+
+        task_instance_ids_batches = [[timed_out_task.id, still_running_task.id], []]
+        monkeypatch.setattr(
+            scheduler_job_runner_module,
+            "_locked_task_instance_ids",
+            lambda query, batch_size, *, session: task_instance_ids_batches.pop(0),
+        )
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+        self.job_runner.check_trigger_timeouts(session=session)
+
+        session.refresh(timed_out_task)
+        session.refresh(still_running_task)
+        assert timed_out_task.state == State.SCHEDULED
+        assert timed_out_task.next_method == "__fail__"
+        assert still_running_task.state == State.SUCCESS
+        assert still_running_task.next_method is None
 
     def test_retry_on_db_error_when_update_timeout_triggers(self, dag_maker, testing_dag_bundle, session):
         """
