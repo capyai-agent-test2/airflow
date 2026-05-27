@@ -405,6 +405,9 @@ class TriggerLoggingFactory:
         upload_to_remote(self.bound_logger, self.ti)
 
 
+TRIGGER_LOG_CLOSE_MARKER = "_close_trigger_log"
+
+
 def in_process_api_server() -> InProcessExecutionAPI:
     from airflow.api_fastapi.execution_api.app import InProcessExecutionAPI
 
@@ -472,6 +475,15 @@ class TriggerRunnerSupervisor(WatchedSubprocess):
         # Set by `_service_subprocess` in the loop
         return self._exit_code is None
 
+    def _cleanup_trigger_logger(self, trigger_id: int, log: FilteringBoundLogger) -> None:
+        if factory := self.logger_cache.pop(trigger_id, None):
+            try:
+                factory.upload_to_remote()
+            except Exception:
+                log.exception("Failed to upload trigger logs to remote", trigger_id=trigger_id)
+            finally:
+                factory.close()
+
     @classmethod
     def start(  # type: ignore[override]
         cls,
@@ -522,15 +534,6 @@ class TriggerRunnerSupervisor(WatchedSubprocess):
             for id in msg.finished or ():
                 self.running_triggers.discard(id)
                 self.cancelling_triggers.discard(id)
-                if factory := self.logger_cache.pop(id, None):
-                    try:
-                        factory.upload_to_remote()
-                    except Exception:
-                        log.exception("Failed to upload trigger logs to remote", trigger_id=id)
-                    finally:
-                        # Close the FD explicitly even if upload raised, otherwise the file
-                        # handle leaks for every failed upload.
-                        factory.close()
 
             response = messages.TriggerStateSync(
                 to_create=[],
@@ -927,7 +930,13 @@ class TriggerRunnerSupervisor(WatchedSubprocess):
                 fallback_log.exception("Malformed json log", line=line)
                 continue
 
-            if trigger_id := event.pop("trigger_id", None):
+            trigger_id = event.pop("trigger_id", None)
+            if event.pop(TRIGGER_LOG_CLOSE_MARKER, False):
+                if trigger_id is not None:
+                    self._cleanup_trigger_logger(trigger_id, fallback_log)
+                continue
+
+            if trigger_id:
                 log = get_logger(trigger_id)
             else:
                 # Log message about the TriggerRunner itself -- just output it
@@ -1556,6 +1565,7 @@ class TriggerRunner:
                     await trigger.cleanup()
 
                 await self.log.ainfo("trigger completed", name=name)
+                await self.log.ainfo("trigger log stream complete", **{TRIGGER_LOG_CLOSE_MARKER: True})
 
     def get_trigger_by_classpath(self, classpath: str) -> type[BaseTrigger]:
         """
