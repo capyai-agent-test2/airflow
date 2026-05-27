@@ -764,6 +764,7 @@ def test_task_group_edge_modifier_chain():
 
 
 def test_topological_sort_honors_listed_task_group_dependencies():
+    from airflow.sdk.exceptions import AirflowDagCycleException
     from airflow.serialization.serialized_objects import DagSerialization
 
     with DAG(dag_id="test", schedule=None, start_date=DEFAULT_DATE) as dag:
@@ -790,6 +791,12 @@ def test_topological_sort_honors_listed_task_group_dependencies():
         "b_2",
         "a",
     ]
+
+    serialized_dag.task_group.children["a"].upstream_group_ids.add("b_0")
+    serialized_dag.task_group.children["b_0"].upstream_group_ids.add("a")
+
+    with pytest.raises(AirflowDagCycleException):
+        serialized_dag.task_group.topological_sort()
 
 
 def test_mapped_task_group_id_prefix_task_id():
