@@ -1230,10 +1230,10 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         `dag.test` execute DAGs with no scheduler, therefore it needs to handle the events pushed by the
         executors as well.
         """
-        ti_primary_key_to_try_number_map: dict[tuple[str, str, str, str, int], int] = {}
+        ti_primary_key_to_try_number_map: dict[tuple[str, str, str, int], int] = {}
         event_buffer = executor.get_event_buffer()
-        queued_ti_key_by_primary: dict[tuple[str, str, str, str, int], TaskInstanceKey] = {}
-        locked_ti_key_by_primary: dict[tuple[str, str, str, str, int], TaskInstanceKey] = {}
+        queued_ti_key_by_primary: dict[tuple[str, str, str, int], TaskInstanceKey] = {}
+        locked_ti_key_by_primary: dict[tuple[str, str, str, int], TaskInstanceKey] = {}
         callback_keys_with_events: list[CallbackKey] = []
 
         # Report execution - handle both task and callback events
@@ -1351,6 +1351,8 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             state, info = event_buffer.pop(buffer_key)
 
             if state == TaskInstanceState.RUNNING:
+                if ti.try_number != try_number:
+                    continue
                 ti.external_executor_id = info
                 cls.logger().info("Setting external_executor_id for %s to %s", ti, info)
                 continue
