@@ -689,6 +689,8 @@ class WatchedSubprocess:
 
         pid = os.fork()
         if pid == 0:
+            with suppress(OSError):
+                os.setsid()
             # Close and delete of the parent end of the sockets.
             cls._close_unused_sockets(read_requests, read_stdout, read_stderr, read_logs)
 
@@ -1006,7 +1008,7 @@ class WatchedSubprocess:
 
         for sig in escalation_path:
             try:
-                self._process.send_signal(sig)
+                self._signal_process_tree(sig)
 
                 start = time.monotonic()
                 end = start + escalation_delay
@@ -1035,6 +1037,23 @@ class WatchedSubprocess:
                 return
 
         log.error("Failed to terminate process after full escalation", pid=self.pid)
+
+    def _signal_process_tree(self, signal_to_send: signal.Signals) -> None:
+        try:
+            process_group_id = os.getpgid(self._process.pid)
+        except ProcessLookupError as err:
+            raise self._process.ProcessNotFound(self._process.pid) from err
+
+        if process_group_id == os.getpgrp():
+            self._process.send_signal(signal_to_send)
+            return
+
+        try:
+            os.killpg(process_group_id, signal_to_send)
+        except PermissionError:
+            self._process.send_signal(signal_to_send)
+        except ProcessLookupError as err:
+            raise self._process.ProcessNotFound(self._process.pid) from err
 
     def wait(self) -> int:
         raise NotImplementedError()

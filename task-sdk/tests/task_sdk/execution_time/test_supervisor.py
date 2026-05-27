@@ -28,7 +28,7 @@ import socket
 import subprocess
 import sys
 import time
-from contextlib import nullcontext
+from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone as dt_timezone
 from operator import attrgetter
@@ -1315,6 +1315,20 @@ class TestWatchedSubprocessKill:
         mock_process.send_signal.assert_called_once_with(signal_to_send)
         mock_process.wait.assert_called_once_with(timeout=0)
 
+    def test_kill_falls_back_to_direct_signal_for_shared_process_group(
+        self, watched_subprocess, mock_process, monkeypatch
+    ):
+        """Avoid killpg when the child failed to move into its own process group."""
+        mock_process.wait.return_value = 0
+        monkeypatch.setattr(os, "getpgid", lambda _pid: os.getpgrp())
+        mock_killpg = mock.Mock()
+        monkeypatch.setattr(os, "killpg", mock_killpg)
+
+        watched_subprocess.kill(signal.SIGTERM, force=False)
+
+        mock_killpg.assert_not_called()
+        mock_process.send_signal.assert_called_once_with(signal.SIGTERM)
+
     @pytest.mark.parametrize(
         ("signal_to_send", "exit_after"),
         [
@@ -1428,6 +1442,56 @@ class TestWatchedSubprocessKill:
 
         expected_logs.extend(({"event": "Process exited", "logger": "supervisor"},))
         assert logs == expected_logs
+
+    @pytest.mark.execution_timeout(10)
+    def test_kill_terminates_spawned_subprocesses(self, client_with_ti_start, tmp_path):
+        grandchild_pid_path = tmp_path / "grandchild.pid"
+
+        def subprocess_main():
+            child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            grandchild_pid_path.write_text(str(child.pid))
+            CommsDecoder()._get_response()
+            print("Ready")
+            sleep(60)
+
+        ti_id = uuid7()
+        proc = ActivitySubprocess.start(
+            dag_rel_path=os.devnull,
+            bundle_info=FAKE_BUNDLE,
+            what=TaskInstanceDTO(
+                id=ti_id,
+                task_id="b",
+                dag_id="c",
+                run_id="d",
+                try_number=1,
+                dag_version_id=uuid7(),
+                pool_slots=1,
+                queue="default",
+                priority_weight=1,
+            ),
+            client=client_with_ti_start,
+            target=subprocess_main,
+        )
+
+        grandchild_pid = None
+        try:
+            time.sleep(0.1)
+            proc._service_subprocess(max_wait_time=1)
+            grandchild_pid = int(grandchild_pid_path.read_text())
+            assert psutil.pid_exists(grandchild_pid)
+
+            proc.kill(signal_to_send=signal.SIGTERM, escalation_delay=0.5, force=True)
+            assert proc.wait() == -signal.SIGTERM
+
+            deadline = time.monotonic() + 5
+            while psutil.pid_exists(grandchild_pid) and time.monotonic() < deadline:
+                time.sleep(0.1)
+
+            assert not psutil.pid_exists(grandchild_pid)
+        finally:
+            if grandchild_pid and psutil.pid_exists(grandchild_pid):
+                with suppress(ProcessLookupError):
+                    os.kill(grandchild_pid, signal.SIGKILL)
 
     def test_service_subprocess(self, watched_subprocess, mock_process, mocker):
         """Test `_service_subprocess` processes selector events and handles subprocess exit."""
