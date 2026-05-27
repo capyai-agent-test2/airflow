@@ -680,7 +680,7 @@ def test_trigger_logger_fd_closed_when_removed(session):
 
 
 def test_trigger_logger_fd_closed_when_upload_to_remote_raises(jobless_supervisor):
-    """If upload_to_remote() raises during finished-trigger cleanup, the FD must still be closed.
+    """If upload_to_remote() raises during log-stream cleanup, the FD must still be closed.
 
     Regression test for the file handle leak referenced in
     https://github.com/apache/airflow/discussions/65985 — without try/finally, a failed
@@ -694,6 +694,38 @@ def test_trigger_logger_fd_closed_when_upload_to_remote_raises(jobless_superviso
     jobless_supervisor.running_triggers.add(42)
 
     msg = messages.TriggerStateChanges(finished=[42])
+    jobless_supervisor._handle_request(msg, log=MagicMock(spec=FilteringBoundLogger), req_id=0)
+
+    assert 42 not in jobless_supervisor.running_triggers
+
+    msg = messages.TriggerStateChanges(closed_logs=[42])
+    jobless_supervisor._handle_request(msg, log=MagicMock(spec=FilteringBoundLogger), req_id=0)
+
+    factory.upload_to_remote.assert_called_once()
+    factory.close.assert_called_once()
+    assert 42 not in jobless_supervisor.logger_cache
+
+
+def test_finished_trigger_falls_back_to_logger_cleanup_without_close_signal(jobless_supervisor):
+    factory = MagicMock(spec=TriggerLoggingFactory)
+    jobless_supervisor.logger_cache[42] = factory
+    jobless_supervisor.running_triggers.add(42)
+
+    msg = messages.TriggerStateChanges(finished=[42])
+    jobless_supervisor._handle_request(msg, log=MagicMock(spec=FilteringBoundLogger), req_id=0)
+
+    factory.upload_to_remote.assert_called_once()
+    factory.close.assert_called_once()
+    assert 42 not in jobless_supervisor.logger_cache
+    assert 42 not in jobless_supervisor.running_triggers
+
+
+def test_finished_trigger_does_not_double_cleanup_when_close_signal_present(jobless_supervisor):
+    factory = MagicMock(spec=TriggerLoggingFactory)
+    jobless_supervisor.logger_cache[42] = factory
+    jobless_supervisor.running_triggers.add(42)
+
+    msg = messages.TriggerStateChanges(finished=[42], closed_logs=[42])
     jobless_supervisor._handle_request(msg, log=MagicMock(spec=FilteringBoundLogger), req_id=0)
 
     factory.upload_to_remote.assert_called_once()
@@ -928,6 +960,31 @@ class TestTriggerRunner:
             with pytest.raises(asyncio.CancelledError):
                 asyncio.run(trigger_runner.run_trigger(1, mock_trigger))
 
+        mock_trigger.cleanup.assert_awaited_once()
+
+    def test_run_trigger_enqueues_closed_log_when_completion_log_fails(self, session) -> None:
+        trigger_runner = TriggerRunner()
+        trigger_runner.triggers = {
+            1: {"task": MagicMock(spec=asyncio.Task), "is_watcher": False, "name": "mock_name", "events": 0}
+        }
+        trigger_runner.log = AsyncMock()
+        trigger_runner.log.ainfo.side_effect = RuntimeError("logging transport failed")
+
+        mock_trigger = MagicMock(spec=BaseTrigger)
+        mock_trigger.task_instance = MagicMock()
+        mock_trigger.task_instance.map_index = -1
+        mock_trigger.cleanup = AsyncMock()
+
+        async def empty_run():
+            if False:
+                yield
+
+        mock_trigger.run = empty_run
+
+        with pytest.raises(RuntimeError, match="logging transport failed"):
+            asyncio.run(trigger_runner.run_trigger(1, mock_trigger))
+
+        assert list(trigger_runner.closed_logs) == [1]
         mock_trigger.cleanup.assert_awaited_once()
 
     @patch("airflow.jobs.triggerer_job_runner.Trigger._decrypt_kwargs")

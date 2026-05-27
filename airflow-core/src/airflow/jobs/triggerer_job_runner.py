@@ -289,6 +289,7 @@ class messages:
         # Format of list[str] is the exc traceback format
         failures: list[tuple[int, list[str] | None]] | None = None
         finished: list[int] | None = None
+        closed_logs: list[int] | None = None
 
     class TriggerStateSync(BaseModel):
         type: Literal["TriggerStateSync"] = "TriggerStateSync"
@@ -472,6 +473,15 @@ class TriggerRunnerSupervisor(WatchedSubprocess):
         # Set by `_service_subprocess` in the loop
         return self._exit_code is None
 
+    def _cleanup_trigger_logger(self, trigger_id: int, log: FilteringBoundLogger) -> None:
+        if factory := self.logger_cache.pop(trigger_id, None):
+            try:
+                factory.upload_to_remote()
+            except Exception:
+                log.exception("Failed to upload trigger logs to remote", trigger_id=trigger_id)
+            finally:
+                factory.close()
+
     @classmethod
     def start(  # type: ignore[override]
         cls,
@@ -515,22 +525,18 @@ class TriggerRunnerSupervisor(WatchedSubprocess):
         self._last_runner_comms = time.monotonic()
 
         if isinstance(msg, messages.TriggerStateChanges):
+            closed_logs = set(msg.closed_logs or ())
             if msg.events:
                 self.events.extend(msg.events)
             if msg.failures:
                 self.failed_triggers.extend(msg.failures)
+            for id in closed_logs:
+                self._cleanup_trigger_logger(id, log)
             for id in msg.finished or ():
                 self.running_triggers.discard(id)
                 self.cancelling_triggers.discard(id)
-                if factory := self.logger_cache.pop(id, None):
-                    try:
-                        factory.upload_to_remote()
-                    except Exception:
-                        log.exception("Failed to upload trigger logs to remote", trigger_id=id)
-                    finally:
-                        # Close the FD explicitly even if upload raised, otherwise the file
-                        # handle leaks for every failed upload.
-                        factory.close()
+                if id not in closed_logs:
+                    self._cleanup_trigger_logger(id, log)
 
             response = messages.TriggerStateSync(
                 to_create=[],
@@ -1064,6 +1070,9 @@ class TriggerRunner:
     # Outbound queue of failed triggers
     failed_triggers: deque[tuple[int, BaseException | None]]
 
+    # Triggers whose dedicated log streams have fully drained and can be uploaded/closed.
+    closed_logs: deque[int]
+
     # Should-we-stop flag
     stop: bool = False
     _stop_event: anyio.Event | None = None
@@ -1081,6 +1090,7 @@ class TriggerRunner:
         self.to_cancel = deque()
         self.events = deque()
         self.failed_triggers = deque()
+        self.closed_logs = deque()
         self.job_id = None
         self._stop_event = None
         self._shared_streams = SharedStreamManager(
@@ -1340,6 +1350,7 @@ class TriggerRunner:
         # Copy out of our dequeues in threadsafe manner to sync state with parent
         events_to_send: list[tuple[int, DiscrimatedTriggerEvent]] = []
         failures_to_send: list[tuple[int, list[str] | None]] = []
+        closed_logs_to_send: list[int] = []
 
         while self.events:
             trigger_id, trigger_event = self.events.popleft()
@@ -1350,10 +1361,14 @@ class TriggerRunner:
             tb = format_exception(type(exc), exc, exc.__traceback__) if exc else None
             failures_to_send.append((trigger_id, tb))
 
+        while self.closed_logs:
+            closed_logs_to_send.append(self.closed_logs.popleft())
+
         return messages.TriggerStateChanges(
             events=events_to_send if events_to_send else None,
             finished=finished_ids if finished_ids else None,
             failures=failures_to_send if failures_to_send else None,
+            closed_logs=closed_logs_to_send if closed_logs_to_send else None,
         )
 
     def sanitize_trigger_events(self, msg: messages.TriggerStateChanges) -> messages.TriggerStateChanges:
@@ -1378,6 +1393,7 @@ class TriggerRunner:
             events=events_to_send if events_to_send else None,
             finished=msg.finished,
             failures=msg.failures,
+            closed_logs=msg.closed_logs,
         )
 
     async def sync_state_to_supervisor(self, finished_ids: list[int]) -> None:
@@ -1555,7 +1571,10 @@ class TriggerRunner:
                 with suppress(Exception):
                     await trigger.cleanup()
 
-                await self.log.ainfo("trigger completed", name=name)
+                try:
+                    await self.log.ainfo("trigger completed", name=name)
+                finally:
+                    self.closed_logs.append(trigger_id)
 
     def get_trigger_by_classpath(self, classpath: str) -> type[BaseTrigger]:
         """
