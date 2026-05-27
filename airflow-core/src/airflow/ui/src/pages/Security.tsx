@@ -34,10 +34,24 @@ const SANDBOX = "allow-scripts allow-same-origin allow-forms";
 const normalizePath = (path: string) => path.replace(/\/+$/u, "");
 
 const extractSecurityLinkPrefix = (href: string) =>
-  normalizePath(new URL(href, document.baseURI).pathname).replace(/\/[^/]+$/u, "");
+  normalizePath(new URL(href, document.baseURI).pathname).replace(/\/list$/u, "");
 
-const buildSecurityIframeSrc = (href: string, detailPath: string | undefined) =>
-  detailPath === undefined ? href : `${extractSecurityLinkPrefix(href)}/${detailPath}`;
+const buildSecurityIframeSrc = (
+  href: string,
+  {
+    detailPath,
+    hash,
+    search,
+  }: {
+    detailPath: string | undefined;
+    hash: string;
+    search: string;
+  },
+) => {
+  const src = detailPath === undefined ? href : `${extractSecurityLinkPrefix(href)}/${detailPath}`;
+
+  return `${src}${search}${hash}`;
+};
 
 const extractSecurityDetailPath = (iframePath: string, href: string) => {
   const normalizedIframePath = normalizePath(iframePath);
@@ -121,7 +135,11 @@ export const Security = () => {
           id="security-iframe"
           onLoad={onLoad}
           sandbox={SANDBOX}
-          src={buildSecurityIframeSrc(link.href, detailPath)}
+          src={buildSecurityIframeSrc(link.href, {
+            detailPath,
+            hash: location.hash,
+            search: location.search,
+          })}
           style={{ height: "100%", width: "100%" }}
           title={link.text}
         />

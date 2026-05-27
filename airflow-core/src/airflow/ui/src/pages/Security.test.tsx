@@ -61,6 +61,54 @@ describe("Security", () => {
     expect(iframe).toHaveAttribute("src", "/auth/users/edit/2");
   });
 
+  it("preserves query and hash when loading a deep link", () => {
+    mockedUseAuthLinksServiceGetAuthMenus.mockReturnValue({
+      data: {
+        authorized_menu_items: [],
+        extra_menu_items: [{ href: "/auth/users/list/", text: "Users" }],
+      },
+      isLoading: false,
+    } as ReturnType<typeof useAuthLinksServiceGetAuthMenus>);
+
+    render(
+      <BaseWrapper>
+        <MemoryRouter initialEntries={["/security/users/edit/2?foo=1#bar"]}>
+          <Routes>
+            <Route element={<Security />} path="/security/:page/*" />
+          </Routes>
+        </MemoryRouter>
+      </BaseWrapper>,
+    );
+
+    const iframe = screen.getByTitle("Users");
+
+    expect(iframe).toHaveAttribute("src", "/auth/users/edit/2?foo=1#bar");
+  });
+
+  it("does not rewrite non-list auth links into nested paths", () => {
+    mockedUseAuthLinksServiceGetAuthMenus.mockReturnValue({
+      data: {
+        authorized_menu_items: [],
+        extra_menu_items: [{ href: "/auth/custom", text: "Custom" }],
+      },
+      isLoading: false,
+    } as ReturnType<typeof useAuthLinksServiceGetAuthMenus>);
+
+    render(
+      <BaseWrapper>
+        <MemoryRouter initialEntries={["/security/custom/details"]}>
+          <Routes>
+            <Route element={<Security />} path="/security/:page/*" />
+          </Routes>
+        </MemoryRouter>
+      </BaseWrapper>,
+    );
+
+    const iframe = screen.getByTitle("Custom");
+
+    expect(iframe).toHaveAttribute("src", "/auth/custom/details");
+  });
+
   it("syncs the parent route with the iframe location after navigation", () => {
     mockedUseAuthLinksServiceGetAuthMenus.mockReturnValue({
       data: {
