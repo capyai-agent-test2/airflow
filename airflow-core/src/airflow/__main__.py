@@ -21,7 +21,9 @@
 
 from __future__ import annotations
 
+import io
 import os
+import sys
 
 import argcomplete
 
@@ -34,7 +36,20 @@ import argcomplete
 # Therefore importing configuration early (as the first airflow import) avoids
 # any possible import cycles with settings downstream.
 from airflow import configuration
-from airflow.cli import cli_parser
+
+MACHINE_READABLE_OUTPUTS = {"json", "yaml"}
+
+
+def _has_machine_readable_output(argv: list[str]) -> bool:
+    """Check whether CLI args request machine-readable output."""
+    for index, arg in enumerate(argv):
+        if arg in {"-o", "--output"}:
+            return index + 1 < len(argv) and argv[index + 1] in MACHINE_READABLE_OUTPUTS
+        if arg.startswith("--output="):
+            return arg.partition("=")[2] in MACHINE_READABLE_OUTPUTS
+        if arg.startswith("-o") and len(arg) > 2:
+            return arg[2:] in MACHINE_READABLE_OUTPUTS
+    return False
 
 
 def main():
@@ -42,17 +57,48 @@ def main():
     if conf.get("core", "security") == "kerberos":
         os.environ["KRB5CCNAME"] = conf.get("kerberos", "ccache")
         os.environ["KRB5_KTNAME"] = conf.get("kerberos", "keytab")
-    parser = cli_parser.get_parser()
-    argcomplete.autocomplete(parser)
-    args = parser.parse_args()
-    if args.subcommand not in ["lazy_loaded", "version"]:
-        # Here we ensure that the default configuration is written if needed before running any command
-        # that might need it. This used to be done during configuration initialization but having it
-        # in main ensures that it is not done during tests and other ways airflow imports are used
-        from airflow.configuration import write_default_airflow_configuration_if_needed
+    original_stdout = sys.stdout
+    should_redirect_stdout = _has_machine_readable_output(sys.argv[1:])
+    saved_stdout_fd: int | None = None
+    structured_output_stream = None
+    from airflow.cli.utils import set_structured_output_stream
 
-        conf = write_default_airflow_configuration_if_needed()
-    args.func(args)
+    if should_redirect_stdout:
+        try:
+            saved_stdout_fd = os.dup(original_stdout.fileno())
+        except (AttributeError, OSError, io.UnsupportedOperation):
+            structured_output_stream = original_stdout
+        else:
+            structured_output_stream = os.fdopen(os.dup(saved_stdout_fd), mode="w", buffering=1)
+            os.dup2(sys.stderr.fileno(), original_stdout.fileno())
+
+        set_structured_output_stream(structured_output_stream)
+        sys.stdout = sys.stderr
+
+    try:
+        from airflow.cli import cli_parser
+
+        parser = cli_parser.get_parser()
+        argcomplete.autocomplete(parser)
+        args = parser.parse_args()
+        if args.subcommand not in ["lazy_loaded", "version"]:
+            # Here we ensure that the default configuration is written if needed before running any command
+            # that might need it. This used to be done during configuration initialization but having it
+            # in main ensures that it is not done during tests and other ways airflow imports are used
+            from airflow.configuration import write_default_airflow_configuration_if_needed
+
+            conf = write_default_airflow_configuration_if_needed()
+
+        args.func(args)
+    finally:
+        if should_redirect_stdout:
+            if saved_stdout_fd is not None:
+                os.dup2(saved_stdout_fd, original_stdout.fileno())
+                os.close(saved_stdout_fd)
+            sys.stdout = original_stdout
+            if structured_output_stream is not original_stdout:
+                structured_output_stream.close()
+            set_structured_output_stream(None)
 
 
 if __name__ == "__main__":

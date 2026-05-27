@@ -30,6 +30,7 @@ import traceback
 import warnings
 from argparse import Namespace
 from collections.abc import Callable
+from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
@@ -107,9 +108,14 @@ def action_cli(func=None, check_db=True):
                     from airflow.configuration import conf
                     from airflow.utils.db import check_and_run_migrations, synchronize_log_template
 
-                    if conf.getboolean("database", "check_migrations"):
-                        check_and_run_migrations()
-                    synchronize_log_template()
+                    redirect_pre_command_stdout = nullcontext()
+                    if getattr(args[0], "output", None) in {"json", "yaml"} and not verbose:
+                        redirect_pre_command_stdout = redirect_stdout(sys.stderr)
+
+                    with redirect_pre_command_stdout:
+                        if conf.getboolean("database", "check_migrations"):
+                            check_and_run_migrations()
+                        synchronize_log_template()
                 return f(*args, **kwargs)
             except Exception as e:
                 metrics["error"] = e

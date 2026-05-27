@@ -79,6 +79,23 @@ class TestCliUtil:
         with fail_action_logger_callback():
             success_func(Namespace())
 
+    def test_action_cli_redirects_pre_command_stdout_for_machine_readable_output(self, monkeypatch, capsys):
+        @cli.action_cli(check_db=True)
+        def command(_):
+            print("[]")
+
+        monkeypatch.setattr("airflow.configuration.conf.getboolean", lambda *_, **__: True)
+        monkeypatch.setattr(
+            "airflow.utils.db.check_and_run_migrations", lambda: print("pre-command log line")
+        )
+        monkeypatch.setattr("airflow.utils.db.synchronize_log_template", lambda: None)
+
+        command(Namespace(output="json", verbose=False))
+
+        captured = capsys.readouterr()
+        assert captured.out == "[]\n"
+        assert "pre-command log line" in captured.err
+
     def test_process_subdir_path_with_placeholder(self):
         assert os.path.join(settings.DAGS_FOLDER, "abc") == cli.process_subdir("DAGS_FOLDER/abc")
 

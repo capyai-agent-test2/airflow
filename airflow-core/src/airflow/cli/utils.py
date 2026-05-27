@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 # Placeholder for masking sensitive values in CLI output
 SENSITIVE_PLACEHOLDER = "***"
+STRUCTURED_OUTPUT_STREAM = None
 
 if TYPE_CHECKING:
     import datetime
@@ -56,6 +57,17 @@ def print_export_output(command_type: str, exported_items: Collection, file: Tex
         print(f"\n{len(exported_items)} {command_type} successfully exported.", file=sys.stderr)
     else:
         print(f"{len(exported_items)} {command_type} successfully exported to {file.name}.")
+
+
+def set_structured_output_stream(stream: TextIOWrapper | None) -> None:
+    global STRUCTURED_OUTPUT_STREAM
+    STRUCTURED_OUTPUT_STREAM = stream
+
+
+def get_structured_output_stream() -> TextIOWrapper:
+    if STRUCTURED_OUTPUT_STREAM is not None:
+        return STRUCTURED_OUTPUT_STREAM
+    return sys.stdout
 
 
 def fetch_dag_run_from_run_id_or_logical_date_string(
