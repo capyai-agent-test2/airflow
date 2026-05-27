@@ -62,7 +62,7 @@ _TRIGGER_ID_CLEANUP_BATCH_SIZE = 1000
 """Maximum number of task instances to lock per trigger-id cleanup batch."""
 
 
-def _locked_task_instance_ids(query: Select, batch_size: int, session: Session):
+def _locked_task_instance_ids(query: Select, batch_size: int, *, session: Session):
     return session.scalars(
         with_row_locks(
             query.order_by(TaskInstance.id).limit(batch_size),
@@ -262,7 +262,7 @@ class Trigger(Base):
                             TaskInstance.trigger_id.is_not(None),
                         ),
                         _TRIGGER_ID_CLEANUP_BATCH_SIZE,
-                        session,
+                        session=session,
                     )
                     if not task_instance_ids:
                         break

@@ -225,7 +225,7 @@ def test_clean_unused_rechecks_predicates_during_update(session, dag_maker, monk
     monkeypatch.setattr(
         trigger_module,
         "_locked_task_instance_ids",
-        lambda query, batch_size, session: task_instance_ids_batches.pop(0),
+        lambda query, batch_size, *, session: task_instance_ids_batches.pop(0),
     )
 
     Trigger.clean_unused(session=session)
