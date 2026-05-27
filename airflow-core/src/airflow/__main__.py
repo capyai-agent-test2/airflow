@@ -53,12 +53,15 @@ class _MachineReadableOutputParser(ArgumentParser):
 def _build_machine_readable_output_parser_from_commands(commands: Iterable) -> ArgumentParser:
     from airflow.cli import cli_config
 
+    def has_output_arg(command_args) -> bool:
+        return any("-o" in arg.flags and "--output" in arg.flags for arg in command_args)
+
     def add_command(subparsers, command) -> None:
         if isinstance(command, cli_config.ActionCommand):
             parser = subparsers.add_parser(command.name, add_help=False)
             for arg in command.args:
                 arg.add_to_parser(parser)
-            parser.set_defaults(_has_output_arg=cli_config.ARG_OUTPUT in command.args)
+            parser.set_defaults(_has_output_arg=has_output_arg(command.args))
             return
 
         parser = subparsers.add_parser(command.name, add_help=False)
@@ -105,12 +108,12 @@ def _has_machine_readable_output(argv: list[str]) -> bool:
     """Check whether CLI args request machine-readable output."""
     has_short_output_flag = "-o" in argv or any(arg.startswith("-o") and len(arg) > 2 for arg in argv)
 
-    if "--output" in argv or any(arg.startswith("--output=") for arg in argv):
-        for index, arg in enumerate(argv):
-            if arg == "--output":
-                return index + 1 < len(argv) and argv[index + 1] in MACHINE_READABLE_OUTPUTS
-            if arg.startswith("--output="):
-                return arg.partition("=")[2] in MACHINE_READABLE_OUTPUTS
+    for index in range(len(argv) - 1, -1, -1):
+        arg = argv[index]
+        if arg == "--output":
+            return index + 1 < len(argv) and argv[index + 1] in MACHINE_READABLE_OUTPUTS
+        if arg.startswith("--output="):
+            return arg.partition("=")[2] in MACHINE_READABLE_OUTPUTS
 
     try:
         parsed_args, _ = _build_machine_readable_output_parser().parse_known_args(argv, namespace=Namespace())

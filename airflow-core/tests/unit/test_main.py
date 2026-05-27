@@ -36,6 +36,7 @@ from airflow.cli.utils import get_structured_output_stream
         (["dags", "list", "-ojson"], True),
         (["dags", "list", "-o", "table"], False),
         (["kerberos", "-o", "json"], False),
+        (["dags", "list", "--output", "table", "--output", "json"], True),
     ],
 )
 def test_has_machine_readable_output(argv, expected):
@@ -81,6 +82,13 @@ def test_main_redirects_pre_command_stdout_for_machine_readable_output(monkeypat
 def test_has_machine_readable_output_detects_provider_short_flag(monkeypatch):
     from airflow.cli import cli_parser as real_cli_parser
 
+    provider_output_arg = cli_config.Arg(
+        ("-o", "--output"),
+        help="Output format. Allowed values: json, yaml, plain, table (default: table)",
+        metavar="(table, json, yaml, plain)",
+        choices=("table", "json", "yaml", "plain"),
+        default="table",
+    )
     provider_commands = (
         cli_config.GroupCommand(
             name="provider",
@@ -90,7 +98,7 @@ def test_has_machine_readable_output_detects_provider_short_flag(monkeypatch):
                     name="list",
                     help="list",
                     func=lambda _: None,
-                    args=(cli_config.ARG_OUTPUT,),
+                    args=(provider_output_arg,),
                 ),
             ),
         ),
