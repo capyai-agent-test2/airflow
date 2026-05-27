@@ -633,6 +633,17 @@ class TestShowwarning:
 
         mock_get_logger.assert_called_once_with("py.warnings")
 
+    def test_without_file_supports_numeric_callsite_formatters(self, structlog_config):
+        from airflow_shared.logging.structlog import _showwarning
+
+        with structlog_config(colors=False, log_format="%(process)d %(thread)d %(message)s") as sio:
+            _showwarning("some warning", UserWarning, "foo.py", 1)
+
+        rendered = sio.getvalue()
+
+        assert rendered.startswith(f"{os.getpid()} ")
+        assert rendered.endswith(" some warning category=UserWarning\n")
+
 
 @pytest.mark.parametrize(
     ("get_logger", "message", "args", "expected_event"),

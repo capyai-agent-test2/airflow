@@ -17,6 +17,8 @@
 # under the License.
 from __future__ import annotations
 
+import os
+import threading
 from unittest import mock
 
 from airflow_shared.logging.percent_formatter import PercentFormatRender
@@ -40,3 +42,13 @@ class TestPercentFormatRender:
         )
 
         assert formatted == "test.py:0 our msg"
+
+    def test_numeric_and_name_callsite_defaults(self):
+        fmter = PercentFormatRender("%(process)d %(processName)s %(thread)d %(threadName)s %(message)s")
+
+        formatted = fmter(mock.Mock(name="Logger"), "info", {"event": "our msg"})
+
+        assert (
+            formatted
+            == f"{os.getpid()} MainProcess {threading.get_ident()} {threading.current_thread().name} our msg"
+        )

@@ -19,9 +19,12 @@ from __future__ import annotations
 
 import collections.abc
 import datetime
+import multiprocessing
 import operator
+import os
 import re
 import sys
+import threading
 from io import StringIO
 from typing import TYPE_CHECKING, ClassVar
 
@@ -60,7 +63,17 @@ class _LazyLogRecordDict(collections.abc.Mapping):
         if key == "funcName":
             return self.event.get("funcName", "(unknown function)")
         if key in PercentFormatRender.callsite_parameters:
-            return self.event.get(PercentFormatRender.callsite_parameters[key].value, "(unknown)")
+            if (value := self.event.get(PercentFormatRender.callsite_parameters[key].value)) is not None:
+                return value
+            if key == "process":
+                return os.getpid()
+            if key == "thread":
+                return threading.get_ident()
+            if key == "processName":
+                return multiprocessing.current_process().name
+            if key == "threadName":
+                return threading.current_thread().name
+            return "(unknown)"
         if key == "name":
             return self.event.get("logger") or self.event.get("logger_name", "(unknown)")
         if key == "levelname":
