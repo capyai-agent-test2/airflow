@@ -2481,6 +2481,17 @@ class TestDagFileProcessorManager:
                 dag_path.touch()  # make the loop run faster
                 gauge_values.clear()
 
+    @mock.patch("airflow.dag_processing.manager.stats.gauge")
+    def test_log_file_processing_stats_normalizes_metric_file_name(self, gauge_mock):
+        manager = DagFileProcessorManager(max_runs=1)
+        dag_file = _get_file_infos(["test of sprak_opertaor.py"])[0]
+        manager._file_stats[dag_file] = DagFileStat(last_finish_time=timezone.utcnow())
+
+        manager._log_file_processing_stats({"testing": {dag_file}})
+
+        gauge_mock.assert_called_once()
+        assert gauge_mock.call_args.args[0] == "dag_processing.last_run.seconds_ago.test_of_sprak_opertaor"
+
     # --- get_bundle_state / update_bundle_state ---
 
     def test_get_bundle_state_returns_none_for_missing_bundle(self):
