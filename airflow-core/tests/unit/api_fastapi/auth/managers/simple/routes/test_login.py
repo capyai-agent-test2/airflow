@@ -86,6 +86,22 @@ class TestLogin:
             assert "location" in response.headers
             assert response.cookies.get("_token") is not None
             assert "samesite=lax" in response.headers["set-cookie"].lower()
+            assert response.headers["location"] == "/"
+
+    def test_login_all_admins_redirects_to_safe_next_url(self, test_client):
+        with conf_vars({("core", "simple_auth_manager_all_admins"): "true", ("api", "ssl_cert"): "false"}):
+            response = test_client.get("/auth/token/login?next=/dags/example", follow_redirects=False)
+            assert response.status_code == 307
+            assert response.headers["location"] == "/dags/example"
+            assert response.cookies.get("_token") is not None
+
+    def test_login_all_admins_rejects_unsafe_next_url(self, test_client):
+        with conf_vars({("core", "simple_auth_manager_all_admins"): "true"}):
+            response = test_client.get(
+                "/auth/token/login?next=https://example.com/phish", follow_redirects=False
+            )
+            assert response.status_code == 400
+            assert response.json()["detail"] == "Invalid or unsafe next URL"
 
     def test_login_all_admins_config_disabled(self, test_client):
         response = test_client.get("/auth/token/login", follow_redirects=False)

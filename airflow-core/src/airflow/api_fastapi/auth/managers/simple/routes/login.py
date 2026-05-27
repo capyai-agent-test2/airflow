@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from fastapi import Depends, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
 from airflow.api_fastapi.app import get_cookie_path
@@ -28,6 +28,7 @@ from airflow.api_fastapi.auth.managers.simple.utils import parse_login_body
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.common.types import Mimetype
 from airflow.api_fastapi.core_api.openapi.exceptions import create_openapi_http_exception_doc
+from airflow.api_fastapi.core_api.security import is_safe_url
 from airflow.configuration import conf
 
 login_router = AirflowRouter(tags=["SimpleAuthManagerLogin"])
@@ -85,7 +86,11 @@ def create_token_all_admins() -> LoginResponse:
 )
 def login_all_admins(request: Request) -> RedirectResponse:
     """Login the user with no credentials."""
-    response = RedirectResponse(url=conf.get("api", "base_url", fallback="/"))
+    next_url = request.query_params.get("next")
+    if next_url and not is_safe_url(next_url, request=request):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or unsafe next URL")
+
+    response = RedirectResponse(url=next_url or conf.get("api", "base_url", fallback="/"))
 
     # The default config has this as an empty string, so we can't use `has_option`.
     # And look at the request info (needs `--proxy-headers` flag to api-server)
