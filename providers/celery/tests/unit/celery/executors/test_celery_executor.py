@@ -80,6 +80,13 @@ pytestmark = pytest.mark.db_test
 FAKE_EXCEPTION_MSG = "Fake Exception"
 
 
+@pytest.fixture(autouse=True)
+def clear_cached_celery_app():
+    celery_executor_utils.get_cached_celery_app.cache_clear()
+    yield
+    celery_executor_utils.get_cached_celery_app.cache_clear()
+
+
 def _prepare_test_bodies():
     if "CELERY_BROKER_URLS" in os.environ:
         return [(url,) for url in os.environ["CELERY_BROKER_URLS"].split(",")]
@@ -549,6 +556,53 @@ def test_send_workload_uses_external_executor_id_as_celery_task_id():
         args=("{}",), queue="default", task_id=pre_assigned_id
     )
     assert result.task_id == pre_assigned_id
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Workload publishing only exists on Airflow 3+")
+def test_send_workload_reuses_cached_celery_app_for_same_team():
+    key = TaskInstanceKey(
+        dag_id="test_dag", task_id="test_task", run_id="test_run", map_index=-1, try_number=1
+    )
+    workload = mock.Mock()
+    workload.model_dump_json.return_value = "{}"
+    workload.ti = None
+
+    mock_celery_task = mock.Mock()
+    mock_celery_task.apply_async.return_value = mock.Mock(task_id="celery-task-id")
+    mock_app = mock.Mock(tasks={"execute_workload": mock_celery_task})
+
+    with mock.patch(
+        "airflow.providers.celery.executors.celery_executor_utils.create_celery_app",
+        return_value=mock_app,
+    ) as create_celery_app:
+        celery_executor_utils.send_workload_to_executor((key, workload, "default", "team-alpha"))
+        celery_executor_utils.send_workload_to_executor((key, workload, "default", "team-alpha"))
+
+    assert create_celery_app.call_count == 1
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Workload publishing only exists on Airflow 3+")
+@pytest.mark.skipif(not AIRFLOW_V_3_2_PLUS, reason="Team-specific caching requires ExecutorConf support")
+def test_send_workload_uses_distinct_cached_celery_apps_per_team():
+    key = TaskInstanceKey(
+        dag_id="test_dag", task_id="test_task", run_id="test_run", map_index=-1, try_number=1
+    )
+    workload = mock.Mock()
+    workload.model_dump_json.return_value = "{}"
+    workload.ti = None
+
+    mock_celery_task = mock.Mock()
+    mock_celery_task.apply_async.return_value = mock.Mock(task_id="celery-task-id")
+    mock_app = mock.Mock(tasks={"execute_workload": mock_celery_task})
+
+    with mock.patch(
+        "airflow.providers.celery.executors.celery_executor_utils.create_celery_app",
+        return_value=mock_app,
+    ) as create_celery_app:
+        celery_executor_utils.send_workload_to_executor((key, workload, "default", "team-alpha"))
+        celery_executor_utils.send_workload_to_executor((key, workload, "default", "team-beta"))
+
+    assert create_celery_app.call_count == 2
 
 
 @conf_vars({("celery", "result_backend"): "rediss://test_user:test_password@localhost:6379/0"})
