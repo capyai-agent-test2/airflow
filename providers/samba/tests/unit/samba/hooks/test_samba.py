@@ -73,6 +73,33 @@ class TestSambaHook:
         mock_connection.disconnect.assert_called_once()
 
     @pytest.mark.parametrize(
+        ("extra", "expected_auth_protocol"),
+        [
+            ('{"auth_protocol": "kerberos"}', "kerberos"),
+            ('{"auth": "kerberos"}', "kerberos"),
+            ('{"auth": "ntlm", "auth_protocol": "kerberos"}', "kerberos"),
+        ],
+    )
+    @mock.patch("smbclient.register_session")
+    @mock.patch(f"{BASEHOOK_PATCH_PATH}.get_connection")
+    def test_context_manager_with_auth_protocol(
+        self, get_conn_mock, register_session, extra, expected_auth_protocol
+    ):
+        connection = Connection(
+            host="ip",
+            schema="share",
+            login="username",
+            password="password",
+            extra=extra,
+        )
+        get_conn_mock.return_value = connection
+        register_session.return_value = None
+
+        with SambaHook("samba_default"):
+            _, kwargs = tuple(register_session.call_args_list[0])
+            assert kwargs["auth_protocol"] == expected_auth_protocol
+
+    @pytest.mark.parametrize(
         "name",
         [
             "getxattr",
