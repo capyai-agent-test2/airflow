@@ -189,6 +189,11 @@ class _ImportableExecTarget:
         return None
 
 
+class _BoundExecTarget:
+    def run(self):
+        return None
+
+
 def lineno():
     """Returns the current line number in our program."""
     return inspect.currentframe().f_back.f_lineno
@@ -4012,6 +4017,21 @@ class TestChildExecMain:
         with pytest.raises(ValueError, match="importable top-level callable"):
             supervisor.WatchedSubprocess.start(
                 id=TI_ID, process_log=MagicMock(), target=local_target, use_exec=True
+            )
+
+        fork.assert_not_called()
+
+    def test_start_rejects_bound_instance_method_before_fork(self, monkeypatch):
+        """use_exec should fail in the parent for bound instance methods."""
+        fork = MagicMock()
+        monkeypatch.setattr(supervisor.os, "fork", fork)
+
+        with pytest.raises(ValueError, match="must not be a bound instance method"):
+            supervisor.WatchedSubprocess.start(
+                id=TI_ID,
+                process_log=MagicMock(),
+                target=_BoundExecTarget().run,
+                use_exec=True,
             )
 
         fork.assert_not_called()

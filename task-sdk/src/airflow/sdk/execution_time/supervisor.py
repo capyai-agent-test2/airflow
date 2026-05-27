@@ -23,6 +23,7 @@ import atexit
 import contextlib
 import functools
 import importlib
+import inspect
 import io
 import logging
 import os
@@ -514,6 +515,9 @@ def _encode_fork_exec_target(target: Callable[[], None]) -> str:
     """Encode an importable child target as ``module:qualname`` for exec handoff."""
     qualname = getattr(target, "__qualname__", None)
     module = getattr(target, "__module__", None)
+    bound_self = getattr(target, "__self__", None)
+    if bound_self is not None and not inspect.isclass(bound_self):
+        raise ValueError(f"Target must not be a bound instance method for use_exec=True; got {target!r}")
     if not qualname or not module or "<locals>" in qualname:
         raise ValueError(f"Target must be an importable top-level callable for use_exec=True; got {target!r}")
     return f"{module}:{qualname}"
