@@ -18,7 +18,7 @@
  */
 import { Box } from "@chakra-ui/react";
 import { useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { useAuthLinksServiceGetAuthMenus } from "openapi/queries";
 import { ProgressBar } from "src/components/ui";
@@ -31,8 +31,30 @@ import { ErrorPage } from "./Error";
 // https://airflow.apache.org/docs/apache-airflow/stable/security/security_model.html
 const SANDBOX = "allow-scripts allow-same-origin allow-forms";
 
+const normalizePath = (path: string) => path.replace(/\/+$/u, "");
+
+const extractSecurityLinkPrefix = (href: string) =>
+  normalizePath(new URL(href, document.baseURI).pathname).replace(/\/[^/]+$/u, "");
+
+const buildSecurityIframeSrc = (href: string, detailPath: string | undefined) =>
+  detailPath === undefined ? href : `${extractSecurityLinkPrefix(href)}/${detailPath}`;
+
+const extractSecurityDetailPath = (iframePath: string, href: string) => {
+  const normalizedIframePath = normalizePath(iframePath);
+  const linkPrefix = extractSecurityLinkPrefix(href);
+
+  if (normalizedIframePath !== linkPrefix && !normalizedIframePath.startsWith(`${linkPrefix}/`)) {
+    return undefined;
+  }
+
+  const iframeDetailPath = normalizedIframePath.slice(linkPrefix.length);
+
+  return iframeDetailPath.replace(/^\//u, "");
+};
+
 export const Security = () => {
-  const { page } = useParams();
+  const { "*": detailPath, page } = useParams();
+  const location = useLocation();
 
   const { data: authLinks, isLoading } = useAuthLinksServiceGetAuthMenus();
 
@@ -44,7 +66,7 @@ export const Security = () => {
   const isRedirecting = useRef(false);
 
   const onLoad = () => {
-    if (isRedirecting.current) {
+    if (isRedirecting.current || link === undefined) {
       return;
     }
 
@@ -58,7 +80,23 @@ export const Security = () => {
         // navigation sidebar inside the iframe, which would produce a duplicate nav bar.
         isRedirecting.current = true;
         iframe.src = "about:blank";
-        void navigate("/");
+        void navigate("/", { replace: true });
+
+        return;
+      }
+
+      const nextDetailPath = extractSecurityDetailPath(iframe.contentWindow.location.pathname, link.href);
+
+      if (nextDetailPath === undefined) {
+        return;
+      }
+
+      const nextPathname =
+        nextDetailPath === "" ? `/security/${page ?? ""}` : `/security/${page ?? ""}/${nextDetailPath}`;
+      const nextUrl = `${nextPathname}${iframe.contentWindow.location.search}${iframe.contentWindow.location.hash}`;
+
+      if (nextUrl !== `${location.pathname}${location.search}${location.hash}`) {
+        void navigate(nextUrl, { replace: true });
       }
     }
   };
@@ -83,7 +121,7 @@ export const Security = () => {
           id="security-iframe"
           onLoad={onLoad}
           sandbox={SANDBOX}
-          src={link.href}
+          src={buildSecurityIframeSrc(link.href, detailPath)}
           style={{ height: "100%", width: "100%" }}
           title={link.text}
         />
