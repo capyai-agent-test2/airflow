@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urljoin, urlsplit, urlunsplit
+
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
@@ -90,7 +92,15 @@ def login_all_admins(request: Request) -> RedirectResponse:
     if next_url and not is_safe_url(next_url, request=request):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or unsafe next URL")
 
-    response = RedirectResponse(url=next_url or conf.get("api", "base_url", fallback="/"))
+    if next_url:
+        redirect_url = urlsplit(
+            urljoin(conf.get("api", "base_url", fallback=str(request.base_url)), next_url)
+        )
+        location = urlunsplit(("", "", redirect_url.path, redirect_url.query, redirect_url.fragment))
+    else:
+        location = conf.get("api", "base_url", fallback="/")
+
+    response = RedirectResponse(url=location)
 
     # The default config has this as an empty string, so we can't use `has_option`.
     # And look at the request info (needs `--proxy-headers` flag to api-server)
