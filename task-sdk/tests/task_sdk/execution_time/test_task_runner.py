@@ -2652,11 +2652,11 @@ class TestRuntimeTaskInstance:
             msg=SetRenderedFields(rendered_fields={"bash_command": rendered_cmd})
         )
 
-    def test_overwrite_rtif_after_execution_handles_errors_gracefully(
+    def test_overwrite_rtif_after_execution_skips_failed_tasks(
         self, create_runtime_ti, mock_supervisor_comms
     ):
         """
-        Test that errors during SetRenderedFields in finalize() don't mask the original task error.
+        Test that finalize() does not refresh RTIF after task failure.
         """
 
         class TaskWithRTIF(BaseOperator):
@@ -2689,6 +2689,46 @@ class TestRuntimeTaskInstance:
             context=runtime_ti.get_template_context(),
             log=mock_log,
             error=Exception("Task execution failed"),
+        )
+
+        mock_supervisor_comms.send.assert_not_called()
+
+    def test_overwrite_rtif_after_execution_handles_errors_gracefully(
+        self, create_runtime_ti, mock_supervisor_comms
+    ):
+        """
+        Test that errors during SetRenderedFields in finalize() don't mask task completion.
+        """
+
+        class TaskWithRTIF(BaseOperator):
+            overwrite_rtif_after_execution = True
+            template_fields = ["command"]
+
+            def __init__(self, command, *args, **kwargs):
+                self.command = command
+                super().__init__(*args, **kwargs)
+
+        task = TaskWithRTIF(task_id="test_task", command="test command")
+        runtime_ti = create_runtime_ti(task=task)
+        mock_log = mock.MagicMock()
+
+        # mock the SetRenderedFields call to fail with API_SERVER_ERROR
+        mock_supervisor_comms.send.side_effect = AirflowRuntimeError(
+            error=ErrorResponse(
+                error=ErrorType.API_SERVER_ERROR,
+                detail={
+                    "status_code": 404,
+                    "message": "Not Found",
+                    "detail": {"detail": "Not Found"},
+                },
+            )
+        )
+
+        finalize(
+            runtime_ti,
+            state=TaskInstanceState.SUCCESS,
+            context=runtime_ti.get_template_context(),
+            log=mock_log,
         )
 
         mock_log.exception.assert_called_once_with(

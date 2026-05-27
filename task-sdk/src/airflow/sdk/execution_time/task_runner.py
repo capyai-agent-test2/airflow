@@ -2013,7 +2013,7 @@ def finalize(
                 ti=ti,
             )
 
-    if getattr(ti.task, "overwrite_rtif_after_execution", False):
+    if state == TaskInstanceState.SUCCESS and getattr(ti.task, "overwrite_rtif_after_execution", False):
         log.debug("Overwriting Rendered template fields.")
         if ti.task.template_fields:
             try:
