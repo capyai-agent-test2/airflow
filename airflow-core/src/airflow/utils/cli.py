@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import functools
+import io
 import logging
 import os
 import re
@@ -30,7 +31,7 @@ import traceback
 import warnings
 from argparse import Namespace
 from collections.abc import Callable
-from contextlib import nullcontext, redirect_stdout
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
@@ -58,6 +59,29 @@ def _check_cli_args(args):
         raise ValueError(
             f"1st positional argument should be argparse.Namespace instance, but is {type(args[0])}"
         )
+
+
+@contextmanager
+def redirect_stdout_to_stderr():
+    """Temporarily redirect stdout to stderr at both Python and file-descriptor level."""
+    original_stdout = sys.stdout
+    saved_stdout_fd: int | None = None
+    try:
+        try:
+            saved_stdout_fd = os.dup(original_stdout.fileno())
+        except (AttributeError, OSError, io.UnsupportedOperation):
+            sys.stdout = sys.stderr
+            yield
+            return
+
+        os.dup2(sys.stderr.fileno(), original_stdout.fileno())
+        sys.stdout = sys.stderr
+        yield
+    finally:
+        if saved_stdout_fd is not None:
+            os.dup2(saved_stdout_fd, original_stdout.fileno())
+            os.close(saved_stdout_fd)
+        sys.stdout = original_stdout
 
 
 def action_cli(func=None, check_db=True):
@@ -110,7 +134,7 @@ def action_cli(func=None, check_db=True):
 
                     redirect_pre_command_stdout = nullcontext()
                     if getattr(args[0], "output", None) in {"json", "yaml"} and not verbose:
-                        redirect_pre_command_stdout = redirect_stdout(sys.stderr)
+                        redirect_pre_command_stdout = redirect_stdout_to_stderr()
 
                     with redirect_pre_command_stdout:
                         if conf.getboolean("database", "check_migrations"):

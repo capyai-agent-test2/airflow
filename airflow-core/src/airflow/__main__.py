@@ -106,19 +106,17 @@ def _redirect_stdout_to_stderr():
 
 def _has_machine_readable_output(argv: list[str]) -> bool:
     """Check whether CLI args request machine-readable output."""
-    has_short_output_flag = "-o" in argv or any(arg.startswith("-o") and len(arg) > 2 for arg in argv)
-
-    for index in range(len(argv) - 1, -1, -1):
-        arg = argv[index]
-        if arg == "--output":
-            return index + 1 < len(argv) and argv[index + 1] in MACHINE_READABLE_OUTPUTS
-        if arg.startswith("--output="):
-            return arg.partition("=")[2] in MACHINE_READABLE_OUTPUTS
+    has_output_flag = (
+        "--output" in argv
+        or "-o" in argv
+        or any(arg.startswith("--output=") for arg in argv)
+        or any(arg.startswith("-o") and len(arg) > 2 for arg in argv)
+    )
 
     try:
         parsed_args, _ = _build_machine_readable_output_parser().parse_known_args(argv, namespace=Namespace())
     except ValueError:
-        if not has_short_output_flag:
+        if not has_output_flag:
             return False
     else:
         if (
@@ -126,7 +124,7 @@ def _has_machine_readable_output(argv: list[str]) -> bool:
             and getattr(parsed_args, "output", None) in MACHINE_READABLE_OUTPUTS
         ):
             return True
-        if not has_short_output_flag:
+        if not has_output_flag:
             return False
 
     try:
@@ -181,6 +179,13 @@ def main():
             from airflow.configuration import write_default_airflow_configuration_if_needed
 
             conf = write_default_airflow_configuration_if_needed()
+
+        if should_redirect_stdout:
+            if saved_stdout_fd is not None:
+                os.dup2(saved_stdout_fd, original_stdout.fileno())
+                os.close(saved_stdout_fd)
+                saved_stdout_fd = None
+            sys.stdout = original_stdout
 
         args.func(args)
     finally:

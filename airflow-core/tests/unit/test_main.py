@@ -37,6 +37,7 @@ from airflow.cli.utils import get_structured_output_stream
         (["dags", "list", "-o", "table"], False),
         (["kerberos", "-o", "json"], False),
         (["dags", "list", "--output", "table", "--output", "json"], True),
+        (["dags", "list", "--output", "table", "-o", "json"], True),
     ],
 )
 def test_has_machine_readable_output(argv, expected):
@@ -77,6 +78,41 @@ def test_main_redirects_pre_command_stdout_for_machine_readable_output(monkeypat
     captured = capsys.readouterr()
     assert captured.out == '[{"dag_id": "example"}]\n'
     assert "pre-command log line" in captured.err
+
+
+def test_main_restores_stdout_before_running_command(monkeypatch):
+    parser = types.SimpleNamespace()
+    observed_stdout = None
+
+    def command(_):
+        nonlocal observed_stdout
+        observed_stdout = sys.stdout
+
+    parser.parse_args = lambda: Namespace(subcommand="dags", func=command)
+
+    monkeypatch.setattr(
+        airflow_main.configuration, "conf", types.SimpleNamespace(get=lambda *_, **__: "none")
+    )
+    monkeypatch.setattr(airflow_main.argcomplete, "autocomplete", lambda _: None)
+    monkeypatch.setattr(airflow_main, "_has_machine_readable_output", lambda _: True)
+    monkeypatch.setattr(
+        "airflow.configuration.write_default_airflow_configuration_if_needed",
+        lambda: airflow_main.configuration.conf,
+    )
+    monkeypatch.setattr(sys, "argv", ["airflow", "dags", "list", "-o", "json"])
+
+    real_import = __import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "airflow.cli":
+            return types.SimpleNamespace(cli_parser=types.SimpleNamespace(get_parser=lambda: parser))
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+
+    airflow_main.main()
+
+    assert observed_stdout is sys.stdout
 
 
 def test_has_machine_readable_output_detects_provider_short_flag(monkeypatch):
