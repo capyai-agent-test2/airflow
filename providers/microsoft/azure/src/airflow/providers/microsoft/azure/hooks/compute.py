@@ -184,7 +184,7 @@ class AzureComputeHook(AzureBaseHook):
         if self._async_conn is not None:
             return self._async_conn
 
-        conn = await get_async_connection(self.conn_id)
+        conn = await get_async_connection(self.conn_id, hook=self)
         tenant = conn.extra_dejson.get("tenantId")
         subscription_id = cast("str", conn.extra_dejson.get("subscriptionId"))
 

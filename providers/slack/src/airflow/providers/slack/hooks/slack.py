@@ -157,7 +157,7 @@ class SlackHook(BaseHook):
 
     async def get_async_client(self) -> AsyncWebClient:
         """Get the underlying `slack_sdk.web.async_client.AsyncWebClient`."""
-        conn = await get_async_connection(self.slack_conn_id)
+        conn = await get_async_connection(self.slack_conn_id, hook=self)
         return AsyncWebClient(**self._get_conn_params(conn))
 
     def get_conn(self) -> WebClient:

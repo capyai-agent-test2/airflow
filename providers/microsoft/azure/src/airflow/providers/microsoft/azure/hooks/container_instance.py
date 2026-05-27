@@ -209,7 +209,7 @@ class AzureContainerInstanceAsyncHook(AzureContainerInstanceHook):
     @asynccontextmanager
     async def get_async_conn(self) -> AsyncGenerator[AsyncContainerInstanceManagementClient, None]:
         """Create an async management client bound to a single credential."""
-        conn = await get_async_connection(self.conn_id)
+        conn = await get_async_connection(self.conn_id, hook=self)
         tenant = conn.extra_dejson.get("tenantId")
         subscription_id = cast("str", conn.extra_dejson.get("subscriptionId"))
 

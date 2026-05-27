@@ -57,7 +57,7 @@ class TestGetAsyncConnection:
             conn = await get_async_connection("test_conn")
         assert conn.password == "secret_token_aget"
         assert conn.conn_type == "http"
-        assert "Get connection using `BaseHook.aget_connection()." in caplog.text
+        assert "Get connection using `hook.aget_connection()." in caplog.text
 
     @mock.patch("airflow.providers.common.compat.connection.BaseHook", new_callable=MockBaseHook)
     @pytest.mark.asyncio
@@ -66,4 +66,24 @@ class TestGetAsyncConnection:
             conn = await get_async_connection("test_conn")
         assert conn.password == "secret_token"
         assert conn.conn_type == "http"
-        assert "Get connection using `BaseHook.get_connection()." in caplog.text
+        assert "Get connection using `hook.get_connection()." in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_get_async_connection_uses_hook_override(self):
+        class TestHook(MockBaseHook):
+            @classmethod
+            async def aget_connection(cls, conn_id: str):
+                return Connection(
+                    conn_id=conn_id,
+                    conn_type="http",
+                    host="override-host",
+                    login="override-login",
+                    password="override-password",
+                )
+
+        conn = await get_async_connection("test_conn", hook=TestHook())
+
+        assert conn.conn_id == "test_conn"
+        assert conn.host == "override-host"
+        assert conn.login == "override-login"
+        assert conn.password == "override-password"

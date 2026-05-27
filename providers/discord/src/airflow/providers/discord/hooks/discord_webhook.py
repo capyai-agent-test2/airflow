@@ -318,7 +318,7 @@ class DiscordWebhookAsyncHook(HttpAsyncHook):
         """
         conn = None
         if not self.webhook_endpoint and self.http_conn_id:
-            conn = await get_async_connection(self.http_conn_id)
+            conn = await get_async_connection(self.http_conn_id, hook=self)
         return self.handler.get_webhook_endpoint(conn, self.webhook_endpoint)
 
     async def execute(self) -> None:

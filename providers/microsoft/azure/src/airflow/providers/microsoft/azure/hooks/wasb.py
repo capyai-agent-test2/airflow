@@ -620,7 +620,7 @@ class WasbAsyncHook(WasbHook):
             self._blob_service_client = cast("AsyncBlobServiceClient", self._blob_service_client)
             return self._blob_service_client
 
-        conn = await get_async_connection(self.conn_id)
+        conn = await get_async_connection(self.conn_id, hook=self)
         extra = conn.extra_dejson or {}
         client_secret_auth_config = extra.pop("client_secret_auth_config", {})
 

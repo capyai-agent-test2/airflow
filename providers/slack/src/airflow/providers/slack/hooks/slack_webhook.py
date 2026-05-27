@@ -167,7 +167,7 @@ class SlackWebhookHook(BaseHook):
 
     async def _async_get_conn_params(self) -> dict[str, Any]:
         """Fetch connection params as a dict and merge it with hook parameters (async)."""
-        conn = await get_async_connection(self.slack_webhook_conn_id)
+        conn = await get_async_connection(self.slack_webhook_conn_id, hook=self)
         return self._build_conn_params(conn)
 
     def _build_conn_params(self, conn) -> dict[str, Any]:
