@@ -1230,9 +1230,10 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         `dag.test` execute DAGs with no scheduler, therefore it needs to handle the events pushed by the
         executors as well.
         """
-        ti_primary_key_to_try_number_map: dict[tuple[str, str, str, int], int] = {}
+        ti_primary_key_to_try_number_map: dict[tuple[str, str, str, str, int], int] = {}
         event_buffer = executor.get_event_buffer()
-        tis_with_right_state: list[TaskInstanceKey] = []
+        queued_ti_key_by_primary: dict[tuple[str, str, str, str, int], TaskInstanceKey] = {}
+        locked_ti_key_by_primary: dict[tuple[str, str, str, str, int], TaskInstanceKey] = {}
         callback_keys_with_events: list[CallbackKey] = []
 
         # Report execution - handle both task and callback events
@@ -1250,14 +1251,15 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     )
                 ti_primary_key_to_try_number_map[key.primary] = key.try_number
                 cls.logger().info("Received executor event with state %s for task instance %s", state, key)
-                if state in (
+                if state == TaskInstanceState.QUEUED:
+                    queued_ti_key_by_primary[key.primary] = key
+                elif state in (
                     TaskInstanceState.FAILED,
                     TaskInstanceState.SUCCESS,
-                    TaskInstanceState.QUEUED,
                     TaskInstanceState.RUNNING,
                     TaskInstanceState.RESTARTING,
                 ):
-                    tis_with_right_state.append(key)
+                    locked_ti_key_by_primary[key.primary] = key
             elif isinstance(key, CallbackKey):
                 cls.logger().info("Received executor event with state %s for callback %s", state, key)
                 if state in (CallbackState.RUNNING, CallbackState.FAILED, CallbackState.SUCCESS):
@@ -1289,12 +1291,33 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 cls.logger().error("Callback %s failed: %s", callback_id, callback.output)
             session.add(callback)
 
+        if queued_ti_key_by_primary:
+            queued_filter = TI.filter_for_tis(queued_ti_key_by_primary.values())
+            if queued_filter is not None:
+                for ti in session.scalars(select(TI).where(queued_filter)):
+                    buffer_key = queued_ti_key_by_primary[ti.key.primary]
+                    try_number = buffer_key.try_number
+                    if ti.try_number != try_number:
+                        cls.logger().warning(
+                            "TI try_number mismatch: db_try_number=%d event_try_number=%d "
+                            "ti=%s state=%s job_id=%s. "
+                            "Another scheduler may have already modified this TI.",
+                            ti.try_number,
+                            try_number,
+                            ti,
+                            ti.state,
+                            job_id,
+                        )
+                    _, info = event_buffer.pop(buffer_key)
+                    ti.external_executor_id = info
+                    cls.logger().info("Setting external_executor_id for %s to %s", ti, info)
+
         # Return if no finished tasks
-        if not tis_with_right_state:
+        if not locked_ti_key_by_primary:
             return len(event_buffer)
 
         # Check state of finished tasks
-        filter_for_tis = TI.filter_for_tis(tis_with_right_state)
+        filter_for_tis = TI.filter_for_tis(locked_ti_key_by_primary.values())
         if filter_for_tis is None:
             return len(event_buffer)
         asset_loader, alias_loader = _eager_load_dag_run_for_validation()
@@ -1312,8 +1335,8 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         locked_query = with_row_locks(query, of=TI, session=session, skip_locked=True)
         tis: Iterator[TI] = session.scalars(locked_query)
         for ti in tis:
-            try_number = ti_primary_key_to_try_number_map[ti.key.primary]
-            buffer_key = ti.key.with_try_number(try_number)
+            buffer_key = locked_ti_key_by_primary[ti.key.primary]
+            try_number = buffer_key.try_number
             if ti.try_number != try_number:
                 cls.logger().warning(
                     "TI try_number mismatch: db_try_number=%d event_try_number=%d "
@@ -1327,7 +1350,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 )
             state, info = event_buffer.pop(buffer_key)
 
-            if state in (TaskInstanceState.QUEUED, TaskInstanceState.RUNNING):
+            if state == TaskInstanceState.RUNNING:
                 ti.external_executor_id = info
                 cls.logger().info("Setting external_executor_id for %s to %s", ti, info)
                 continue
