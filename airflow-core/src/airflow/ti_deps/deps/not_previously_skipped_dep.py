@@ -17,6 +17,8 @@
 # under the License.
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from airflow.models.taskinstance import PAST_DEPENDS_MET
 from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
 
@@ -89,19 +91,29 @@ class NotPreviouslySkippedDep(BaseTIDep):
                     # This can happen if the parent task has not yet run.
                     continue
 
+                if isinstance(prev_result, Iterable) and not isinstance(prev_result, dict):
+                    prev_results = prev_result
+                else:
+                    prev_results = (prev_result,)
+
                 should_skip = False
-                if (
-                    XCOM_SKIPMIXIN_FOLLOWED in prev_result
-                    and ti.task_id not in prev_result[XCOM_SKIPMIXIN_FOLLOWED]
-                ):
-                    # Skip any tasks that are not in "followed"
-                    should_skip = True
-                elif (
-                    XCOM_SKIPMIXIN_SKIPPED in prev_result
-                    and ti.task_id in prev_result[XCOM_SKIPMIXIN_SKIPPED]
-                ):
-                    # Skip any tasks that are in "skipped"
-                    should_skip = True
+                for prev_result_item in prev_results:
+                    if prev_result_item is None:
+                        continue
+                    if (
+                        XCOM_SKIPMIXIN_FOLLOWED in prev_result_item
+                        and ti.task_id not in prev_result_item[XCOM_SKIPMIXIN_FOLLOWED]
+                    ):
+                        # Skip any tasks that are not in "followed"
+                        should_skip = True
+                    elif (
+                        XCOM_SKIPMIXIN_SKIPPED in prev_result_item
+                        and ti.task_id in prev_result_item[XCOM_SKIPMIXIN_SKIPPED]
+                    ):
+                        # Skip any tasks that are in "skipped"
+                        should_skip = True
+                    if should_skip:
+                        break
 
                 if should_skip:
                     # If the parent SkipMixin has run, and the XCom result stored indicates this

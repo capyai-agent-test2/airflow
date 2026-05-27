@@ -17,6 +17,8 @@
 # under the License.
 from __future__ import annotations
 
+from unittest import mock
+
 import pendulum
 import pytest
 from sqlalchemy import delete
@@ -264,3 +266,36 @@ def test_branch_in_mapped_task_group_skips_only_matching_map_index(session, dag_
     skipped_ti = dr.get_task_instance("handle_item.run_optional_step", map_index=1, session=session)
     assert skipped_ti is not None
     assert skipped_ti.state == State.SKIPPED
+
+
+def test_skipmixin_sequence_result_marks_task_skipped(session):
+    ti = mock.Mock()
+    ti.task_id = "child"
+    ti.run_id = "run"
+    ti.map_index = 3
+    ti.task = mock.Mock()
+    parent = mock.Mock(task_id="parent", inherits_from_skipmixin=True, is_mapped=True)
+    ti.task.get_direct_relatives.return_value = [parent]
+    ti.get_dagrun.return_value = mock.sentinel.dagrun
+    ti.get_relevant_upstream_map_indexes.return_value = range(2, 4)
+    ti.xcom_pull.side_effect = [
+        [{"followed": ["other"]}, {"followed": ["child"]}],
+        False,
+    ]
+
+    dep_context = mock.Mock()
+    dep_context.ensure_finished_tis.return_value = [mock.Mock(task_id="parent")]
+    dep_context.wait_for_past_depends_before_skipping = False
+
+    with mock.patch("airflow.serialization.definitions.mappedoperator.get_mapped_ti_count", return_value=4):
+        dep = NotPreviouslySkippedDep()
+        statuses = list(dep._get_dep_statuses(ti, session, dep_context))
+
+    assert len(statuses) == 1
+    ti.xcom_pull.assert_called_once_with(
+        task_ids="parent",
+        key=XCOM_SKIPMIXIN_KEY,
+        session=session,
+        map_indexes=range(2, 4),
+    )
+    ti.set_state.assert_called_once_with(State.SKIPPED, session)
