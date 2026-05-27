@@ -28,6 +28,7 @@ from airflow.models.dag import DagModel, DagTag
 from airflow.models.dag_favorite import DagFavorite
 from airflow.models.dagrun import DagRun
 from airflow.providers.standard.operators.empty import EmptyOperator
+from airflow.sdk.timezone import utcnow
 from airflow.utils.state import DagRunState, TaskInstanceState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
 
@@ -489,6 +490,33 @@ class TestGetDags(TestDagEndpoint):
         actual_ids = [dag["dag_id"] for dag in body["dags"]]
 
         assert actual_ids == expected_ids
+
+    def test_get_dags_sorts_last_run_by_run_after_for_queued_runs(self, test_client, session):
+        dag_run = DagRun(
+            dag_id=DAG2_ID,
+            run_id="queued_latest_run",
+            run_type=DagRunType.MANUAL,
+            logical_date=utcnow(),
+            run_after=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            start_date=None,
+            state=DagRunState.QUEUED,
+            triggered_by=DagRunTriggeredByType.TEST,
+        )
+        session.add(dag_run)
+        session.commit()
+
+        response = test_client.get(
+            "/dags",
+            params={
+                "dag_ids": [DAG1_ID, DAG2_ID],
+                "exclude_stale": False,
+                "order_by": "-last_run_start_date",
+                "paused": False,
+            },
+        )
+
+        assert response.status_code == 200
+        assert [dag["dag_id"] for dag in response.json()["dags"]] == [DAG2_ID, DAG1_ID]
 
     @mock.patch("airflow.api_fastapi.auth.managers.base_auth_manager.BaseAuthManager.get_authorized_dag_ids")
     def test_get_dags_should_call_get_authorized_dag_ids(self, mock_get_authorized_dag_ids, test_client):

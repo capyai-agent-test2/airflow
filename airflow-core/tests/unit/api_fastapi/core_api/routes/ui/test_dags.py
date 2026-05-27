@@ -133,6 +133,33 @@ class TestGetDagRuns(TestPublicDagEndpoint):
                     assert previous_run_after > dag_run["run_after"]
                 previous_run_after = dag_run["run_after"]
 
+    def test_should_sort_last_run_by_run_after_for_queued_runs(self, test_client, session):
+        dag_run = DagRun(
+            dag_id=DAG2_ID,
+            run_id="queued_latest_run",
+            run_type=DagRunType.MANUAL,
+            logical_date=utcnow(),
+            run_after=pendulum.datetime(2030, 1, 1, tz="UTC"),
+            start_date=None,
+            state=DagRunState.QUEUED,
+            triggered_by=DagRunTriggeredByType.TEST,
+        )
+        session.add(dag_run)
+        session.commit()
+
+        response = test_client.get(
+            "/dags",
+            params={
+                "dag_ids": [DAG1_ID, DAG2_ID],
+                "exclude_stale": False,
+                "order_by": "-last_run_start_date",
+                "paused": False,
+            },
+        )
+
+        assert response.status_code == 200
+        assert [dag["dag_id"] for dag in response.json()["dags"]] == [DAG2_ID, DAG1_ID]
+
     @pytest.fixture
     def setup_hitl_data(self, create_task_instance: TaskInstance, session: Session):
         """Setup HITL test data for parametrized tests."""
