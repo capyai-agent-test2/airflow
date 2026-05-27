@@ -418,6 +418,10 @@ Rendered Templates
 Displays the rendered version of templated fields in your task. Useful for debugging context variables or verifying
 dynamic content.
 
+When a task runs with KubernetesExecutor, the rendered Kubernetes pod spec is regenerated when the page is viewed.
+That means ``metadata.name`` in the rendered spec can differ from the name of the pod that actually ran the task.
+Use the ``Hostname`` field in the task instance details to find the real pod name for that task instance.
+
 XCom
 ''''
 Shows any values pushed via ``XCom.push()`` or returned from Python functions when using TaskFlow.
