@@ -100,7 +100,6 @@ class TestDagEndpoint:
 
     def _create_dag_tags(self, session=None):
         session.add(DagTag(dag_id=DAG1_ID, name="tag_2"))
-        session.add(DagTag(dag_id=DAG1_ID, name="tag_1"))
         session.add(DagTag(dag_id=DAG3_ID, name="tag_1"))
         session.add(DagTag(dag_id=DAG3_ID, name="stale_only"))
 
@@ -129,6 +128,7 @@ class TestDagEndpoint:
             start_date=DAG2_START_DATE,
             doc_md="details",
             params={"foo": 1},
+            tags=["tag_1"],
             max_active_tasks=16,
             max_active_runs=16,
         ):
