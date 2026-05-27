@@ -33,7 +33,9 @@ if TYPE_CHECKING:
     from airflow.timetables.base import Timetable as CoreTimetable
 
 
-def serialize_template_field(template_field: Any, name: str) -> str | dict | list | int | float | bool | None:
+def serialize_template_field(
+    template_field: Any, name: str, *, sort_keys: bool = True
+) -> str | dict | list | int | float | bool | None:
     """
     Return a serializable representation of the templated field.
 
@@ -43,7 +45,8 @@ def serialize_template_field(template_field: Any, name: str) -> str | dict | lis
        with primitive leaves (str/int/float/bool/None), tuples and sets are
        flattened to lists, and unsupported objects fall through to ``str()``
        so ``json.dumps`` never raises on the result.
-    2. **Keep the output deterministic across parses** — callables are replaced
+    2. **Keep the output deterministic across parses** — when ``sort_keys`` is
+       true, callables are replaced
        with their qualified name (never the default ``<function ... at 0x...>``
        repr), dicts are key-sorted, and (frozen)sets are sorted by element so
        the same input always produces the same string.
@@ -61,10 +64,12 @@ def serialize_template_field(template_field: Any, name: str) -> str | dict | lis
             return obj
 
         if isinstance(obj, dict):
-            # Serialize keys/values first so each key is a string and the output is hash-stable,
-            # then sort by the serialized key to prevent hash inconsistencies when dict ordering varies.
             serialized_pairs = [(normalize_dict_key(k), serialize_object(v)) for k, v in obj.items()]
-            return dict(sorted(serialized_pairs, key=lambda kv: kv[0]))
+            if sort_keys:
+                # Serialize keys/values first so each key is a string and the output is hash-stable,
+                # then sort by the serialized key to prevent hash inconsistencies when dict ordering varies.
+                return dict(sorted(serialized_pairs, key=lambda kv: kv[0]))
+            return dict(serialized_pairs)
 
         if isinstance(obj, (list, tuple)):
             return [serialize_object(item) for item in obj]

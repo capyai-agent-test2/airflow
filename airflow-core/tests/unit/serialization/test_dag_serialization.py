@@ -77,7 +77,7 @@ from airflow.serialization.definitions.operatorlink import XComOperatorLink
 from airflow.serialization.definitions.param import SerializedParam
 from airflow.serialization.definitions.xcom_arg import SchedulerPlainXComArg
 from airflow.serialization.encoders import ensure_serialized_asset
-from airflow.serialization.enums import Encoding
+from airflow.serialization.enums import DagAttributeTypes as DAT, Encoding
 from airflow.serialization.json_schema import load_dag_schema_dict
 from airflow.serialization.serialized_objects import (
     BaseSerialization,
@@ -2641,6 +2641,37 @@ class TestStringifiedDAGs:
             ),
         ):
             DagSerialization.to_dict(dag)
+
+    @pytest.mark.db_test
+    def test_template_field_rendering_kwargs_survive_dag_serialization(self):
+        class TestOperator(BaseOperator):
+            template_fields = ("config",)
+            template_fields_rendering_kwargs = {"config": {"sort_keys": False}}
+
+            def __init__(self, config, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.config = config
+
+            def execute(self, context: Context):
+                pass
+
+        with DAG(
+            dag_id="test_template_field_rendering_kwargs",
+            schedule=None,
+            start_date=datetime(2023, 11, 9),
+        ) as dag:
+            TestOperator(task_id="test_task", config={"b": 1, "a": 2})
+
+        serialized = DagSerialization.to_dict(dag)
+        serialized_task = serialized["dag"]["tasks"][0][VAR]
+        assert serialized_task["template_fields_rendering_kwargs"] == {
+            "config": {TYPE: DAT.DICT, VAR: {"sort_keys": False}}
+        }
+
+        deserialized = DagSerialization.from_dict(serialized)
+        assert deserialized.task_dict["test_task"].template_fields_rendering_kwargs == {
+            "config": {"sort_keys": False}
+        }
 
     @pytest.mark.db_test
     def test_start_trigger_args_in_serialized_dag(self):

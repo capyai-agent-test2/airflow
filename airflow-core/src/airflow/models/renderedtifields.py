@@ -81,9 +81,14 @@ def get_serialized_template_fields(task: SerializedBaseOperator):
     :meta private:
     """
     rendered_fields = {}
+    rendering_kwargs = getattr(task, "template_fields_rendering_kwargs", {})
 
     for field in task.template_fields:
-        rendered_fields[field] = serialize_template_field(getattr(task, field), field)
+        rendered_fields[field] = serialize_template_field(
+            getattr(task, field),
+            field,
+            sort_keys=rendering_kwargs.get(field, {}).get("sort_keys", True),
+        )
 
     renderers = getattr(task, "template_fields_renderers", {})
     for renderer_path in renderers:
@@ -95,7 +100,13 @@ def get_serialized_template_fields(task: SerializedBaseOperator):
                 nested_value = _get_nested_value(base_value, renderer_path[len(base_field) + 1 :])
 
                 if nested_value is not None:
-                    rendered_fields[renderer_path] = serialize_template_field(nested_value, renderer_path)
+                    rendered_fields[renderer_path] = serialize_template_field(
+                        nested_value,
+                        renderer_path,
+                        sort_keys=rendering_kwargs.get(renderer_path, {}).get(
+                            "sort_keys", rendering_kwargs.get(base_field, {}).get("sort_keys", True)
+                        ),
+                    )
 
     return rendered_fields
 

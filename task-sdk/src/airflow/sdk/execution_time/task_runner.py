@@ -1063,7 +1063,7 @@ def startup(msg: StartupDetails) -> tuple[RuntimeTaskInstance, Context, Logger]:
 
 
 def _serialize_template_field(
-    template_field: Any, name: str
+    template_field: Any, name: str, *, sort_keys: bool = True
 ) -> str | dict | list | int | float | bool | None:
     """
     Return a serializable representation of the templated field.
@@ -1074,7 +1074,8 @@ def _serialize_template_field(
        with primitive leaves (str/int/float/bool/None), tuples and sets are
        flattened to lists, and unsupported objects fall through to ``str()``
        so ``json.dumps`` never raises on the result.
-    2. **Keep the output deterministic across parses** — callables are replaced
+    2. **Keep the output deterministic across parses** — when ``sort_keys`` is
+       true, callables are replaced
        with their qualified name (never the default ``<function ... at 0x...>``
        repr), dicts are key-sorted, and (frozen)sets are sorted by element so
        the same input always produces the same string.
@@ -1098,10 +1099,12 @@ def _serialize_template_field(
             return obj
 
         if isinstance(obj, dict):
-            # Serialize keys/values first so each key is a string and the output is hash-stable,
-            # then sort by the serialized key to prevent hash inconsistencies when dict ordering varies.
             serialized_pairs = [(normalize_dict_key(k), serialize_object(v)) for k, v in obj.items()]
-            return dict(sorted(serialized_pairs, key=lambda kv: kv[0]))
+            if sort_keys:
+                # Serialize keys/values first so each key is a string and the output is hash-stable,
+                # then sort by the serialized key to prevent hash inconsistencies when dict ordering varies.
+                return dict(sorted(serialized_pairs, key=lambda kv: kv[0]))
+            return dict(serialized_pairs)
 
         if isinstance(obj, (list, tuple)):
             return [serialize_object(item) for item in obj]
@@ -1157,9 +1160,14 @@ def _serialize_rendered_fields(task: AbstractOperator) -> dict[str, JsonValue]:
     from airflow.sdk._shared.secrets_masker import redact
 
     rendered_fields: dict[str, JsonValue] = {}
+    rendering_kwargs = getattr(task, "template_fields_rendering_kwargs", {})
     for field in task.template_fields:
         value = getattr(task, field)
-        serialized = _serialize_template_field(value, field)
+        serialized = _serialize_template_field(
+            value,
+            field,
+            sort_keys=rendering_kwargs.get(field, {}).get("sort_keys", True),
+        )
         # Redact secrets in the task process itself before sending to API server
         # This ensures that the secrets those are registered via mask_secret() on workers / dag processor are properly masked
         # on the UI.
@@ -1189,7 +1197,13 @@ def _serialize_rendered_fields(task: AbstractOperator) -> dict[str, JsonValue]:
                 break
 
         if current is not None:
-            serialized = _serialize_template_field(current, renderer_path)
+            serialized = _serialize_template_field(
+                current,
+                renderer_path,
+                sort_keys=rendering_kwargs.get(renderer_path, {}).get(
+                    "sort_keys", rendering_kwargs.get(base_field, {}).get("sort_keys", True)
+                ),
+            )
             redacted = redact(serialized, renderer_path)
             rendered_fields[renderer_path] = TypeAdapter(JsonValue).validate_python(redacted)
 
