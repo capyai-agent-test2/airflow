@@ -3340,6 +3340,32 @@ class TestRuntimeTaskInstance:
             if hasattr(call.kwargs.get("msg"), "rendered_fields")
         )
 
+    def test_rendered_fields_can_preserve_dict_insertion_order(
+        self, create_runtime_ti, mock_supervisor_comms
+    ):
+        class CustomOperator(BaseOperator):
+            template_fields = ("config",)
+            template_fields_rendering_kwargs = {"config": {"sort_keys": False}}
+
+            def __init__(self, config, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.config = config
+
+            def execute(self, context):
+                pass
+
+        task = CustomOperator(
+            task_id="preserve_order_test",
+            config={"z": {"second": 2, "first": 1}, "a": 3},
+        )
+        runtime_ti = create_runtime_ti(task=task)
+
+        run(runtime_ti, context=runtime_ti.get_template_context(), log=mock.MagicMock())
+
+        rendered_fields = mock_supervisor_comms.send.mock_calls[0].kwargs["msg"].rendered_fields
+        assert list(rendered_fields["config"]) == ["z", "a"]
+        assert list(rendered_fields["config"]["z"]) == ["second", "first"]
+
     def test_rendered_fields_validates_json_value_types(self, create_runtime_ti, mock_supervisor_comms):
         """
         Ensure validated JSON-compatible types are preserved after redaction.

@@ -928,6 +928,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
     template_ext: Sequence[str] = ()
 
     template_fields_renderers: ClassVar[dict[str, str]] = {}
+    template_fields_rendering_kwargs: ClassVar[dict[str, dict[str, bool]]] = {}
 
     operator_extra_links: Collection[BaseOperatorLink] = ()
 
@@ -1555,6 +1556,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
                     "template_ext",
                     "template_fields",
                     "template_fields_renderers",
+                    "template_fields_rendering_kwargs",
                     "params",
                     "is_setup",
                     "is_teardown",

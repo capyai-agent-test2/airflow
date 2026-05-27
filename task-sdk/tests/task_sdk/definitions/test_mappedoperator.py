@@ -88,6 +88,16 @@ def test_task_mapping_without_dag_context():
     assert len(dag.tasks) == 2
 
 
+def test_task_mapping_carries_template_field_rendering_kwargs():
+    class OrderedOperator(MockOperator):
+        template_fields = ("arg2",)
+        template_fields_rendering_kwargs = {"arg2": {"sort_keys": False}}
+
+    mapped = OrderedOperator.partial(task_id="task_2").expand(arg2=[{"b": 1, "a": 2}])
+
+    assert mapped.template_fields_rendering_kwargs == {"arg2": {"sort_keys": False}}
+
+
 def test_task_mapping_default_args():
     default_args = {"start_date": DEFAULT_DATE.now(), "owner": "test"}
     with DAG("test-dag", schedule=None, start_date=DEFAULT_DATE, default_args=default_args):

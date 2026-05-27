@@ -124,6 +124,15 @@ def test_serialize_template_field_with_mixed_key_jsonable_dict():
     assert result1 == result2
 
 
+def test_serialize_template_field_can_preserve_dict_insertion_order():
+    value = {"z": {"b": 2, "a": 1}, "a": 3}
+
+    result = serialize_template_field(value, "field", sort_keys=False)
+
+    assert list(result) == ["z", "a"]
+    assert list(result["z"]) == ["b", "a"]
+
+
 @pytest.mark.parametrize(
     "value",
     [None, "hello", 0, 42, -1, 3.14, True, False],

@@ -253,6 +253,7 @@ class OperatorPartial:
             template_ext=self.operator_class.template_ext,
             template_fields=self.operator_class.template_fields,
             template_fields_renderers=self.operator_class.template_fields_renderers,
+            template_fields_rendering_kwargs=self.operator_class.template_fields_rendering_kwargs,
             ui_color=self.operator_class.ui_color,
             ui_fgcolor=self.operator_class.ui_fgcolor,
             is_empty=issubclass(self.operator_class, EmptyOperator),
@@ -304,6 +305,7 @@ class MappedOperator(AbstractOperator):
     template_ext: Sequence[str]
     template_fields: Collection[str]
     template_fields_renderers: dict[str, str]
+    template_fields_rendering_kwargs: dict[str, dict[str, bool]] = attrs.field(factory=dict)
     ui_color: str
     ui_fgcolor: str
     _is_empty: bool = attrs.field(alias="is_empty")
