@@ -45,7 +45,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from airflow._shared.timezones import timezone
 from airflow.exceptions import AirflowException, DagNotFound, DagRunTypeNotAllowed
 from airflow.models.base import Base, StringID
-from airflow.utils.session import NEW_SESSION, provide_session
+from airflow.utils.session import create_session
 from airflow.utils.sqlalchemy import UtcDateTime, with_row_locks
 from airflow.utils.state import DagRunState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
@@ -592,7 +592,6 @@ def _handle_clear_run(
     )
 
 
-@provide_session
 def _create_backfill(
     *,
     dag_id: str,
@@ -604,82 +603,85 @@ def _create_backfill(
     triggering_user_name: str | None,
     reprocess_behavior: ReprocessBehavior | None = None,
     run_on_latest_version: bool = False,
-    session: Session = NEW_SESSION,
 ) -> Backfill:
     from airflow.models import DagModel
     from airflow.models.serialized_dag import SerializedDagModel
 
-    serdag = session.scalar(SerializedDagModel.latest_item_select_object(dag_id))
-    if not serdag:
-        raise DagNotFound(f"Could not find dag {dag_id}")
+    with create_session() as session:
+        serdag = session.scalar(SerializedDagModel.latest_item_select_object(dag_id))
+        if not serdag:
+            raise DagNotFound(f"Could not find dag {dag_id}")
 
-    dag_model = session.scalar(select(DagModel).where(DagModel.dag_id == dag_id).limit(1))
-    if dag_model:
-        if (
-            dag_model.allowed_run_types is not None
-            and DagRunType.BACKFILL_JOB not in dag_model.allowed_run_types
-        ):
-            raise DagRunTypeNotAllowed(f"Dag with dag_id: '{dag_id}' does not allow backfill runs")
+        dag_model = session.scalar(select(DagModel).where(DagModel.dag_id == dag_id).limit(1))
+        if dag_model:
+            if (
+                dag_model.allowed_run_types is not None
+                and DagRunType.BACKFILL_JOB not in dag_model.allowed_run_types
+            ):
+                raise DagRunTypeNotAllowed(f"Dag with dag_id: '{dag_id}' does not allow backfill runs")
 
-    dag = serdag.dag
-    if not dag.timetable.periodic:
-        raise DagNonPeriodicScheduleException(
-            f"{dag_id} has a non-periodic schedule that does not support backfills"
+        dag = serdag.dag
+        if not dag.timetable.periodic:
+            raise DagNonPeriodicScheduleException(
+                f"{dag_id} has a non-periodic schedule that does not support backfills"
+            )
+
+        num_active = session.scalar(
+            select(func.count()).where(
+                Backfill.dag_id == dag_id,
+                Backfill.completed_at.is_(None),
+            )
         )
+        if num_active is None:
+            raise UnknownActiveBackfills(dag_id)
+        if num_active > 0:
+            raise AlreadyRunningBackfill(
+                f"Another backfill is running for Dag {dag_id}. "
+                f"There can be only one running backfill per Dag."
+            )
 
-    num_active = session.scalar(
-        select(func.count()).where(
-            Backfill.dag_id == dag_id,
-            Backfill.completed_at.is_(None),
+        _validate_backfill_params(dag, reverse, from_date, to_date, reprocess_behavior, dag_run_conf)
+
+        br = Backfill(
+            dag_id=dag_id,
+            from_date=from_date,
+            to_date=to_date,
+            max_active_runs=max_active_runs,
+            dag_run_conf=dag_run_conf,
+            reprocess_behavior=reprocess_behavior,
+            dag_model=dag,
+            triggering_user_name=triggering_user_name,
         )
-    )
-    if num_active is None:
-        raise UnknownActiveBackfills(dag_id)
-    if num_active > 0:
-        raise AlreadyRunningBackfill(
-            f"Another backfill is running for Dag {dag_id}. There can be only one running backfill per Dag."
-        )
+        session.add(br)
+        session.commit()
 
-    _validate_backfill_params(dag, reverse, from_date, to_date, reprocess_behavior, dag_run_conf)
+        session.scalars(select(DagModel).where(DagModel.dag_id == dag_id)).one()
 
-    br = Backfill(
-        dag_id=dag_id,
-        from_date=from_date,
-        to_date=to_date,
-        max_active_runs=max_active_runs,
-        dag_run_conf=dag_run_conf,
-        reprocess_behavior=reprocess_behavior,
-        dag_model=dag,
-        triggering_user_name=triggering_user_name,
-    )
-    session.add(br)
-    session.flush()
-
-    dagrun_info_list = _get_info_list(
-        from_date=from_date,
-        to_date=to_date,
-        reverse=reverse,
-        dag=dag,
-    )
-    if not dagrun_info_list:
-        raise RuntimeError(f"No runs to create for Dag {dag_id}")
-
-    first_info = dagrun_info_list[0]
-    if first_info.partition_key:
-        _create_runs_partitioned(
-            br=br,
+        dagrun_info_list = _get_info_list(
+            from_date=from_date,
+            to_date=to_date,
+            reverse=reverse,
             dag=dag,
-            dagrun_info_list=dagrun_info_list,
-            session=session,
         )
-    else:
-        _create_runs_non_partitioned(
-            br=br,
-            dag=dag,
-            dagrun_info_list=dagrun_info_list,
-            run_on_latest_version=run_on_latest_version,
-            session=session,
-        )
+        if not dagrun_info_list:
+            raise RuntimeError(f"No runs to create for Dag {dag_id}")
+
+        first_info = dagrun_info_list[0]
+        if first_info.partition_key:
+            _create_runs_partitioned(
+                br=br,
+                dag=dag,
+                dagrun_info_list=dagrun_info_list,
+                session=session,
+            )
+        else:
+            _create_runs_non_partitioned(
+                br=br,
+                dag=dag,
+                dagrun_info_list=dagrun_info_list,
+                run_on_latest_version=run_on_latest_version,
+                session=session,
+            )
     return br
 
 

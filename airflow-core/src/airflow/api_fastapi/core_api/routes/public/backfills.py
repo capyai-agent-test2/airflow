@@ -59,6 +59,7 @@ from airflow.models.backfill import (
     _create_backfill,
     _do_dry_run,
 )
+from airflow.utils.session import create_session
 from airflow.utils.state import DagRunState
 
 backfills_router = AirflowRouter(tags=["Backfill"], prefix="/backfills")
@@ -229,16 +230,16 @@ def cancel_backfill(backfill_id: NonNegativeInt, session: SessionDep) -> Backfil
 def create_backfill(
     backfill_request: BackfillPostBody,
     user: GetUserDep,
-    session: SessionDep,
 ) -> BackfillResponse:
     from_date = timezone.coerce_datetime(backfill_request.from_date)
     to_date = timezone.coerce_datetime(backfill_request.to_date)
-    resolved_run_on_latest = resolve_run_on_latest_version(
-        backfill_request.run_on_latest_version,
-        backfill_request.dag_id,
-        session,
-        fallback=True,
-    )
+    with create_session(scoped=False) as session:
+        resolved_run_on_latest = resolve_run_on_latest_version(
+            backfill_request.run_on_latest_version,
+            backfill_request.dag_id,
+            session,
+            fallback=True,
+        )
     try:
         backfill_obj = _create_backfill(
             dag_id=backfill_request.dag_id,
@@ -250,7 +251,6 @@ def create_backfill(
             triggering_user_name=user.get_name(),
             reprocess_behavior=backfill_request.reprocess_behavior,
             run_on_latest_version=resolved_run_on_latest,
-            session=session,
         )
         return BackfillResponse.model_validate(backfill_obj)
 
