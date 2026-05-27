@@ -4865,6 +4865,56 @@ class TestSchedulerJob:
         session.rollback()
         session.close()
 
+    def test_verify_integrity_refreshes_null_state_task_instances(self, dag_maker):
+        """Dag version refresh includes stale task instances whose state is still NULL."""
+        dag_id = "test_verify_integrity_refreshes_null_state_task_instances"
+        with create_session() as session:
+            session.execute(
+                delete(SerializedDagModel).where(SerializedDagModel.dag_id == dag_id),
+                execution_options={"synchronize_session": False},
+            )
+
+        with dag_maker(dag_id=dag_id, serialized=False) as dag:
+            BashOperator(task_id="dummy_0", bash_command="echo hi")
+
+        session = settings.Session()
+        orm_dag = dag_maker.dag_model
+        assert orm_dag is not None
+        SerializedDagModel.write_dag(LazyDeserializedDAG.from_dag(dag), bundle_name="testing")
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+        self.job_runner._create_dag_runs([orm_dag], session)
+        dr = DagRun.find(dag_id=dag.dag_id, session=session)[0]
+        ti = session.scalar(
+            select(TaskInstance).where(TaskInstance.dag_id == dr.dag_id, TaskInstance.run_id == dr.run_id)
+        )
+        assert ti is not None
+        assert ti.state is None
+        dag_version_1 = DagVersion.get_latest_version(dr.dag_id, session=session)
+
+        BashOperator(task_id="dummy_1", dag=dag, bash_command="echo hi")
+        SerializedDagModel.write_dag(
+            LazyDeserializedDAG.from_dag(dag), bundle_name="testing", session=session
+        )
+        session.commit()
+        dag_version_2 = DagVersion.get_latest_version(dr.dag_id, session=session)
+        assert dag_version_2 != dag_version_1
+
+        with mock.patch("airflow.jobs.scheduler_job_runner.DagRun.verify_integrity"):
+            self.job_runner._verify_integrity_if_dag_changed(dag_run=dr, session=session)
+        session.commit()
+
+        session.expire_all()
+        refreshed_ti = session.get(TaskInstance, ti.id)
+        assert refreshed_ti is not None
+        assert refreshed_ti.state is None
+        assert refreshed_ti.dag_version_id == dag_version_2.id
+
+        session.rollback()
+        session.close()
+
     def test_verify_integrity_not_called_for_versioned_bundles(self, dag_maker, session):
         with dag_maker("test_verify_integrity_if_dag_not_changed") as dag:
             BashOperator(task_id="dummy", bash_command="echo hi")

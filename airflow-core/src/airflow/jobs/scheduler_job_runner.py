@@ -2513,14 +2513,17 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             return False
         if TYPE_CHECKING:
             assert latest_dag_version
+        stale_version_filter = and_(
+            or_(TI.state.is_(None), TI.state.in_(State.unfinished)),
+            or_(TI.dag_version_id.is_(None), TI.dag_version_id != latest_dag_version.id),
+        )
 
         stale_unfinished_tis = (
             select(TI.id)
             .where(
                 TI.dag_id == dag_run.dag_id,
                 TI.run_id == dag_run.run_id,
-                TI.state.in_(State.unfinished),
-                or_(TI.dag_version_id.is_(None), TI.dag_version_id != latest_dag_version.id),
+                stale_version_filter,
             )
             .limit(1)
         )
@@ -2543,8 +2546,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 .where(
                     TI.dag_id == dag_run.dag_id,
                     TI.run_id == dag_run.run_id,
-                    TI.state.in_(State.unfinished),
-                    or_(TI.dag_version_id.is_(None), TI.dag_version_id != latest_dag_version.id),
+                    stale_version_filter,
                 )
                 .order_by(TI.id)
                 .limit(_DAG_VERSION_REFRESH_BATCH_SIZE)
