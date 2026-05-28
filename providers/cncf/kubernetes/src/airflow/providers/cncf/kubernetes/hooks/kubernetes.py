@@ -33,6 +33,7 @@ from kubernetes.config import ConfigException
 from kubernetes_asyncio import client as async_client, config as async_config, watch as async_watch
 from urllib3.exceptions import HTTPError
 
+from airflow.configuration import conf
 from airflow.models import Connection
 from airflow.providers.cncf.kubernetes.exceptions import KubernetesApiError, KubernetesApiPermissionError
 from airflow.providers.cncf.kubernetes.kube_client import _disable_verify_ssl, _enable_tcp_keepalive
@@ -294,6 +295,31 @@ class KubernetesHook(BaseHook, PodOperatorHookProtocol):
         prefixed_name = f"extra__kubernetes__{field_name}"
         return self.conn_extras.get(prefixed_name) or None
 
+    def _get_client_configuration_with_ssl_ca_cert(
+        self, ssl_ca_cert: str | None
+    ) -> client.Configuration | None:
+        if self.client_configuration is not None:
+            configuration = self.client_configuration
+        elif ssl_ca_cert:
+            configuration = client.Configuration.get_default_copy()
+        else:
+            return None
+
+        if ssl_ca_cert:
+            configuration.ssl_ca_cert = ssl_ca_cert
+        return configuration
+
+    def _find_ssl_ca_cert(self) -> str | None:
+        return self._coalesce_param(
+            self._get_field("ssl_ca_cert"),
+            conf.get("kubernetes_executor", "ssl_ca_cert", fallback=None),
+        )
+
+    @staticmethod
+    def _apply_ssl_ca_cert_override(configuration: client.Configuration, ssl_ca_cert: str | None) -> None:
+        if ssl_ca_cert:
+            configuration.ssl_ca_cert = ssl_ca_cert
+
     def get_conn(self) -> client.ApiClient:
         """Return kubernetes api session for use with requests."""
         in_cluster = self._coalesce_param(self.in_cluster, self._get_field("in_cluster"))
@@ -314,6 +340,7 @@ class KubernetesHook(BaseHook, PodOperatorHookProtocol):
         disable_verify_ssl = self._coalesce_param(
             self.disable_verify_ssl, _get_bool(self._get_field("disable_verify_ssl"))
         )
+        ssl_ca_cert = self._find_ssl_ca_cert()
         disable_tcp_keepalive = self._coalesce_param(
             self.disable_tcp_keepalive, _get_bool(self._get_field("disable_tcp_keepalive"))
         )
@@ -328,7 +355,7 @@ class KubernetesHook(BaseHook, PodOperatorHookProtocol):
             self._is_in_cluster = True
             config.load_incluster_config()
             return _TimeoutK8sApiClient(
-                configuration=self.client_configuration,
+                configuration=self._get_client_configuration_with_ssl_ca_cert(ssl_ca_cert),
                 disable_verify_ssl=disable_verify_ssl is True,
             )
 
@@ -341,7 +368,7 @@ class KubernetesHook(BaseHook, PodOperatorHookProtocol):
                 context=cluster_context,
             )
             return _TimeoutK8sApiClient(
-                configuration=self.client_configuration,
+                configuration=self._get_client_configuration_with_ssl_ca_cert(ssl_ca_cert),
                 disable_verify_ssl=disable_verify_ssl is True,
             )
 
@@ -359,7 +386,7 @@ class KubernetesHook(BaseHook, PodOperatorHookProtocol):
                     context=cluster_context,
                 )
             return _TimeoutK8sApiClient(
-                configuration=self.client_configuration,
+                configuration=self._get_client_configuration_with_ssl_ca_cert(ssl_ca_cert),
                 disable_verify_ssl=disable_verify_ssl is True,
             )
 
@@ -372,16 +399,22 @@ class KubernetesHook(BaseHook, PodOperatorHookProtocol):
                 context=cluster_context,
             )
             return _TimeoutK8sApiClient(
-                configuration=self.client_configuration,
+                configuration=self._get_client_configuration_with_ssl_ca_cert(ssl_ca_cert),
                 disable_verify_ssl=disable_verify_ssl is True,
             )
 
         return self._get_default_client(
-            cluster_context=cluster_context, disable_verify_ssl=disable_verify_ssl
+            cluster_context=cluster_context,
+            disable_verify_ssl=disable_verify_ssl,
+            ssl_ca_cert=ssl_ca_cert,
         )
 
     def _get_default_client(
-        self, *, cluster_context: str | None = None, disable_verify_ssl: bool | None = None
+        self,
+        *,
+        cluster_context: str | None = None,
+        disable_verify_ssl: bool | None = None,
+        ssl_ca_cert: str | None = None,
     ) -> client.ApiClient:
         # if we get here, then no configuration has been supplied
         # we should try in_cluster since that's most likely
@@ -398,7 +431,7 @@ class KubernetesHook(BaseHook, PodOperatorHookProtocol):
                 context=cluster_context,
             )
         return _TimeoutK8sApiClient(
-            configuration=self.client_configuration,
+            configuration=self._get_client_configuration_with_ssl_ca_cert(ssl_ca_cert),
             disable_verify_ssl=disable_verify_ssl is True,
         )
 
@@ -917,6 +950,7 @@ class AsyncKubernetesHook(KubernetesHook):
         cluster_context = self._coalesce_param(self.cluster_context, await self._get_field("cluster_context"))
         kubeconfig_path = await self._get_field("kube_config_path")
         kubeconfig = await self._get_field("kube_config")
+        ssl_ca_cert = await self._find_ssl_ca_cert()
 
         num_selected_configuration = sum(
             1 for o in [in_cluster, kubeconfig, kubeconfig_path, self.config_dict] if o
@@ -932,6 +966,7 @@ class AsyncKubernetesHook(KubernetesHook):
         if in_cluster:
             self.log.debug(LOADING_KUBE_CONFIG_FILE_RESOURCE.format("within a pod"))
             async_config.load_incluster_config(client_configuration=self.client_configuration)
+            self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
             self._is_in_cluster = True
             self._config_loaded = True
             return
@@ -952,6 +987,7 @@ class AsyncKubernetesHook(KubernetesHook):
             if not self._is_exec_auth:
                 self._config_loaded = True
 
+            self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
             return
         if kubeconfig_path is not None:
             self.log.debug("loading kube_config from: %s", kubeconfig_path)
@@ -980,6 +1016,7 @@ class AsyncKubernetesHook(KubernetesHook):
             if not self._is_exec_auth:
                 self._config_loaded = True
 
+            self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
             return
         if kubeconfig is not None:
             async with aiofiles.tempfile.NamedTemporaryFile() as temp_config:
@@ -1017,6 +1054,7 @@ class AsyncKubernetesHook(KubernetesHook):
                 if not self._is_exec_auth:
                     self._config_loaded = True
 
+            self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
             return
         self.log.debug(LOADING_KUBE_CONFIG_FILE_RESOURCE.format("default configuration file"))
 
@@ -1024,6 +1062,7 @@ class AsyncKubernetesHook(KubernetesHook):
             client_configuration=self.client_configuration,
             context=cluster_context,
         )
+        self._apply_ssl_ca_cert_override(self.client_configuration, ssl_ca_cert)
         self._config_loaded = True
 
     async def get_conn_extras(self) -> dict:
@@ -1052,6 +1091,12 @@ class AsyncKubernetesHook(KubernetesHook):
             return extras.get(field_name)
         prefixed_name = f"extra__kubernetes__{field_name}"
         return extras.get(prefixed_name)
+
+    async def _find_ssl_ca_cert(self) -> str | None:
+        return self._coalesce_param(
+            (await self._get_field("ssl_ca_cert")) or None,
+            conf.get("kubernetes_executor", "ssl_ca_cert", fallback=None),
+        )
 
     @contextlib.asynccontextmanager
     async def get_conn(self) -> AsyncGenerator[async_client.ApiClient, None]:

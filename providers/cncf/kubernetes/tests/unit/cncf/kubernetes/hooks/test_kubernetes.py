@@ -48,6 +48,7 @@ from airflow.providers.cncf.kubernetes.kubernetes_helper_functions import (
 )
 from airflow.providers.common.compat.sdk import AirflowException, AirflowNotFoundException
 
+from tests_common.test_utils.config import conf_vars
 from tests_common.test_utils.db import clear_test_connections
 from tests_common.test_utils.providers import get_provider_min_airflow_version
 
@@ -211,6 +212,7 @@ class TestKubernetesHook:
             ("default_kube_config", {}),
             ("disable_verify_ssl", {"disable_verify_ssl": True}),
             ("disable_verify_ssl_empty", {"disable_verify_ssl": ""}),
+            ("ssl_ca_cert", {"ssl_ca_cert": "/path/from/connection-ca.crt"}),
             ("disable_tcp_keepalive", {"disable_tcp_keepalive": True}),
             ("disable_tcp_keepalive_empty", {"disable_tcp_keepalive": ""}),
             ("sidecar_container_image", {"xcom_sidecar_container_image": "private.repo.com/alpine:3.16"}),
@@ -388,6 +390,23 @@ class TestKubernetesHook:
         api_conn = kubernetes_hook.get_conn()
         assert isinstance(api_conn, kubernetes.client.api_client.ApiClient)
         assert api_conn.configuration.verify_ssl is False
+
+    @pytest.mark.parametrize(
+        ("conn_id", "expected_ssl_ca_cert"),
+        [
+            pytest.param(None, "/path/from/executor-ca.crt", id="executor-config-fallback"),
+            pytest.param("ssl_ca_cert", "/path/from/connection-ca.crt", id="connection-extra-precedence"),
+        ],
+    )
+    @patch("kubernetes.config.incluster_config.InClusterConfigLoader", new=MagicMock())
+    @patch("kubernetes.config.kube_config.KubeConfigLoader", new=MagicMock())
+    @patch("kubernetes.config.kube_config.KubeConfigMerger", new=MagicMock())
+    def test_ssl_ca_cert_applies_to_client_configuration(self, conn_id, expected_ssl_ca_cert):
+        with conf_vars({("kubernetes_executor", "ssl_ca_cert"): "/path/from/executor-ca.crt"}):
+            api_conn = KubernetesHook(conn_id=conn_id).get_conn()
+
+        assert isinstance(api_conn, kubernetes.client.api_client.ApiClient)
+        assert api_conn.configuration.ssl_ca_cert == expected_ssl_ca_cert
 
     @pytest.mark.parametrize(
         ("disable_tcp_keepalive", "conn_id", "expected"),
@@ -1022,6 +1041,67 @@ class TestAsyncKubernetesHook:
         incluster_config.assert_called_once()
         assert not kube_config_loader.called
         assert not kube_config_merger.called
+
+    @pytest.mark.parametrize(
+        ("connection_extras", "expected_ssl_ca_cert"),
+        [
+            pytest.param(None, "/path/from/executor-ca.crt", id="executor-config-fallback"),
+            pytest.param({"ssl_ca_cert": ""}, "/path/from/executor-ca.crt", id="empty-extra-falls-back"),
+            pytest.param(
+                {"ssl_ca_cert": "/path/from/connection-ca.crt"},
+                "/path/from/connection-ca.crt",
+                id="connection-extra-precedence",
+            ),
+        ],
+    )
+    @pytest.mark.asyncio
+    @mock.patch(INCLUSTER_CONFIG_LOADER)
+    @mock.patch(KUBE_CONFIG_MERGER)
+    async def test_load_config_sets_ssl_ca_cert(
+        self,
+        kube_config_merger,
+        incluster_config,
+        kube_config_loader,
+        connection_extras,
+        expected_ssl_ca_cert,
+    ):
+        with conf_vars({("kubernetes_executor", "ssl_ca_cert"): "/path/from/executor-ca.crt"}):
+            hook = AsyncKubernetesHook(
+                conn_id=None,
+                in_cluster=False,
+                connection_extras=connection_extras,
+            )
+            await hook._load_config()
+
+        assert not incluster_config.called
+        kube_config_loader.assert_called_once()
+        kube_config_merger.assert_called_once()
+        assert hook.client_configuration.ssl_ca_cert == expected_ssl_ca_cert
+
+    @pytest.mark.asyncio
+    @mock.patch(INCLUSTER_CONFIG_LOADER)
+    @mock.patch(KUBE_CONFIG_MERGER)
+    async def test_load_config_preserves_kubeconfig_ssl_ca_cert_without_override(
+        self,
+        kube_config_merger,
+        incluster_config,
+        kube_config_loader,
+    ):
+        async def set_kubeconfig_ssl_ca(client_configuration):
+            client_configuration.ssl_ca_cert = "/path/from/kubeconfig-ca.crt"
+
+        kube_config_loader.return_value.load_and_set.side_effect = set_kubeconfig_ssl_ca
+
+        hook = AsyncKubernetesHook(
+            conn_id=None,
+            in_cluster=False,
+        )
+        await hook._load_config()
+
+        assert not incluster_config.called
+        kube_config_loader.assert_called_once()
+        kube_config_merger.assert_called_once()
+        assert hook.client_configuration.ssl_ca_cert == "/path/from/kubeconfig-ca.crt"
 
     @pytest.mark.asyncio
     @mock.patch(INCLUSTER_CONFIG_LOADER)
