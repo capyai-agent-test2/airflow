@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { useConfig } from "src/queries/useConfig";
 
@@ -31,6 +31,7 @@ type UseRerunWithLatestVersionProps = {
 };
 
 type UseRerunWithLatestVersionResult = {
+  resetValue: () => void;
   setValue: (newValue: boolean) => void;
   value: boolean;
 };
@@ -50,6 +51,7 @@ export const useRerunWithLatestVersion = ({
   const [override, setOverride] = useState<boolean | undefined>(undefined);
 
   const value = override ?? dagLevelConfig ?? globalConfigValue ?? fallback;
+  const resetValue = useCallback(() => setOverride(undefined), []);
 
-  return { setValue: setOverride, value };
+  return { resetValue, setValue: setOverride, value };
 };

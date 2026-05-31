@@ -17,7 +17,7 @@
  * under the License.
  */
 import { Button, Flex, Heading, VStack } from "@chakra-ui/react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { TaskInstanceResponse, TaskInstanceState } from "openapi/requests/types.gen";
@@ -43,7 +43,7 @@ const MarkTaskInstanceAsDialog = ({ onClose, open, state, taskInstance }: Props)
   const mapIndex = taskInstance.map_index;
   const { t: translate } = useTranslation();
 
-  const [selectedOptions, setSelectedOptions] = useState<Array<string>>([]);
+  const [selectedOptions, setSelectedOptions] = useState<Array<string>>(["downstream"]);
 
   const past = selectedOptions.includes("past");
   const future = selectedOptions.includes("future");
@@ -52,11 +52,21 @@ const MarkTaskInstanceAsDialog = ({ onClose, open, state, taskInstance }: Props)
 
   const [note, setNote] = useState<string | null>(taskInstance.note);
 
+  const resetForm = useCallback(() => {
+    setNote(taskInstance.note);
+    setSelectedOptions(["downstream"]);
+  }, [taskInstance.note]);
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
   const { isPending, mutate } = usePatchTaskInstance({
     dagId,
     dagRunId,
     mapIndex,
-    onSuccess: onClose,
+    onSuccess: handleClose,
     taskId,
   });
   const { data, isPending: isPendingDryRun } = usePatchTaskInstanceDryRun({
@@ -83,8 +93,22 @@ const MarkTaskInstanceAsDialog = ({ onClose, open, state, taskInstance }: Props)
     total_entries: 0,
   };
 
+  useEffect(() => {
+    if (open) {
+      resetForm();
+    }
+  }, [open, resetForm]);
+
   return (
-    <Dialog.Root lazyMount onOpenChange={onClose} open={open}>
+    <Dialog.Root
+      lazyMount
+      onOpenChange={({ open: nextOpen }) => {
+        if (!nextOpen) {
+          handleClose();
+        }
+      }}
+      open={open}
+    >
       <Dialog.Content backdrop>
         <Dialog.Header>
           <VStack align="start" gap={4}>
@@ -108,6 +132,7 @@ const MarkTaskInstanceAsDialog = ({ onClose, open, state, taskInstance }: Props)
           <Flex justifyContent="center">
             <SegmentedControl
               defaultValues={["downstream"]}
+              key={open ? "open" : "closed"}
               multiple
               onChange={setSelectedOptions}
               options={[

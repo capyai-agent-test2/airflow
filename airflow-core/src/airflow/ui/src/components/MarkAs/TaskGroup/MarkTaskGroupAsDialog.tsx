@@ -17,7 +17,7 @@
  * under the License.
  */
 import { Button, Flex, Heading, VStack } from "@chakra-ui/react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 
@@ -42,7 +42,7 @@ const MarkTaskGroupAsDialog = ({ groupTaskInstance, onClose, open, state }: Prop
   const groupId = groupTaskInstance.task_id;
   const { t: translate } = useTranslation();
 
-  const [selectedOptions, setSelectedOptions] = useState<Array<string>>([]);
+  const [selectedOptions, setSelectedOptions] = useState<Array<string>>(["downstream"]);
 
   const past = selectedOptions.includes("past");
   const future = selectedOptions.includes("future");
@@ -51,11 +51,21 @@ const MarkTaskGroupAsDialog = ({ groupTaskInstance, onClose, open, state }: Prop
 
   const [note, setNote] = useState<string | null>(null);
 
+  const resetForm = useCallback(() => {
+    setNote(null);
+    setSelectedOptions(["downstream"]);
+  }, []);
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
   const { isPending, mutate } = usePatchTaskGroup({
     dagId,
     dagRunId: runId,
     groupId,
-    onSuccess: onClose,
+    onSuccess: handleClose,
   });
   const { data, isPending: isPendingDryRun } = usePatchTaskGroupDryRun({
     dagId,
@@ -80,8 +90,22 @@ const MarkTaskGroupAsDialog = ({ groupTaskInstance, onClose, open, state }: Prop
     total_entries: 0,
   };
 
+  useEffect(() => {
+    if (open) {
+      resetForm();
+    }
+  }, [open, resetForm]);
+
   return (
-    <Dialog.Root lazyMount onOpenChange={onClose} open={open}>
+    <Dialog.Root
+      lazyMount
+      onOpenChange={({ open: nextOpen }) => {
+        if (!nextOpen) {
+          handleClose();
+        }
+      }}
+      open={open}
+    >
       <Dialog.Content backdrop>
         <Dialog.Header>
           <VStack align="start" gap={4}>
@@ -105,6 +129,7 @@ const MarkTaskGroupAsDialog = ({ groupTaskInstance, onClose, open, state }: Prop
           <Flex justifyContent="center">
             <SegmentedControl
               defaultValues={["downstream"]}
+              key={open ? "open" : "closed"}
               multiple
               onChange={setSelectedOptions}
               options={[

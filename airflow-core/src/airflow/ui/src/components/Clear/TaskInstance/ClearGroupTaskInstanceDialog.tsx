@@ -17,7 +17,7 @@
  * under the License.
  */
 import { Button, Flex, Heading, VStack } from "@chakra-ui/react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CgRedo } from "react-icons/cg";
 import { useParams } from "react-router-dom";
@@ -60,9 +60,13 @@ export const ClearGroupTaskInstanceDialog = ({ onClose, open, taskInstance }: Pr
   const downstream = selectedOptions.includes("downstream");
   const [note, setNote] = useState<string | null>(null);
 
-  const { data: dagDetails } = useDagServiceGetDagDetails({
-    dagId,
-  });
+  const { data: dagDetails } = useDagServiceGetDagDetails(
+    {
+      dagId,
+    },
+    undefined,
+    { enabled: open },
+  );
 
   const { data: groupTaskInstances } = useTaskInstanceServiceGetTaskInstances(
     {
@@ -88,7 +92,11 @@ export const ClearGroupTaskInstanceDialog = ({ onClose, open, taskInstance }: Pr
 
   // dagVersionsDiffer becomes the fallback so the historical "auto-check when versions
   // differ" heuristic still applies when neither DAG-level nor global config is set.
-  const { setValue: setRunOnLatestVersion, value: runOnLatestVersion } = useRerunWithLatestVersion({
+  const {
+    resetValue: resetRunOnLatestVersion,
+    setValue: setRunOnLatestVersion,
+    value: runOnLatestVersion,
+  } = useRerunWithLatestVersion({
     dagLevelConfig: dagDetails?.rerun_with_latest_version,
     fallback: dagVersionsDiffer,
   });
@@ -122,8 +130,33 @@ export const ClearGroupTaskInstanceDialog = ({ onClose, open, taskInstance }: Pr
     total_entries: 0,
   };
 
+  const resetForm = useCallback(() => {
+    setNote(null);
+    setSelectedOptions(["downstream"]);
+    resetRunOnLatestVersion();
+  }, [resetRunOnLatestVersion]);
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  useEffect(() => {
+    if (open) {
+      resetForm();
+    }
+  }, [open, resetForm]);
+
   return (
-    <Dialog.Root lazyMount onOpenChange={onClose} open={open}>
+    <Dialog.Root
+      lazyMount
+      onOpenChange={({ open: nextOpen }) => {
+        if (!nextOpen) {
+          handleClose();
+        }
+      }}
+      open={open}
+    >
       <Dialog.Content backdrop>
         <Dialog.Header>
           <VStack align="start" gap={4}>
@@ -145,6 +178,7 @@ export const ClearGroupTaskInstanceDialog = ({ onClose, open, taskInstance }: Pr
           <Flex justifyContent="center">
             <SegmentedControl
               defaultValues={["downstream"]}
+              key={open ? "open" : "closed"}
               multiple
               onChange={setSelectedOptions}
               options={[

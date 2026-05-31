@@ -81,7 +81,13 @@ const ClearTaskInstanceConfirmationDialog = ({
   const taskCurrentState = firstInstance?.state;
 
   useEffect(() => {
-    if (!isFetching && open && data) {
+    if (!open) {
+      setIsReady(false);
+
+      return;
+    }
+
+    if (!isFetching && data) {
       const isInTriggeringState = taskCurrentState === "queued" || taskCurrentState === "scheduled";
 
       if (!preventRunningTask || !isInTriggeringState) {
@@ -94,7 +100,15 @@ const ClearTaskInstanceConfirmationDialog = ({
   }, [isFetching, data, open, taskCurrentState, preventRunningTask, onConfirm, onClose]);
 
   return (
-    <Dialog.Root lazyMount onOpenChange={onClose} open={open}>
+    <Dialog.Root
+      lazyMount
+      onOpenChange={({ open: nextOpen }) => {
+        if (!nextOpen) {
+          onClose();
+        }
+      }}
+      open={open}
+    >
       <Dialog.Content backdrop>
         {isFetching ? (
           <VStack align="center" gap={3} justify="center" py={8}>
