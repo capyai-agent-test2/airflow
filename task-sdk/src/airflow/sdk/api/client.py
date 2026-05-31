@@ -707,7 +707,13 @@ class XComOperations:
             params["step"] = step
         if include_prior_dates:
             params["include_prior_dates"] = include_prior_dates
-        resp = self.client.get(f"{self._build_xcom_path(dag_id, run_id, task_id, key)}/slice", params=params)
+        if key is None:
+            params["as_sequence"] = True
+            resp = self.client.get(self._build_xcom_path(dag_id, run_id, task_id), params=params)
+        else:
+            resp = self.client.get(
+                f"{self._build_xcom_path(dag_id, run_id, task_id, key)}/slice", params=params
+            )
         return XComSequenceSliceResponse.model_validate_json(resp.read())
 
 

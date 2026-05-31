@@ -137,6 +137,24 @@ class TestXComsGetEndpoint:
         assert response.status_code == 200
         assert response.json() == {"key": "xcom_1", "value": "value1"}
 
+    def test_xcom_get_slice_key(self, client, create_task_instance, session):
+        ti = create_task_instance()
+        x = XComModel(
+            key="slice",
+            value="value1",
+            dag_run_id=ti.dag_run.id,
+            run_id=ti.run_id,
+            task_id=ti.task_id,
+            dag_id=ti.dag_id,
+        )
+        session.add(x)
+        session.commit()
+
+        response = client.get(f"/execution/xcoms/{ti.dag_id}/{ti.run_id}/{ti.task_id}/slice")
+
+        assert response.status_code == 200
+        assert response.json() == {"key": "slice", "value": "value1"}
+
     @pytest.mark.usefixtures("access_denied")
     def test_xcom_access_denied(self, client, caplog):
         with caplog.at_level(logging.DEBUG):
@@ -319,7 +337,7 @@ class TestXComsGetEndpoint:
         )
         session.commit()
 
-        response = client.get("/execution/xcoms/dag/runid/task/slice")
+        response = client.get("/execution/xcoms/dag/runid/task?as_sequence=true")
 
         assert response.status_code == 200
         assert set(response.json()) == {"value1", "value2"}

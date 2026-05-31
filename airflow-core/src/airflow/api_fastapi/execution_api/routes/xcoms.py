@@ -81,7 +81,7 @@ async def xcom_query(
     dag_id: str,
     run_id: str,
     task_id: str,
-    key: str,
+    key: Annotated[str, Path(min_length=1)],
     map_index: Annotated[int | None, Query()] = None,
 ) -> Select:
     query = XComModel.get_many(
@@ -283,27 +283,6 @@ def _get_mapped_xcom_slice_response(
 
 
 @router.get(
-    "/{dag_id}/{run_id}/{task_id}/slice",
-    description="Get XCom values from a mapped task by sequence slice without filtering by key",
-)
-def get_mapped_xcom_by_slice_without_key(
-    dag_id: str,
-    run_id: str,
-    task_id: str,
-    params: Annotated[GetXComSliceFilterParams, Query()],
-    session: SessionDep,
-) -> XComSequenceSliceResponse:
-    return _get_mapped_xcom_slice_response(
-        dag_id=dag_id,
-        run_id=run_id,
-        task_id=task_id,
-        key=None,
-        params=params,
-        session=session,
-    )
-
-
-@router.get(
     "/{dag_id}/{run_id}/{task_id}/{key:path}/slice",
     description="Get XCom values from a mapped task by sequence slice",
 )
@@ -367,6 +346,12 @@ class GetXcomFilterParams(BaseModel):
     offset: int | None = None
 
 
+class GetKeylessXComFilterParams(GetXcomFilterParams, GetXComSliceFilterParams):
+    """Class to house the params that can optionally be set for keyless Get XCom."""
+
+    as_sequence: bool = False
+
+
 @router.get(
     "/{dag_id}/{run_id}/{task_id}",
     description="Get a single XCom Value without filtering by key",
@@ -376,9 +361,23 @@ def get_xcom_without_key(
     run_id: str,
     task_id: str,
     session: SessionDep,
-    params: Annotated[GetXcomFilterParams, Query()],
-) -> XComResponse:
+    params: Annotated[GetKeylessXComFilterParams, Query()],
+) -> XComResponse | XComSequenceSliceResponse:
     """Get an Airflow XCom from database - not other XCom Backends."""
+    if params.as_sequence:
+        return _get_mapped_xcom_slice_response(
+            dag_id=dag_id,
+            run_id=run_id,
+            task_id=task_id,
+            key=None,
+            params=GetXComSliceFilterParams(
+                start=params.start,
+                stop=params.stop,
+                step=params.step,
+                include_prior_dates=params.include_prior_dates,
+            ),
+            session=session,
+        )
     return _get_xcom_response(
         dag_id=dag_id,
         run_id=run_id,
