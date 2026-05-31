@@ -39,6 +39,7 @@ from airflow.dag_processing.dagbag import DagBag, sync_bag_to_db
 from airflow.dag_processing.processor import DagFileParsingResult, DagFileProcessorProcess
 from airflow.exceptions import AirflowException
 from airflow.models import DagModel, DagRun
+from airflow.models.dag_version import DagVersion
 from airflow.models.dagbag import DBDagBag
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.models.taskinstance import TaskInstance
@@ -312,6 +313,35 @@ class TestCliDags:
         for key in ["dag_id", "fileloc", "owners", "is_paused"]:  # "bundle_name", "bundle_version"?
             assert key in dag_list[0]
         assert any("airflow/example_dags/example_complex.py" in d["fileloc"] for d in dag_list)
+
+    @conf_vars({("core", "load_examples"): "false"})
+    def test_cli_list_dags_only_shows_latest_serialized_version(self, stdout_capture, session):
+        dag_id = "test_cli_list_dags_only_shows_latest_serialized_version"
+
+        with DAG(dag_id=dag_id, start_date=DEFAULT_DATE, tags=["old"]) as dag:
+            EmptyOperator(task_id="task")
+
+        sync_dag_to_db(dag, session=session)
+
+        with DAG(dag_id=dag_id, start_date=DEFAULT_DATE, tags=["new"]) as updated_dag:
+            EmptyOperator(task_id="task")
+
+        dag_version = DagVersion.write_dag(dag_id=dag_id, bundle_name="testing", session=session)
+        serialized_dag = SerializedDagModel(LazyDeserializedDAG.from_dag(updated_dag))
+        serialized_dag.dag_version = dag_version
+        serialized_dag.created_at = timezone.utcnow() + timedelta(seconds=1)
+        session.add(serialized_dag)
+        session.flush()
+
+        args = self.parser.parse_args(["dags", "list", "--output", "json", "--columns", "dag_id,tags"])
+        with mock.patch("airflow.models.DagModel.get_dagmodel", return_value=None):
+            with stdout_capture as temp_stdout:
+                dag_command.dag_list_dags(args)
+                out = temp_stdout.getvalue()
+
+        dag_list = json.loads(out)
+        assert [dag["dag_id"] for dag in dag_list].count(dag_id) == 1
+        assert next(dag for dag in dag_list if dag["dag_id"] == dag_id)["tags"] == "{'new'}"
 
     @conf_vars({("core", "load_examples"): "true"})
     def test_cli_list_local_dags(self, stdout_capture):
