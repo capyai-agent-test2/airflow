@@ -1145,6 +1145,30 @@ class BaseTestPythonVirtualenvOperator(BasePythonTest):
             "kwargs": {"ti": "runtime-task-instance", "task_instance": "runtime-task-instance"},
         }
 
+    def test_write_args_preserves_cyclic_containers(self, tmp_path):
+        def f(*args, **kwargs):
+            return args, kwargs
+
+        cyclic_kwarg = {}
+        cyclic_kwarg["self"] = cyclic_kwarg
+
+        op = self.opcls(
+            task_id="task",
+            python_callable=f,
+            **self.default_kwargs(),
+        )
+        cyclic_arg = []
+        cyclic_arg.append(cyclic_arg)
+        object.__setattr__(op, "op_args", [cyclic_arg])
+        object.__setattr__(op, "op_kwargs", {"cyclic": cyclic_kwarg})
+
+        output_file = tmp_path / "args.pkl"
+        op._write_args(output_file)
+
+        result = pickle.loads(output_file.read_bytes())
+        assert result["args"][0][0] is result["args"][0]
+        assert result["kwargs"]["cyclic"]["self"] is result["kwargs"]["cyclic"]
+
     def test_virtualenv_serializable_context_fields(self, create_task_instance):
         """Ensure all template context fields are listed in the operator.
 

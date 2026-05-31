@@ -434,15 +434,28 @@ def _is_task_instance_template_value(value: Any) -> bool:
     )
 
 
-def _stringify_task_instance_template_values(value: Any) -> Any:
+def _stringify_task_instance_template_values(value: Any, memo: dict[int, Any] | None = None) -> Any:
+    if memo is None:
+        memo = {}
+    if isinstance(value, lazy_object_proxy.Proxy):
+        value = value.__wrapped__
+    value_id = id(value)
+    if value_id in memo:
+        return memo[value_id]
     if _is_task_instance_template_value(value):
         return str(value)
     if isinstance(value, dict):
-        return {k: _stringify_task_instance_template_values(v) for k, v in value.items()}
+        result: dict[Any, Any] = {}
+        memo[value_id] = result
+        result.update({k: _stringify_task_instance_template_values(v, memo) for k, v in value.items()})
+        return result
     if isinstance(value, list):
-        return [_stringify_task_instance_template_values(v) for v in value]
+        result_list: list[Any] = []
+        memo[value_id] = result_list
+        result_list.extend(_stringify_task_instance_template_values(v, memo) for v in value)
+        return result_list
     if isinstance(value, tuple):
-        return tuple(_stringify_task_instance_template_values(v) for v in value)
+        return tuple(_stringify_task_instance_template_values(v, memo) for v in value)
     return value
 
 
@@ -591,20 +604,10 @@ class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):
         return textwrap.dedent(inspect.getsource(self.python_callable))
 
     def _write_args(self, file: Path):
-        def resolve_proxies(obj):
-            """Recursively replaces lazy_object_proxy.Proxy instances with their resolved values."""
-            if isinstance(obj, lazy_object_proxy.Proxy):
-                return obj.__wrapped__  # force evaluation
-            if isinstance(obj, dict):
-                return {k: resolve_proxies(v) for k, v in obj.items()}
-            if isinstance(obj, list):
-                return [resolve_proxies(v) for v in obj]
-            return obj
-
         if self.op_args or self.op_kwargs:
             self.log.info("Use %r as serializer.", self.serializer)
-            resolved_args = _stringify_task_instance_template_values(resolve_proxies(self.op_args))
-            resolved_kwargs = _stringify_task_instance_template_values(resolve_proxies(self.op_kwargs))
+            resolved_args = _stringify_task_instance_template_values(self.op_args)
+            resolved_kwargs = _stringify_task_instance_template_values(self.op_kwargs)
             try:
                 file.write_bytes(
                     self.pickling_library.dumps({"args": resolved_args, "kwargs": resolved_kwargs})
