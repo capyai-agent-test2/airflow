@@ -595,6 +595,18 @@ server_tls_key_file = /etc/pgbouncer/server.key
   {{- end }}
 {{- end }}
 
+{{- define "airflow_plugins" -}}
+  {{- if .Values.dags.gitSync.enabled }}
+    {{- if .Values.dags.mountPath }}
+      {{- printf "%s/repo/plugins" .Values.dags.mountPath }}
+    {{- else }}
+      {{- printf "%s/dags/repo/plugins" .Values.airflowHome }}
+    {{- end }}
+  {{- else }}
+    {{- printf "%s/plugins" .Values.airflowHome }}
+  {{- end }}
+{{- end }}
+
 {{- define "airflow_dags_volume_claim" -}}
   {{- if .Values.dags.persistence.existingClaim }}
     {{- .Values.dags.persistence.existingClaim }}
