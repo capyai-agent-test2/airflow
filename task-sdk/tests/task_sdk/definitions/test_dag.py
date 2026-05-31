@@ -19,9 +19,11 @@ from __future__ import annotations
 import re
 import warnings
 import weakref
+import zipfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import jinja2
 import pytest
 
 from airflow.sdk import Context, Label, PartitionAtRuntime, TaskGroup
@@ -151,6 +153,44 @@ class TestDag:
         assert op7.dag == dag
         assert op8.dag == dag
         assert op9.dag == dag2
+
+    def test_template_env_loads_templates_from_zip_file(self, tmp_path):
+        zip_path = tmp_path / "test.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr("test.py", "")
+            archive.writestr("test_sql/test.sql", "SELECT column_a FROM test")
+
+        dag = DAG("zip_templates", schedule=None)
+        dag.fileloc = f"{zip_path}/test.py"
+
+        template = dag.get_template_env().get_template("test_sql/test.sql")
+
+        assert template.render() == "SELECT column_a FROM test"
+
+    def test_template_env_loads_templates_from_zip_searchpath(self, tmp_path):
+        zip_path = tmp_path / "test.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr("test.py", "")
+            archive.writestr("templates/query.sql", "SELECT {{ column_name }} FROM test")
+
+        dag = DAG("zip_template_searchpath", schedule=None, template_searchpath=[f"{zip_path}/templates"])
+        dag.fileloc = f"{zip_path}/test.py"
+
+        template = dag.get_template_env().get_template("query.sql")
+
+        assert template.render(column_name="column_a") == "SELECT column_a FROM test"
+
+    def test_template_env_does_not_allow_zip_template_path_traversal(self, tmp_path):
+        zip_path = tmp_path / "test.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr("test.py", "")
+            archive.writestr("test_sql/test.sql", "SELECT column_a FROM test")
+
+        dag = DAG("zip_templates_no_traversal", schedule=None)
+        dag.fileloc = f"{zip_path}/test.py"
+
+        with pytest.raises(jinja2.TemplateNotFound):
+            dag.get_template_env().get_template("../test_sql/test.sql")
 
     def test_none_or_empty_access_control_does_not_warn(self) -> None:
         """Ensure that `RemovedInAirflow4Warning` warnings do not arise when `access_control` is `None`."""
