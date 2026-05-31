@@ -11085,6 +11085,14 @@
                             "type": "integer",
                             "default": 1234
                         },
+                        "ports": {
+                            "description": "Ports for the git sync container.",
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "$ref": "#/definitions/io.k8s.api.core.v1.ContainerPort"
+                            }
+                        },
                         "recommendedProbeSetting": {
                             "description": "Setting this to true, will remove readiness probe usage and configure liveness probe to use a dedicated Git-Sync liveness service.",
                             "type": "boolean",

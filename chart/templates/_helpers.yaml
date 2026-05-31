@@ -216,6 +216,9 @@ If release name contains chart name it will be used as a full name.
   image: {{ template "git_sync_image" . }}
   imagePullPolicy: {{ .Values.images.gitSync.pullPolicy }}
   securityContext: {{- include "localContainerSecurityContext" .Values.dags.gitSync | nindent 4 }}
+  {{- if and (not .is_init) .Values.dags.gitSync.ports }}
+  ports: {{- toYaml .Values.dags.gitSync.ports | nindent 4 }}
+  {{- end }}
   envFrom: {{- include "custom_git_sync_environment_from" . | default "\n  []" | indent 2 }}
   env:
     - name: GIT_SYNC_REV
