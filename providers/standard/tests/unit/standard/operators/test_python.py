@@ -1302,6 +1302,28 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
                 kwargs["venv_cache_path"] = venv_cache_path
         return kwargs
 
+    @mock.patch("airflow.providers.standard.operators.python._execute_in_subprocess")
+    def test_supervisor_fd_is_passed_to_subprocess_when_env_is_not_inherited(
+        self, mock_execute_subprocess, monkeypatch
+    ):
+        def f():
+            pass
+
+        monkeypatch.setenv("__AIRFLOW_SUPERVISOR_FD", "123")
+        with self.dag_maker(self.dag_id, serialized=True):
+            op = PythonVirtualenvOperator(
+                task_id=self.task_id,
+                python_callable=f,
+                inherit_env=False,
+                **self.default_kwargs(do_not_use_caching=True),
+            )
+
+        op._bundle_path = None
+        with mock.patch.object(op, "_read_result", return_value=None):
+            op._execute_python_callable_in_subprocess(Path(sys.executable))
+
+        assert mock_execute_subprocess.call_args.kwargs["env"] == {"__AIRFLOW_SUPERVISOR_FD": "123"}
+
     @CLOUDPICKLE_MARKER
     def test_add_cloudpickle(self):
         def f():
