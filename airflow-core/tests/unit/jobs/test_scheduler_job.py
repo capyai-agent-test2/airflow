@@ -2534,9 +2534,6 @@ class TestSchedulerJob:
             EmptyOperator(task_id="task_2")
             EmptyOperator(task_id="task_3")
 
-        scheduler_job = Job()
-        self.job_runner = SchedulerJobRunner(job=scheduler_job)
-
         dr = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED, session=session)
         t1, t2, t3 = sorted(dr.get_task_instances(session=session), key=lambda t: t.task_id)
 
@@ -2549,6 +2546,8 @@ class TestSchedulerJob:
         session.flush()
 
         with conf_vars({("core", "max_active_tasks_include_deferred"): "True"}):
+            scheduler_job = Job()
+            self.job_runner = SchedulerJobRunner(job=scheduler_job)
             res = self.job_runner._executable_task_instances_to_queued(max_tis=32, session=session)
 
         assert len(res) == 1

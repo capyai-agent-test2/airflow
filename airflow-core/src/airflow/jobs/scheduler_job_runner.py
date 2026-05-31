@@ -218,11 +218,10 @@ class ConcurrencyMap:
         self.task_concurrency_map: Counter[tuple[str, str]] = Counter()
         self.task_dagrun_concurrency_map: Counter[tuple[str, str, str]] = Counter()
 
-    def load(self, session: Session) -> None:
+    def load(self, session: Session, dag_run_active_states: set[TaskInstanceState]) -> None:
         self.dag_run_active_tasks_map.clear()
         self.task_concurrency_map.clear()
         self.task_dagrun_concurrency_map.clear()
-        dag_run_active_states = _get_dag_run_active_states()
         query = session.execute(
             select(TI.dag_id, TI.task_id, TI.run_id, TI.state, func.count("*"))
             .where(TI.state.in_(ACTIVE_STATES))
@@ -259,9 +258,9 @@ def _get_current_dr_task_concurrency(states: Iterable[TaskInstanceState]) -> Sub
     )
 
 
-def _get_dag_run_active_states() -> set[TaskInstanceState]:
+def _get_dag_run_active_states(max_active_tasks_include_deferred: bool) -> set[TaskInstanceState]:
     """Get states that count toward the DAG max_active_tasks limit."""
-    if conf.getboolean("core", "max_active_tasks_include_deferred"):
+    if max_active_tasks_include_deferred:
         return ACTIVE_STATES
     return EXECUTION_STATES
 
@@ -323,6 +322,9 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         self._scheduler_use_job_schedule = conf.getboolean("scheduler", "use_job_schedule", fallback=True)
         self._parallelism = conf.getint("core", "parallelism")
         self._multi_team = conf.getboolean("core", "multi_team")
+        self._dag_run_active_states = _get_dag_run_active_states(
+            conf.getboolean("core", "max_active_tasks_include_deferred")
+        )
 
         self.executors: list[BaseExecutor] = executors if executors else ExecutorLoader.init_executors()
         self.executor: BaseExecutor = self.executors[0]
@@ -556,7 +558,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
 
         # dag_id to # of running tasks and (dag_id, task_id) to # of running tasks.
         concurrency_map = ConcurrencyMap()
-        concurrency_map.load(session=session)
+        concurrency_map.load(session=session, dag_run_active_states=self._dag_run_active_states)
 
         # Number of tasks that cannot be scheduled because of no open slot in pool
         num_starving_tasks_total = 0
@@ -580,7 +582,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             # The results of 'load()' aren't used again here because by the time the main query
             # executes, there could be a change that will be ignored.
             dr_task_concurrency_subquery = _get_current_dr_task_concurrency(
-                states=_get_dag_run_active_states()
+                states=self._dag_run_active_states
             )
 
             query = (
