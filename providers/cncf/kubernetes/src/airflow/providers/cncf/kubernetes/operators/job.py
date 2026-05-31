@@ -473,9 +473,10 @@ class KubernetesJobOperator(KubernetesPodOperator):
         label_selector = self._build_find_pod_label_selector(context, exclude_checked=exclude_checked)
         pod_list: Sequence[k8s.V1Pod] = []
         retry_number: int = 0
+        expected_pod_count = min(self.parallelism, self.completions) if self.completions else self.parallelism
 
         while retry_number <= self.discover_pods_retry_number:
-            if len(pod_list) == self.parallelism:
+            if len(pod_list) >= expected_pod_count:
                 break
             pod_list = self.client.list_namespaced_pod(
                 namespace=pod_request_obj.metadata.namespace,
@@ -485,6 +486,7 @@ class KubernetesJobOperator(KubernetesPodOperator):
 
         if len(pod_list) == 0:
             raise AirflowException(f"No pods running with labels {label_selector}")
+        pod_list = pod_list[:expected_pod_count]
 
         for pod_instance in pod_list:
             self.log_matching_pod(pod=pod_instance, context=context)
