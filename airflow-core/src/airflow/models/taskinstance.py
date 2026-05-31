@@ -1213,7 +1213,8 @@ class TaskInstance(Base, LoggingMixin, BaseWorkload):
             delay = timedelta(seconds=delay_backoff_in_seconds)
             if self.task.max_retry_delay:
                 delay = min(self.task.max_retry_delay, delay)
-        return self.end_date + delay
+        base = self.end_date or self.start_date or timezone.utcnow()
+        return base + delay
 
     def ready_for_retry(self) -> bool:
         """Check on whether the task instance is in the right state and timeframe to be retried."""

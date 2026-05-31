@@ -1,0 +1,1 @@
+Prevent retry dependency checks from failing when a task instance marked for retry is missing ``end_date``.
