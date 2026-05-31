@@ -1119,6 +1119,35 @@ class TestKubernetesJobOperator:
         assert result == return_value
         assert mock_client.return_value.list_namespaced_pod.call_count == successful_try + 1
 
+    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.log_matching_pod"))
+    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator._build_find_pod_label_selector"))
+    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.client"), new_callable=mock.PropertyMock)
+    def test_get_pods_uses_completions_when_less_than_parallelism(
+        self, mock_client, mock_build_find_pod_label_selector, mock_log_matching_pod
+    ):
+        mock_context = mock.MagicMock()
+        mock_build_find_pod_label_selector.return_value = {
+            "dag_id": "fakedag",
+            "task_id": "faketask",
+            "run_id": "fakerun",
+            "kubernetes_pod_operator": "True",
+        }
+        mock_pod = mock.MagicMock()
+        mock_client.return_value.list_namespaced_pod.return_value = k8s.V1PodList(items=[mock_pod])
+
+        op = KubernetesJobOperator(
+            task_id="faketask",
+            parallelism=2,
+            completions=1,
+            discover_pods_retry_number=3,
+        )
+
+        result = op.get_pods(mock.MagicMock(), mock_context)
+
+        assert result == [mock_pod]
+        mock_client.return_value.list_namespaced_pod.assert_called_once()
+        mock_log_matching_pod.assert_called_once_with(pod=mock_pod, context=mock_context)
+
     @pytest.mark.non_db_test_override
     @pytest.mark.parametrize(
         ("unwrap_single", "parallelism", "expected"),
