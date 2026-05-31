@@ -376,6 +376,9 @@ class TestSparkSubmitHook:
         should_track_driver_status_spark_standalone_cluster_wait_completion = (
             hook_spark_standalone_cluster_wait_completion._resolve_should_track_driver_status()
         )
+        should_poll_driver_status_spark_standalone_cluster_wait_completion = (
+            hook_spark_standalone_cluster_wait_completion._resolve_should_poll_driver_status()
+        )
 
         # Then
         assert should_track_driver_status_default is False
@@ -384,7 +387,8 @@ class TestSparkSubmitHook:
         assert should_track_driver_status_spark_default_mesos is False
         assert should_track_driver_status_spark_binary_set is False
         assert should_track_driver_status_spark_standalone_cluster is True
-        assert should_track_driver_status_spark_standalone_cluster_wait_completion is False
+        assert should_track_driver_status_spark_standalone_cluster_wait_completion is True
+        assert should_poll_driver_status_spark_standalone_cluster_wait_completion is False
 
     @pytest.mark.db_test
     def test_resolve_connection_yarn_default(self, sdk_connection_not_found):
