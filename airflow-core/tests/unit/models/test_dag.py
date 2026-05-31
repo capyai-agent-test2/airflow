@@ -4114,5 +4114,5 @@ def test_calculate_dagrun_date_fields_does_not_move_next_run_backwards(dag_maker
     dag_model.calculate_dagrun_date_fields(dag=serdag, reference_run=second_run)
     assert dag_model.next_dagrun == TEST_DATE + timedelta(days=2)
 
-    dag_model.calculate_dagrun_date_fields(dag=serdag, reference_run=first_run)
+    dag_model.calculate_dagrun_date_fields(dag=serdag, reference_run=first_run, prevent_backwards=True)
     assert dag_model.next_dagrun == TEST_DATE + timedelta(days=2)
