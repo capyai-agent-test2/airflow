@@ -48,9 +48,13 @@ const ClearRunDialog = ({ dagRun, onClose, open }: Props) => {
   const onlyFailed = selectedOptions.includes("onlyFailed");
   const onlyNew = selectedOptions.includes("newTasks");
 
-  const { data: dagDetails } = useDagServiceGetDagDetails({
-    dagId,
-  });
+  const { data: dagDetails } = useDagServiceGetDagDetails(
+    {
+      dagId,
+    },
+    undefined,
+    { enabled: open },
+  );
 
   const {
     resetValue: resetRunOnLatestVersion,

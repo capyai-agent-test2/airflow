@@ -60,9 +60,13 @@ export const ClearGroupTaskInstanceDialog = ({ onClose, open, taskInstance }: Pr
   const downstream = selectedOptions.includes("downstream");
   const [note, setNote] = useState<string | null>(null);
 
-  const { data: dagDetails } = useDagServiceGetDagDetails({
-    dagId,
-  });
+  const { data: dagDetails } = useDagServiceGetDagDetails(
+    {
+      dagId,
+    },
+    undefined,
+    { enabled: open },
+  );
 
   const { data: groupTaskInstances } = useTaskInstanceServiceGetTaskInstances(
     {

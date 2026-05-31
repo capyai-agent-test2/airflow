@@ -100,9 +100,13 @@ const ClearTaskInstanceDialog = (props: Props) => {
   });
 
   // Get current DAG's bundle version to compare with task instance's DAG version bundle version
-  const { data: dagDetails } = useDagServiceGetDagDetails({
-    dagId,
-  });
+  const { data: dagDetails } = useDagServiceGetDagDetails(
+    {
+      dagId,
+    },
+    undefined,
+    { enabled: openDialog },
+  );
 
   const { dagVersionsDiffer, shouldShowRunOnLatestOption } = getRunOnLatestVersionState({
     latestBundleVersion: dagDetails?.bundle_version,
