@@ -34,6 +34,7 @@ from typing import Any
 from airflow.providers.common.compat.sdk import AirflowException, BaseHook, conf as airflow_conf
 from airflow.security.kerberos import renew_from_kt
 from airflow.utils.log.logging_mixin import LoggingMixin
+from airflow.utils.strings import to_boolean
 
 with contextlib.suppress(ImportError, NameError):
     from airflow.providers.cncf.kubernetes import kube_client
@@ -239,6 +240,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             )
 
         self._should_track_driver_status = self._resolve_should_track_driver_status()
+        self._should_poll_driver_status = self._resolve_should_poll_driver_status()
         self._driver_id: str | None = None
         self._driver_status: str | None = None
         self._spark_exit_code: int | None = None
@@ -255,6 +257,11 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         :return: if the driver status should be tracked
         """
         return "spark://" in self._connection["master"] and self._connection["deploy_mode"] == "cluster"
+
+    def _resolve_should_poll_driver_status(self) -> bool:
+        return self._should_track_driver_status and not to_boolean(
+            str(self._conf.get("spark.standalone.submit.waitAppCompletion", False))
+        )
 
     def _resolve_connection(self) -> dict[str, Any]:
         # Build from connection master or default to yarn if not available
@@ -626,10 +633,10 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                     f"Cannot execute: {self._mask_cmd(spark_submit_cmd)}. Error code is: {returncode}."
                 )
 
-            self.log.debug("Should track driver: %s", self._should_track_driver_status)
+            self.log.debug("Should poll driver: %s", self._should_poll_driver_status)
 
             # We want the Airflow job to wait until the Spark driver is finished
-            if self._should_track_driver_status:
+            if self._should_poll_driver_status:
                 if self._driver_id is None:
                     raise AirflowException(
                         "No driver id is known: something went wrong when executing the spark submit command"

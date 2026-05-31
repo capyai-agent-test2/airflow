@@ -351,6 +351,10 @@ class TestSparkSubmitHook:
         hook_spark_default_mesos = SparkSubmitHook(conn_id="spark_default_mesos")
         hook_spark_binary_set = SparkSubmitHook(conn_id="spark_binary_set")
         hook_spark_standalone_cluster = SparkSubmitHook(conn_id="spark_standalone_cluster")
+        hook_spark_standalone_cluster_wait_completion = SparkSubmitHook(
+            conn_id="spark_standalone_cluster",
+            conf={"spark.standalone.submit.waitAppCompletion": "true"},
+        )
 
         # When
         should_track_driver_status_default = hook_default._resolve_should_track_driver_status()
@@ -369,6 +373,15 @@ class TestSparkSubmitHook:
         should_track_driver_status_spark_standalone_cluster = (
             hook_spark_standalone_cluster._resolve_should_track_driver_status()
         )
+        should_poll_driver_status_spark_standalone_cluster = (
+            hook_spark_standalone_cluster._resolve_should_poll_driver_status()
+        )
+        should_track_driver_status_spark_standalone_cluster_wait_completion = (
+            hook_spark_standalone_cluster_wait_completion._resolve_should_track_driver_status()
+        )
+        should_poll_driver_status_spark_standalone_cluster_wait_completion = (
+            hook_spark_standalone_cluster_wait_completion._resolve_should_poll_driver_status()
+        )
 
         # Then
         assert should_track_driver_status_default is False
@@ -377,6 +390,9 @@ class TestSparkSubmitHook:
         assert should_track_driver_status_spark_default_mesos is False
         assert should_track_driver_status_spark_binary_set is False
         assert should_track_driver_status_spark_standalone_cluster is True
+        assert should_poll_driver_status_spark_standalone_cluster is True
+        assert should_track_driver_status_spark_standalone_cluster_wait_completion is True
+        assert should_poll_driver_status_spark_standalone_cluster_wait_completion is False
 
     @pytest.mark.db_test
     def test_resolve_connection_yarn_default(self, sdk_connection_not_found):
