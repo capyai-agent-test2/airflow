@@ -88,6 +88,7 @@ def _get_bundle_dagbags(bundle_names: list[str] | None):
     for bundle in all_bundles:
         if bundle.name not in bundles_to_search:
             continue
+        bundle.initialize()
         yield bundle, BundleDagBag(bundle.path, bundle_path=bundle.path, bundle_name=bundle.name)
 
 
