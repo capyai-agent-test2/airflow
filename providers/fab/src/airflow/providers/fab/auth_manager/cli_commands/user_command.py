@@ -84,17 +84,20 @@ def users_create(args):
             raise SystemExit("Failed to create user")
 
 
-def _find_user(args):
+def _find_user(args, appbuilder=None):
     if not args.username and not args.email:
         raise SystemExit("Missing args: must supply one of --username or --email")
 
     if args.username and args.email:
         raise SystemExit("Conflicting args: must supply either --username or --email, but not both")
 
-    with get_application_builder() as appbuilder:
-        user = appbuilder.sm.find_user(username=args.username, email=args.email)
-        if not user:
-            raise SystemExit(f'User "{args.username or args.email}" does not exist')
+    if appbuilder is None:
+        with get_application_builder() as appbuilder:
+            return _find_user(args, appbuilder)
+
+    user = appbuilder.sm.find_user(username=args.username, email=args.email)
+    if not user:
+        raise SystemExit(f'User "{args.username or args.email}" does not exist')
     return user
 
 
@@ -102,9 +105,9 @@ def _find_user(args):
 @providers_configuration_loaded
 def user_reset_password(args):
     """Reset user password from DB."""
-    user = _find_user(args)
-    password = _create_password(args)
     with get_application_builder() as appbuilder:
+        user = _find_user(args, appbuilder)
+        password = _create_password(args)
         if appbuilder.sm.reset_password(user.id, password):
             print(f'User "{user.username}" password reset successfully')
         else:
@@ -128,12 +131,12 @@ def _create_password(args):
 @providers_configuration_loaded
 def users_delete(args):
     """Delete user from DB."""
-    user = _find_user(args)
-
-    # Clear the associated user roles first.
-    user.roles.clear()
-
     with get_application_builder() as appbuilder:
+        user = _find_user(args, appbuilder)
+
+        # Clear the associated user roles first.
+        user.roles.clear()
+
         if appbuilder.sm.del_register_user(user):
             print(f'User "{user.username}" deleted')
         else:
@@ -145,7 +148,7 @@ def users_delete(args):
 def users_manage_role(args, remove=False):
     """Delete or append user roles."""
     with get_application_builder() as appbuilder:
-        user = _find_user(args)
+        user = _find_user(args, appbuilder)
         role = appbuilder.sm.find_role(args.role)
         if not role:
             valid_roles = appbuilder.sm.get_all_roles()

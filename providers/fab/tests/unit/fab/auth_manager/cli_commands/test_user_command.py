@@ -20,7 +20,7 @@ import json
 import os
 import re
 import tempfile
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from importlib import reload
 from io import StringIO
 
@@ -515,6 +515,46 @@ class TestCliUsers:
         with redirect_stdout(StringIO()) as stdout:
             user_command.user_reset_password(args)
         assert 'User "test3" password reset successfully' in stdout.getvalue()
+
+    def test_cli_reset_user_password_uses_single_application_builder(self, monkeypatch):
+        args = self.parser.parse_args(
+            [
+                "users",
+                "create",
+                "--username",
+                "test3",
+                "--lastname",
+                "doe",
+                "--firstname",
+                "jon",
+                "--email",
+                "jdoe@example.com",
+                "--role",
+                "Viewer",
+                "--use-random-password",
+            ]
+        )
+        user_command.users_create(args)
+
+        application_builder_calls = 0
+        original_get_application_builder = user_command.get_application_builder
+
+        @contextmanager
+        def counted_get_application_builder():
+            nonlocal application_builder_calls
+            application_builder_calls += 1
+            with original_get_application_builder() as appbuilder:
+                yield appbuilder
+
+        monkeypatch.setattr(user_command, "get_application_builder", counted_get_application_builder)
+        args = self.parser.parse_args(
+            ["users", "reset-password", "--username", "test3", "--use-random-password"]
+        )
+        with redirect_stdout(StringIO()) as stdout:
+            user_command.user_reset_password(args)
+
+        assert 'User "test3" password reset successfully' in stdout.getvalue()
+        assert application_builder_calls == 1
 
     def test_cli_reset_user_password_with_email(self):
         args = self.parser.parse_args(
