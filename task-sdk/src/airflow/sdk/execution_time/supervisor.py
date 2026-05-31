@@ -2478,6 +2478,7 @@ def supervise_task(
         )
 
         reset_secrets_masker()
+        conf.mask_secrets()
 
         try:
             result = coordinator.execute_task(

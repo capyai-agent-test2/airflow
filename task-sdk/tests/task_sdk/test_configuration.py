@@ -23,6 +23,7 @@ from unittest import mock
 import pytest
 
 from airflow.sdk._shared.configuration.exceptions import AirflowConfigException
+from airflow.sdk._shared.secrets_masker import redact, reset_secrets_masker
 from airflow.sdk.configuration import conf, get_airflow_config
 from airflow.sdk.providers_manager_runtime import ProvidersManagerTaskRuntime
 
@@ -184,3 +185,18 @@ class TestGetAirflowConfig:
         env = {"AIRFLOW_HOME": "$CUSTOM_DIR/airflow", "CUSTOM_DIR": "/resolved"}
         with mock.patch.dict("os.environ", env, clear=True):
             assert get_airflow_config() == "/resolved/airflow/airflow.cfg"
+
+
+@pytest.mark.enable_redact
+class TestMaskSecrets:
+    def test_masks_sensitive_config_values_from_env(self):
+        secret = "task-sdk-config-secret"
+
+        reset_secrets_masker()
+        try:
+            with mock.patch.dict("os.environ", {"AIRFLOW__API__SECRET_KEY": secret}):
+                conf.mask_secrets()
+
+            assert redact(f"printed {secret}") == "printed ***"
+        finally:
+            reset_secrets_masker()
