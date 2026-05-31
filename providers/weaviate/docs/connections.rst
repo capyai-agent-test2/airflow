@@ -63,7 +63,8 @@ gRPC host (optional)
     The host to use for the Weaviate cluster gRPC API.
 
 gRPC port (optional)
-    The port to use for the Weaviate cluster gRPC API.
+    The port to use for the Weaviate cluster gRPC API. Defaults to ``50051`` for insecure connections and
+    ``443`` for secure connections.
 
 Use a secure channel for the underlying gRPC API (optional)
     Whether to use a secure channel for the the Weaviate cluster gRPC API.

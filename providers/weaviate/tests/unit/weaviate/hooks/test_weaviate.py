@@ -1003,3 +1003,33 @@ def test_get_conn_http_port_logic(connect_to_custom, http_secure, port, expected
     assert kwargs["http_host"] == "localhost"
     assert kwargs["http_port"] == expected
     assert kwargs["http_secure"] == http_secure
+
+
+@mock.patch("airflow.providers.weaviate.hooks.weaviate.weaviate.connect_to_custom")
+@pytest.mark.parametrize(
+    ("grpc_secure", "grpc_port", "expected"),
+    [
+        (False, None, 50051),
+        (True, None, 443),
+        (False, 50052, 50052),
+        (True, 50052, 50052),
+    ],
+)
+def test_get_conn_grpc_port_logic(connect_to_custom, grpc_secure, grpc_port, expected):
+    from airflow.models import Connection
+
+    conn = Connection(
+        conn_id="weaviate_grpc_port_logic",
+        conn_type="weaviate",
+        host="localhost",
+        extra={"grpc_secure": grpc_secure, "grpc_port": grpc_port},
+    )
+
+    with mock.patch.object(WeaviateHook, "get_connection", return_value=conn):
+        hook = WeaviateHook(conn_id="weaviate_grpc_port_logic")
+        hook.get_conn()
+
+    kwargs = connect_to_custom.call_args.kwargs
+    assert kwargs["grpc_host"] == "localhost"
+    assert kwargs["grpc_port"] == expected
+    assert kwargs["grpc_secure"] == grpc_secure
