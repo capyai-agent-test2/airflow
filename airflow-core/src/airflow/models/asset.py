@@ -43,7 +43,7 @@ from airflow.utils.sqlalchemy import UtcDateTime
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from typing import Any, TypeAlias
+    from typing import TypeAlias
 
     from sqlalchemy.orm import Session
 
@@ -103,24 +103,17 @@ def resolve_ref_to_asset(
 def remove_references_to_deleted_dags(session: Session):
     from airflow.models.dag import DagModel
 
-    models_to_check: list[Any] = [
-        DagScheduleAssetReference,
-        DagScheduleAssetNameReference,
-        DagScheduleAssetUriReference,
-        DagScheduleAssetAliasReference,
-        TaskOutletAssetReference,
-    ]
-
     # The queries need to be done in separate steps, because in the case of multiple
     # dag processors on MySQL, there could be a deadlock caused by acquiring both an
     # exclusive lock for deletion and shared lock for query in reverse sequence
+    # Keep Dag scheduling references so asset events emitted while a Dag is temporarily
+    # stale can still queue a DagRun once the Dag is parsed again.
     if stale_dag_ids := session.scalars(select(DagModel.dag_id).where(DagModel.is_stale)).all():
-        for model in models_to_check:
-            session.execute(
-                delete(model)
-                .where(model.dag_id.in_(stale_dag_ids))
-                .execution_options(synchronize_session="fetch")
-            )
+        session.execute(
+            delete(TaskOutletAssetReference)
+            .where(TaskOutletAssetReference.dag_id.in_(stale_dag_ids))
+            .execution_options(synchronize_session="fetch")
+        )
 
 
 alias_association_table = Table(
