@@ -31,7 +31,7 @@ from sqlalchemy import delete, func, select
 from airflow._shared.timezones import timezone
 from airflow.jobs.job import Job
 from airflow.jobs.triggerer_job_runner import TriggererJobRunner
-from airflow.models import TaskInstance, Trigger
+from airflow.models import DagModel, TaskInstance, Trigger
 from airflow.models.asset import AssetEvent, AssetModel, AssetWatcherModel
 from airflow.models.callback import Callback, TriggererCallback
 from airflow.models.xcom import XComModel
@@ -230,6 +230,71 @@ def test_submit_event(mock_callback_handle_event, session, create_task_instance)
 
     # Check that the callback's handle_event was called
     mock_callback_handle_event.assert_called_once_with(event, session)
+
+
+@pytest.mark.parametrize(
+    ("is_paused", "is_stale"),
+    [
+        (True, False),
+        (False, True),
+    ],
+)
+def test_submit_event_keeps_inactive_dag_task_deferred(session, create_task_instance, is_paused, is_stale):
+    trigger = Trigger(classpath="airflow.triggers.testing.SuccessTrigger", kwargs={})
+    session.add(trigger)
+    task_instance = create_task_instance(
+        session=session,
+        dag_id="inactive_dag",
+        logical_date=timezone.utcnow(),
+        state=State.DEFERRED,
+    )
+    task_instance.trigger_id = trigger.id
+    task_instance.next_kwargs = {"cheesecake": True}
+    dag_model = session.get(DagModel, "inactive_dag")
+    dag_model.is_paused = is_paused
+    dag_model.is_stale = is_stale
+    session.commit()
+
+    Trigger.submit_event(trigger.id, TriggerEvent("payload"), session=session)
+    session.flush()
+
+    session.refresh(task_instance)
+    assert task_instance.state == State.DEFERRED
+    assert task_instance.trigger_id == trigger.id
+    assert task_instance.next_kwargs == {"cheesecake": True}
+
+
+@pytest.mark.parametrize(
+    ("is_paused", "is_stale"),
+    [
+        (True, False),
+        (False, True),
+    ],
+)
+def test_ids_for_triggerer_excludes_inactive_dag_task_triggers(
+    session, create_task_instance, is_paused, is_stale
+):
+    job = Job(heartrate=10, state=State.RUNNING)
+    trigger = Trigger(
+        classpath="airflow.triggers.testing.SuccessTrigger",
+        kwargs={},
+    )
+    session.add_all([job, trigger])
+    session.flush()
+    trigger.triggerer_id = job.id
+    task_instance = create_task_instance(
+        session=session,
+        dag_id="inactive_dag",
+        logical_date=timezone.utcnow(),
+        state=State.DEFERRED,
+    )
+    task_instance.trigger_id = trigger.id
+    dag_model = session.get(DagModel, "inactive_dag")
+    dag_model.is_paused = is_paused
+    dag_model.is_stale = is_stale
+    session.commit()
+
+    assert Trigger.ids_for_triggerer(job.id, session=session) == []
 
 
 def test_submit_failure(session, create_task_instance):

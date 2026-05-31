@@ -24,7 +24,7 @@ from functools import singledispatch
 from traceback import format_exception
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ForeignKey, Integer, String, Text, delete, func, or_, select, update
+from sqlalchemy import ForeignKey, Integer, String, Text, and_, delete, func, or_, select, update
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship, selectinload
 from sqlalchemy.sql.functions import coalesce
@@ -34,6 +34,7 @@ from airflow.assets.manager import AssetManager
 from airflow.configuration import conf
 from airflow.models.asset import AssetWatcherModel
 from airflow.models.base import Base
+from airflow.models.dag import DagModel
 from airflow.models.taskinstance import TaskInstance
 from airflow.serialization.enums import stringify_encoding_keys as _stringify_encoding_keys
 from airflow.triggers.base import BaseTaskEndEvent
@@ -279,8 +280,13 @@ class Trigger(Base):
         """
         # Resume deferred tasks
         for task_instance in session.scalars(
-            select(TaskInstance).where(
-                TaskInstance.trigger_id == trigger_id, TaskInstance.state == TaskInstanceState.DEFERRED
+            select(TaskInstance)
+            .join(DagModel, TaskInstance.dag_id == DagModel.dag_id)
+            .where(
+                TaskInstance.trigger_id == trigger_id,
+                TaskInstance.state == TaskInstanceState.DEFERRED,
+                DagModel.is_paused.is_(False),
+                DagModel.is_stale.is_(False),
             )
         ):
             handle_event_submit(event, task_instance=task_instance, session=session)
@@ -344,7 +350,21 @@ class Trigger(Base):
         session: Session = NEW_SESSION,
     ) -> list[int]:
         """Retrieve a list of trigger ids."""
-        query = select(cls.id).where(cls.triggerer_id == triggerer_id)
+        query = (
+            select(cls.id)
+            .join(TaskInstance, cls.id == TaskInstance.trigger_id, isouter=True)
+            .join(DagModel, TaskInstance.dag_id == DagModel.dag_id, isouter=True)
+            .where(
+                cls.triggerer_id == triggerer_id,
+                or_(
+                    TaskInstance.id.is_(None),
+                    and_(
+                        DagModel.is_paused.is_(False),
+                        DagModel.is_stale.is_(False),
+                    ),
+                ),
+            )
+        )
         # By default, there is no trigger queue assignment. Only filter by queue when explicitly set in the triggerer CLI.
         # Filter by queues if the triggerer explicitly was called with `--queues`, otherwise, filter out
         # Triggers which have an explicit `queue` value since there may be other triggerer hosts explicitly assigned to that queue.
@@ -383,7 +403,21 @@ class Trigger(Base):
         """
         from airflow.jobs.job import Job  # To avoid circular import
 
-        count = session.scalar(select(func.count(cls.id)).filter(cls.triggerer_id == triggerer_id))
+        count = session.scalar(
+            select(func.count(cls.id))
+            .join(TaskInstance, cls.id == TaskInstance.trigger_id, isouter=True)
+            .join(DagModel, TaskInstance.dag_id == DagModel.dag_id, isouter=True)
+            .where(
+                cls.triggerer_id == triggerer_id,
+                or_(
+                    TaskInstance.id.is_(None),
+                    and_(
+                        DagModel.is_paused.is_(False),
+                        DagModel.is_stale.is_(False),
+                    ),
+                ),
+            )
+        )
         capacity -= count
 
         if capacity <= 0:
@@ -452,7 +486,9 @@ class Trigger(Base):
             select(cls.id)
             .prefix_with("STRAIGHT_JOIN", dialect="mysql")
             .join(TaskInstance, cls.id == TaskInstance.trigger_id, isouter=False)
+            .join(DagModel, TaskInstance.dag_id == DagModel.dag_id, isouter=False)
             .where(or_(cls.triggerer_id.is_(None), cls.triggerer_id.not_in(alive_triggerer_ids)))
+            .where(DagModel.is_paused.is_(False), DagModel.is_stale.is_(False))
             .order_by(coalesce(TaskInstance.priority_weight, 0).desc(), cls.created_date),
             # Asset triggers
             select(cls.id)
