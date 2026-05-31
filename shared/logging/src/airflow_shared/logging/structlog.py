@@ -445,6 +445,7 @@ def structlog_processors(
         # Only use Rich in dev -- otherwise for "production" deployments it makes the logs harder to read as
         # it uses lots of ANSI escapes and non ASCII characters. Simpler is better for non-dev non-JSON
         exc_formatter = structlog.dev.RichTracebackFormatter(
+            color_system=cast("Any", "truecolor" if colors else None),
             # These values are picked somewhat arbitrarily to produce useful-but-compact tracebacks. If
             # we ever need to change these then they should be configurable.
             extra_lines=0,

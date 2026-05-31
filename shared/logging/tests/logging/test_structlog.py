@@ -371,6 +371,25 @@ def test_precent_fmt_exc(structlog_config, get_logger, monkeypatch):
 
 
 @pytest.mark.parametrize(
+    ("colors", "expected_ansi"),
+    [
+        pytest.param(False, False, id="plain-rich-traceback"),
+        pytest.param(True, True, id="colored-rich-traceback"),
+    ],
+)
+def test_dev_traceback_respects_color_config(structlog_config, monkeypatch, colors, expected_ansi):
+    monkeypatch.setenv("DEV", "1")
+    with structlog_config(colors=colors, log_format="%(message)s") as sio:
+        try:
+            1 / 0
+        except ZeroDivisionError:
+            structlog.get_logger("logger").exception("Error")
+
+    written = sio.getvalue()
+    assert ("\x1b[" in written) is expected_ansi
+
+
+@pytest.mark.parametrize(
     ("get_logger"),
     [
         pytest.param(
