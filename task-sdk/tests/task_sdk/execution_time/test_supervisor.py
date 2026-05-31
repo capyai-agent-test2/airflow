@@ -156,6 +156,7 @@ from airflow.sdk.execution_time.comms import (
     _RequestFrame,
     _ResponseFrame,
 )
+from airflow.sdk.execution_time.coordinator import BaseCoordinator, CoordinatorManager
 from airflow.sdk.execution_time.supervisor import (
     ActivitySubprocess,
     InProcessSupervisorComms,
@@ -771,6 +772,49 @@ class TestWatchedSubprocess:
             "level": "info",
             "timestamp": "2024-11-07T12:34:56.078901Z",
         } in captured_logs
+
+    def test_supervise_task_restores_config_secret_masks(self, mocker, client_with_ti_start):
+        calls = []
+        reset_masker = mocker.patch(
+            "airflow.sdk._shared.secrets_masker.reset_secrets_masker",
+            side_effect=lambda: calls.append("reset"),
+        )
+        mask_secrets = mocker.patch.object(
+            supervisor.conf, "mask_secrets", side_effect=lambda: calls.append("mask")
+        )
+        coordinator = mocker.Mock(spec=BaseCoordinator)
+        coordinator.execute_task.return_value = BaseCoordinator.ExecutionResult(
+            exit_code=0, final_state=TaskInstanceState.SUCCESS
+        )
+        coordinator_manager = mocker.Mock(spec=CoordinatorManager)
+        coordinator_manager.for_queue.return_value = coordinator
+        mocker.patch(
+            "airflow.sdk.execution_time.supervisor.get_coordinator_manager", return_value=coordinator_manager
+        )
+
+        exit_code = supervise_task(
+            ti=TaskInstanceDTO(
+                id=uuid7(),
+                task_id="masked",
+                dag_id="config_masking",
+                run_id="run",
+                try_number=1,
+                dag_version_id=uuid7(),
+                pool_slots=1,
+                queue="default",
+                priority_weight=1,
+            ),
+            dag_rel_path=os.devnull,
+            token="",
+            dry_run=True,
+            client=client_with_ti_start,
+            bundle_info=BundleInfo(name="my-bundle", version=None),
+        )
+
+        assert exit_code == 0
+        reset_masker.assert_called_once_with()
+        mask_secrets.assert_called_once_with()
+        assert calls == ["reset", "mask"]
 
     def test_supervise_handles_deferred_task(
         self, test_dags_dir, captured_logs, time_machine, mocker, make_ti_context

@@ -27,6 +27,7 @@ from io import StringIO
 from typing import Any
 
 from airflow.sdk import yaml
+from airflow.sdk._shared.configuration.exceptions import AirflowConfigException
 from airflow.sdk._shared.configuration.parser import (
     AirflowConfigParser as _SharedAirflowConfigParser,
     configure_parser_from_configuration_description,
@@ -166,6 +167,31 @@ class AirflowSDKConfigParser(_SharedAirflowConfigParser):
         return super()._get_custom_secret_backend(
             worker_mode=worker_mode if worker_mode is not None else True
         )
+
+    def mask_secrets(self):
+        from airflow.sdk._shared.configuration.parser import _build_kwarg_env_prefix, _collect_kwarg_env_vars
+        from airflow.sdk.log import mask_secret
+
+        for section, key in self.sensitive_config_values:
+            try:
+                with self.suppress_future_warnings():
+                    value = self.get(section, key, suppress_warnings=True)
+            except AirflowConfigException:
+                log.debug(
+                    "Could not retrieve value from section %s, for key %s. Skipping redaction of this conf.",
+                    section,
+                    key,
+                )
+                continue
+            mask_secret(value)
+
+        for section, kwargs_key in [
+            ("secrets", "backend_kwargs"),
+            ("workers", "secrets_backend_kwargs"),
+        ]:
+            prefix = _build_kwarg_env_prefix(section, kwargs_key)
+            for value in _collect_kwarg_env_vars(prefix).values():
+                mask_secret(value)
 
     def expand_all_configuration_values(self):
         """Expand all configuration values using SDK-specific expansion variables."""
