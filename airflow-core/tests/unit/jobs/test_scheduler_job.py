@@ -3627,6 +3627,50 @@ class TestSchedulerJob:
         job_runner._task_queued_timeout = 300
         job_runner._handle_tasks_stuck_in_queued()
 
+    def test_stuck_queued_task_skips_ti_that_deferred_after_query(self, dag_maker, session, mock_executors):
+        with dag_maker("test_stuck_queued_task_skips_ti_that_deferred_after_query"):
+            EmptyOperator(task_id="op1")
+
+        dr = dag_maker.create_dagrun()
+        ti = dr.get_task_instance(task_id="op1", session=session)
+        ti.state = TaskInstanceState.QUEUED
+        ti.queued_dttm = timezone.utcnow() - timedelta(minutes=15)
+        session.merge(ti)
+        session.commit()
+
+        scheduler_job = Job()
+        scheduler = SchedulerJobRunner(job=scheduler_job, num_runs=0)
+        scheduler._task_queued_timeout = 300
+
+        def _mark_ti_deferred_after_stuck_query(workloads, session):
+            workloads = list(workloads)
+            session.execute(
+                update(TaskInstance)
+                .where(
+                    TaskInstance.dag_id == ti.dag_id,
+                    TaskInstance.task_id == ti.task_id,
+                    TaskInstance.run_id == ti.run_id,
+                    TaskInstance.map_index == ti.map_index,
+                )
+                .values(state=TaskInstanceState.DEFERRED),
+                execution_options={"synchronize_session": False},
+            )
+            session.commit()
+            return {mock_executors[0]: workloads}
+
+        scheduler._executor_to_workloads = _mark_ti_deferred_after_stuck_query
+
+        scheduler._handle_tasks_stuck_in_queued()
+
+        assert dr.get_task_instance(task_id="op1", session=session).state == TaskInstanceState.DEFERRED
+        mock_executors[0].revoke_task.assert_not_called()
+        assert (
+            session.scalar(
+                select(func.count()).select_from(Log).where(Log.dag_id == ti.dag_id, Log.run_id == ti.run_id)
+            )
+            == 0
+        )
+
     def test_executor_end_called(self, mock_executors):
         """
         Test to make sure executor.end gets called with a successful scheduler loop run
