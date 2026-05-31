@@ -143,6 +143,7 @@ def _get_fqdn(name=""):
     return name
 
 
+@cache
 def get_hostname():
     """Fetch the hostname using the callable from config or use built-in FQDN as a fallback."""
     return conf.getimport("core", "hostname_callable", fallback=_get_fqdn)()

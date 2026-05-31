@@ -31,6 +31,7 @@ import uuid6
 from task_sdk import make_client, make_client_w_dry_run, make_client_w_responses
 from uuid6 import uuid7
 
+import airflow.sdk.api.client as client_module
 from airflow.sdk import timezone
 from airflow.sdk.api.client import Client, RemoteValidationError, ServerResponseError
 from airflow.sdk.api.datamodels._generated import (
@@ -421,6 +422,31 @@ class TestTaskInstanceOperations:
 
         client = make_client(transport=httpx.MockTransport(handle_request))
         client.task_instances.heartbeat(ti_id, 100)
+
+    def test_task_instance_start_and_heartbeat_use_same_cached_hostname(self, monkeypatch, make_ti_context):
+        ti_id = uuid6.uuid7()
+        hostnames = iter(["worker-hostname", "unexpected-hostname"])
+        requests = []
+
+        client_module.get_hostname.cache_clear()
+        monkeypatch.setattr(client_module.conf, "getimport", mock.Mock(return_value=lambda: next(hostnames)))
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            requests.append(json.loads(request.read()))
+            if request.url.path == f"/task-instances/{ti_id}/run":
+                return httpx.Response(status_code=200, json=make_ti_context().model_dump(mode="json"))
+            if request.url.path == f"/task-instances/{ti_id}/heartbeat":
+                return httpx.Response(status_code=204)
+            return httpx.Response(status_code=400, json={"detail": "Bad Request"})
+
+        try:
+            client = make_client(transport=httpx.MockTransport(handle_request))
+            client.task_instances.start(ti_id, 100, datetime(2024, 10, 31, tzinfo=timezone.utc))
+            client.task_instances.heartbeat(ti_id, 100)
+        finally:
+            client_module.get_hostname.cache_clear()
+
+        assert [request["hostname"] for request in requests] == ["worker-hostname", "worker-hostname"]
 
     @pytest.mark.parametrize("queues_enabled", [False, True])
     def test_task_instance_defer(self, queues_enabled: bool):
