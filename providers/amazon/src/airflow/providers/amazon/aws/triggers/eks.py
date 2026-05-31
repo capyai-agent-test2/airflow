@@ -171,6 +171,7 @@ class EksPodTrigger(KubernetesPodTrigger):
         kwargs["eks_cluster_name"] = self.eks_cluster_name
         kwargs["aws_conn_id"] = self._aws_conn_id
         kwargs["region"] = self.region
+        kwargs["config_dict"] = None
         return (
             "airflow.providers.amazon.aws.triggers.eks.EksPodTrigger",
             kwargs,

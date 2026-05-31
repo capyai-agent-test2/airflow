@@ -351,6 +351,7 @@ class TestEksPodTrigger:
         assert kwargs["eks_cluster_name"] == CLUSTER_NAME
         assert kwargs["aws_conn_id"] == AWS_CONN_ID
         assert kwargs["region"] == REGION_NAME
+        assert kwargs["config_dict"] is None
         # Also verify parent fields are present
         assert kwargs["pod_name"] == "test-pod"
         assert kwargs["pod_namespace"] == "default"
