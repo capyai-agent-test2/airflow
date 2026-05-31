@@ -25,9 +25,9 @@ import {
   LineElement,
   BarElement,
   Filler,
+  Legend,
   Tooltip,
 } from "chart.js";
-import type { PartialEventContext } from "chartjs-plugin-annotation";
 import annotationPlugin from "chartjs-plugin-annotation";
 import dayjs from "dayjs";
 import { Bar } from "react-chartjs-2";
@@ -47,14 +47,48 @@ ChartJS.register(
   BarElement,
   LineElement,
   Filler,
+  Legend,
   Tooltip,
   annotationPlugin,
 );
 
-const average = (ctx: PartialEventContext, index: number) => {
-  const values: Array<number> | undefined = ctx.chart.data.datasets[index]?.data as Array<number> | undefined;
+const durationUnits = {
+  hours: { suffix: "h", value: 60 * 60 },
+  minutes: { suffix: "m", value: 60 },
+  seconds: { suffix: "s", value: 1 },
+} as const;
 
-  return values === undefined ? 0 : values.reduce((initial, next) => initial + next, 0) / values.length;
+const getDurationUnit = (maxDuration: number) => {
+  if (maxDuration >= durationUnits.hours.value) {
+    return durationUnits.hours;
+  }
+
+  if (maxDuration >= durationUnits.minutes.value) {
+    return durationUnits.minutes;
+  }
+
+  return durationUnits.seconds;
+};
+
+const formatDurationByUnit = (duration: number, unit: (typeof durationUnits)[keyof typeof durationUnits]) => {
+  const value = duration / unit.value;
+
+  return `${Number.isInteger(value) ? value : value.toFixed(1)}${unit.suffix}`;
+};
+
+const getMedian = (values: Array<number>) => {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const sortedValues = [...values].sort((left, right) => left - right);
+  const middleIndex = Math.floor(sortedValues.length / 2);
+
+  if (sortedValues.length % 2 === 1) {
+    return sortedValues[middleIndex] ?? 0;
+  }
+
+  return ((sortedValues[middleIndex - 1] ?? 0) + (sortedValues[middleIndex] ?? 0)) / 2;
 };
 
 type RunResponse = GridRunsResponse | TaskInstanceResponse;
@@ -121,28 +155,47 @@ export const DurationChart = ({
     }
   });
 
-  const runAnnotation = {
-    borderColor: "grey",
-    borderWidth: 1,
-    label: {
-      content: (ctx: PartialEventContext) => renderDuration(average(ctx, 1), false) ?? "0",
-      display: true,
-      position: "end",
-    },
-    scaleID: "y",
-    value: (ctx: PartialEventContext) => average(ctx, 1),
-  };
+  const queuedDurations = entries.map((entry: RunResponse) => {
+    switch (kind) {
+      case "Dag Run": {
+        const run = entry as GridRunsResponse;
 
-  const queuedAnnotation = {
-    borderColor: "grey",
-    borderWidth: 1,
+        return run.queued_at !== null && run.start_date !== null && run.queued_at < run.start_date
+          ? Number(getDuration(run.queued_at, run.start_date))
+          : 0;
+      }
+      case "Task Instance": {
+        const taskInstance = entry as TaskInstanceResponse;
+
+        return taskInstance.queued_when !== null &&
+          taskInstance.start_date !== null &&
+          taskInstance.queued_when < taskInstance.start_date
+          ? Number(getDuration(taskInstance.queued_when, taskInstance.start_date))
+          : 0;
+      }
+      default:
+        return 0;
+    }
+  });
+  const runDurations = entries.map((entry: RunResponse) =>
+    entry.start_date === null ? 0 : Number(getDuration(entry.start_date, entry.end_date)),
+  );
+  const totalDurations = queuedDurations.map((duration, index) => duration + (runDurations[index] ?? 0));
+  const medianTotalDuration = getMedian(totalDurations);
+  const durationUnit = getDurationUnit(Math.max(...totalDurations, 0));
+
+  const medianAnnotation = {
+    borderColor: "#3182ce",
+    borderDash: [6, 6],
+    borderWidth: 2,
     label: {
-      content: (ctx: PartialEventContext) => renderDuration(average(ctx, 0), false) ?? "0",
-      display: true,
-      position: "end",
+      backgroundColor: "#3182ce",
+      content: renderDuration(medianTotalDuration, false) ?? "0",
+      display: medianTotalDuration > 0,
+      position: "end" as const,
     },
     scaleID: "y",
-    value: (ctx: PartialEventContext) => average(ctx, 0),
+    value: medianTotalDuration,
   };
 
   return (
@@ -157,28 +210,7 @@ export const DurationChart = ({
           datasets: [
             {
               backgroundColor: getComputedCSSVariableValue(queuedColorToken ?? "oklch(0.5 0 0)"),
-              data: entries.map((entry: RunResponse) => {
-                switch (kind) {
-                  case "Dag Run": {
-                    const run = entry as GridRunsResponse;
-
-                    return run.queued_at !== null && run.start_date !== null && run.queued_at < run.start_date
-                      ? Number(getDuration(run.queued_at, run.start_date))
-                      : 0;
-                  }
-                  case "Task Instance": {
-                    const taskInstance = entry as TaskInstanceResponse;
-
-                    return taskInstance.queued_when !== null &&
-                      taskInstance.start_date !== null &&
-                      taskInstance.queued_when < taskInstance.start_date
-                      ? Number(getDuration(taskInstance.queued_when, taskInstance.start_date))
-                      : 0;
-                  }
-                  default:
-                    return 0;
-                }
-              }),
+              data: queuedDurations,
               label: translate("durationChart.queuedDuration"),
             },
             {
@@ -186,9 +218,7 @@ export const DurationChart = ({
                 (entry: RunResponse) =>
                   (entry.state ? stateColorMap[entry.state] : undefined) ?? "oklch(0.5 0 0)",
               ),
-              data: entries.map((entry: RunResponse) =>
-                entry.start_date === null ? 0 : Number(getDuration(entry.start_date, entry.end_date)),
-              ),
+              data: runDurations,
               label: translate("durationChart.runDuration"),
             },
           ],
@@ -240,9 +270,11 @@ export const DurationChart = ({
           plugins: {
             annotation: {
               annotations: {
-                queuedAnnotation,
-                runAnnotation,
+                medianAnnotation,
               },
+            },
+            legend: {
+              display: true,
             },
             tooltip: {
               callbacks: {
@@ -272,7 +304,7 @@ export const DurationChart = ({
                 callback: (value) => {
                   const num = typeof value === "number" ? value : Number(value);
 
-                  return renderDuration(num, false) ?? "0";
+                  return formatDurationByUnit(num, durationUnit);
                 },
               },
               title: { align: "end", display: true, text: translate("common:duration") },
