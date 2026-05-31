@@ -112,6 +112,16 @@ class TestSkipMixin:
             assert not session.commit.called
 
     @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Airflow 2 had a different implementation")
+    def test_skip_does_not_immediately_skip_tasks_waiting_for_past_depends(self):
+        task = EmptyOperator(
+            task_id="task",
+            wait_for_past_depends_before_skipping=True,
+        )
+        ti = Mock(spec=RuntimeTaskInstance, map_index=-1)
+
+        assert SkipMixin().skip(ti=ti, tasks=[task]) is None
+
+    @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Airflow 2 had a different implementation")
     def test_skip__only_mapped_operators_passed(self):
         from airflow.sdk.definitions.mappedoperator import MappedOperator
 
