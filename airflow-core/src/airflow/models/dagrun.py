@@ -686,8 +686,36 @@ class DagRun(Base, LoggingMixin):
             .subquery()
         )
 
-        query = (
-            select(cls)
+        num_running = coalesce(running_drs.c.num_running, text("0"))
+        max_active_runs = coalesce(Backfill.max_active_runs, DagModel.max_active_runs)
+        backfill_sort_ordinal = nulls_first(
+            cast("ColumnElement[Any]", BackfillDagRun.sort_ordinal), session=session
+        )
+        last_scheduling_decision = nulls_first(
+            cast("ColumnElement[Any]", cls.last_scheduling_decision), session=session
+        )
+        running_count = nulls_first(running_drs.c.num_running, session=session)
+
+        candidate_dag_runs = (
+            select(
+                cls.id,
+                BackfillDagRun.sort_ordinal,
+                cls.last_scheduling_decision,
+                running_drs.c.num_running,
+                cls.run_after,
+                (max_active_runs - num_running).label("available_slots"),
+                func.row_number()
+                .over(
+                    partition_by=(cls.dag_id, cls.backfill_id),
+                    order_by=(
+                        backfill_sort_ordinal,
+                        last_scheduling_decision,
+                        running_count,
+                        cls.run_after,
+                    ),
+                )
+                .label("rank"),
+            )
             .where(cls.state == DagRunState.QUEUED)
             .join(
                 DagModel,
@@ -716,30 +744,39 @@ class DagRun(Base, LoggingMixin):
                 isouter=True,
             )
             .where(
+                cls.run_after <= func.now(),
                 # there are two levels of checks for num_running
                 # the one done in this query verifies that the dag is not maxed out
-                # it could return many more dag runs than runnable if there is even
-                # capacity for 1.  this could be improved.
-                coalesce(running_drs.c.num_running, text("0"))
-                < coalesce(Backfill.max_active_runs, DagModel.max_active_runs),
+                # and caps queued Dag runs from each Dag to available capacity so
+                # one Dag with a large backlog does not crowd out other Dags.
+                num_running < max_active_runs,
                 # don't set paused dag runs as running
                 not_(coalesce(cast("ColumnElement[bool]", Backfill.is_paused), False)),
             )
+            .subquery()
+        )
+
+        query = (
+            select(cls)
+            .join(
+                candidate_dag_runs,
+                candidate_dag_runs.c.id == cls.id,
+            )
+            .where(candidate_dag_runs.c.rank <= candidate_dag_runs.c.available_slots)
             .order_by(
                 # ordering by backfill sort ordinal first ensures that backfill dag runs
                 # have lower priority than all other dag run types (since sort_ordinal >= 1).
                 # additionally, sorting by sort_ordinal ensures that the backfill
                 # dag runs are created in the right order when that matters.
-                # todo: AIP-78 use row_number to avoid starvation; limit the number of returned runs per-dag
-                nulls_first(cast("ColumnElement[Any]", BackfillDagRun.sort_ordinal), session=session),
-                nulls_first(cast("ColumnElement[Any]", cls.last_scheduling_decision), session=session),
-                nulls_first(running_drs.c.num_running, session=session),  # many running -> lower priority
-                cls.run_after,
+                nulls_first(candidate_dag_runs.c.sort_ordinal, session=session),
+                nulls_first(candidate_dag_runs.c.last_scheduling_decision, session=session),
+                nulls_first(
+                    candidate_dag_runs.c.num_running, session=session
+                ),  # many running -> lower priority
+                candidate_dag_runs.c.run_after,
             )
             .limit(cls.DEFAULT_DAGRUNS_TO_EXAMINE)
         )
-
-        query = query.where(DagRun.run_after <= func.now())
 
         return session.scalars(with_row_locks(query, of=cls, session=session, skip_locked=True))
 

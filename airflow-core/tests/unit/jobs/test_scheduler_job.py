@@ -6318,7 +6318,7 @@ class TestSchedulerJob:
         )
         dag1_non_b_running, dag1_b_running, total_running = _running_counts()
 
-        # now let's create some "normal" dag runs and verify that they can run
+        # now let's create some "normal" Dag runs and verify that they can run
         dr = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED, state=State.QUEUED)
         for _ in range(29):
             dr = dag_maker.create_dagrun_after(dr, run_type=DagRunType.SCHEDULED, state=State.QUEUED)
@@ -6577,7 +6577,7 @@ class TestSchedulerJob:
         for _ in range(9):
             dr = dag_maker.create_dagrun_after(dr, run_type=DagRunType.SCHEDULED, state=State.QUEUED)
 
-        # ok at this point, there are new dag runs created, but no new running runs
+        # ok at this point, there are new Dag runs created, but no new running runs
         dag1_non_b_running, dag1_b_running, total_running = _running_counts()
         assert dag1_non_b_running == 0
         assert dag1_b_running == 3
@@ -6596,10 +6596,8 @@ class TestSchedulerJob:
         assert dag1_non_b_running == 1
         assert dag1_b_running == 3
 
-        # this should be 14 but it is not. why?
-        # answer: because dag2 got starved out by dag1
-        # if we run the scheduler again, dag2 should get queued
-        assert total_running == 4
+        # Dag2 gets a chance to start in the same scheduler loop.
+        assert total_running == 14
 
         assert session.scalar(select(func.count()).select_from(DagRun)) == 46
         assert session.scalar(select(func.count()).where(DagRun.dag_id == dag1_dag_id)) == 36
@@ -6612,7 +6610,7 @@ class TestSchedulerJob:
         assert dag1_non_b_running == 1
         assert dag1_b_running == 3
 
-        # on the second try, dag 2's 10 runs now start running
+        # the second try does not start any more Dag runs since limits are reached
         assert total_running == 14
 
         assert session.scalar(select(func.count()).select_from(DagRun)) == 46
@@ -6777,6 +6775,46 @@ class TestSchedulerJob:
         )
         # 2 runs are still queued
         assert queued_count == 2
+
+    def test_start_queued_dagruns_limits_runs_per_dag(self, dag_maker, session):
+        with dag_maker(
+            "test_dag1",
+            start_date=DEFAULT_DATE,
+            schedule=timedelta(hours=1),
+            max_active_runs=10,
+            catchup=True,
+        ):
+            EmptyOperator(task_id="mytask")
+        dr = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED, state=State.QUEUED)
+        for _ in range(29):
+            dr = dag_maker.create_dagrun_after(dr, run_type=DagRunType.SCHEDULED, state=State.QUEUED)
+
+        with dag_maker(
+            "test_dag2",
+            start_date=timezone.datetime(2020, 1, 1),
+            schedule=timedelta(hours=1),
+            max_active_runs=10,
+            catchup=True,
+        ):
+            EmptyOperator(task_id="mytask")
+        dr = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED, state=State.QUEUED)
+        for _ in range(29):
+            dr = dag_maker.create_dagrun_after(dr, run_type=DagRunType.SCHEDULED, state=State.QUEUED)
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[MockExecutor(do_update=False)])
+
+        self.job_runner._start_queued_dagruns(session)
+        session.flush()
+
+        running_counts = dict(
+            session.execute(
+                select(DagRun.dag_id, func.count(DagRun.id))
+                .where(DagRun.state == State.RUNNING)
+                .group_by(DagRun.dag_id)
+            ).all()
+        )
+        assert running_counts == {"test_dag1": 10, "test_dag2": 10}
 
     def test_start_queued_dagruns_do_follow_logical_date_order(self, dag_maker):
         session = settings.Session()
