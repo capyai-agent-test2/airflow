@@ -261,6 +261,24 @@ class TestGetVariable(TestVariableEndpoint):
         assert response.status_code == 200
         assert response.json() == expected_response
 
+    def test_get_should_respond_200_with_undecryptable_value(self, test_client, session):
+        variable = Variable(key=TEST_VARIABLE_KEY, description=TEST_VARIABLE_DESCRIPTION)
+        variable._val = "undecryptable"
+        variable.is_encrypted = True
+        session.add(variable)
+        session.commit()
+
+        response = test_client.get(f"/variables/{TEST_VARIABLE_KEY}")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "key": TEST_VARIABLE_KEY,
+            "value": None,
+            "description": TEST_VARIABLE_DESCRIPTION,
+            "is_encrypted": True,
+            "team_name": None,
+        }
+
     def test_get_should_respond_401(self, unauthenticated_test_client):
         response = unauthenticated_test_client.get(f"/variables/{TEST_VARIABLE_KEY}")
         assert response.status_code == 401
