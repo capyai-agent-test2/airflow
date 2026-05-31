@@ -8345,9 +8345,9 @@
                             "default": "lru"
                         },
                         "ttl": {
-                            "description": "Time-to-live for cached metric mappings. Determines how long mappings remain in cache before expiring. Set to '0s' to disable expiration.",
+                            "description": "Time-to-live for exported metric series. Series without updates for this duration are removed from the /metrics output. Set to '0s' to disable expiration.",
                             "type": "string",
-                            "default": "0s"
+                            "default": "24h"
                         }
                     }
                 },
