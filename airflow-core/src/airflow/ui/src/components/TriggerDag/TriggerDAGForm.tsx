@@ -26,7 +26,6 @@ import { FiPlay } from "react-icons/fi";
 import { useDagParams } from "src/queries/useDagParams";
 import { useParamStore } from "src/queries/useParamStore";
 import { useTogglePause } from "src/queries/useTogglePause";
-import { DEFAULT_DATETIME_FORMAT } from "src/utils/datetimeUtils";
 
 import ConfigForm from "../ConfigForm";
 import { DateTimeInput } from "../DateTimeInput";
@@ -83,9 +82,9 @@ const TriggerDAGForm = ({
       dataIntervalEnd: "",
       dataIntervalMode: "auto",
       dataIntervalStart: "",
-      // Default logical date to now, show it in the selected timezone.
+      // Default logical date to now; DateTimeInput displays it in the selected timezone.
       // For partitioned Dags, logical date is not applicable.
-      logicalDate: isPartitioned ? "" : dayjs().format(DEFAULT_DATETIME_FORMAT),
+      logicalDate: isPartitioned ? "" : dayjs().toISOString(),
       note: "",
       partitionKey: undefined,
     },
@@ -103,7 +102,7 @@ const TriggerDAGForm = ({
         dataIntervalEnd: "",
         dataIntervalMode: "auto",
         dataIntervalStart: "",
-        logicalDate: isPartitioned ? "" : dayjs().format(DEFAULT_DATETIME_FORMAT),
+        logicalDate: isPartitioned ? "" : dayjs().toISOString(),
         note: "",
         partitionKey: undefined,
       });
