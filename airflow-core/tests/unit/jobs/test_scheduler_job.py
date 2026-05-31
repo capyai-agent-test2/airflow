@@ -3804,7 +3804,8 @@ class TestSchedulerJob:
         session.rollback()
         session.close()
 
-    def test_dagrun_timeout_fails_run(self, dag_maker):
+    @mock.patch("airflow._shared.observability.metrics.stats._get_backend")
+    def test_dagrun_timeout_fails_run(self, mock_get_backend, dag_maker):
         """
         Test if a dagrun will be set failed if timeout, even without max_active_runs
         """
@@ -3820,6 +3821,8 @@ class TestSchedulerJob:
 
         scheduler_job = Job()
         self.job_runner = SchedulerJobRunner(job=scheduler_job)
+        mock_stats = mock.MagicMock(spec=StatsLogger)
+        mock_get_backend.return_value = mock_stats
 
         callback = self.job_runner._schedule_dag_run(dr, session)
         session.flush()
@@ -3831,6 +3834,11 @@ class TestSchedulerJob:
         assert callback.dag_id == dr.dag_id
         assert callback.run_id == dr.run_id
         assert callback.msg == "timed_out"
+        mock_stats.timing.assert_any_call(
+            "dagrun.duration.failed",
+            dr.end_date - dr.start_date,
+            tags={"dag_id": dr.dag_id, "run_type": DagRunType.MANUAL},
+        )
 
         session.rollback()
         session.close()
