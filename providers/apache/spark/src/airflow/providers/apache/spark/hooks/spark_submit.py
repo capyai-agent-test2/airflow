@@ -34,6 +34,7 @@ from typing import Any
 from airflow.providers.common.compat.sdk import AirflowException, BaseHook, conf as airflow_conf
 from airflow.security.kerberos import renew_from_kt
 from airflow.utils.log.logging_mixin import LoggingMixin
+from airflow.utils.strings import to_boolean
 
 with contextlib.suppress(ImportError, NameError):
     from airflow.providers.cncf.kubernetes import kube_client
@@ -254,7 +255,11 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
         :return: if the driver status should be tracked
         """
-        return "spark://" in self._connection["master"] and self._connection["deploy_mode"] == "cluster"
+        return (
+            "spark://" in self._connection["master"]
+            and self._connection["deploy_mode"] == "cluster"
+            and not to_boolean(str(self._conf.get("spark.standalone.submit.waitAppCompletion", False)))
+        )
 
     def _resolve_connection(self) -> dict[str, Any]:
         # Build from connection master or default to yarn if not available
