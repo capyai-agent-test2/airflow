@@ -39,7 +39,7 @@ from airflow.cli.simple_table import AirflowConsole
 from airflow.cli.utils import fetch_dag_run_from_run_id_or_logical_date_string
 from airflow.dag_processing.bundles.base import unpack_bundle_version
 from airflow.dag_processing.bundles.manager import DagBundlesManager
-from airflow.dag_processing.dagbag import BundleDagBag, DagBag, sync_bag_to_db
+from airflow.dag_processing.dagbag import BundleDagBag, sync_bag_to_db
 from airflow.exceptions import AirflowConfigException, AirflowException
 from airflow.jobs.job import Job
 from airflow.models import DagModel, DagRun, TaskInstance
@@ -74,6 +74,21 @@ if TYPE_CHECKING:
 DAG_DETAIL_FIELDS = {*DAGResponse.model_fields, *DAGResponse.model_computed_fields}
 
 log = logging.getLogger(__name__)
+
+
+def _get_bundle_dagbags(bundle_names: list[str] | None):
+    manager = DagBundlesManager()
+    all_bundles = list(manager.get_all_dag_bundles())
+    if bundle_names:
+        validate_dag_bundle_arg(bundle_names)
+        bundles_to_search = set(bundle_names)
+    else:
+        bundles_to_search = {bundle.name for bundle in all_bundles}
+
+    for bundle in all_bundles:
+        if bundle.name not in bundles_to_search:
+            continue
+        yield bundle, BundleDagBag(bundle.path, bundle_path=bundle.path, bundle_name=bundle.name)
 
 
 @cli_utils.action_cli
@@ -489,28 +504,11 @@ def dag_list_dags(args, session: Session = NEW_SESSION) -> None:
     dagbag_import_errors = 0
     dags_list = []
     if args.local:
-        from airflow.dag_processing.dagbag import DagBag
-
         # Get import errors from the local area
-        if args.bundle_name:
-            manager = DagBundlesManager()
-            validate_dag_bundle_arg(args.bundle_name)
-            all_bundles = list(manager.get_all_dag_bundles())
-            bundles_to_search = set(args.bundle_name)
-
-            for bundle in all_bundles:
-                if bundle.name in bundles_to_search:
-                    bundle_dagbag = BundleDagBag(
-                        bundle.path, bundle_path=bundle.path, bundle_name=bundle.name
-                    )
-                    bundle_dagbag.collect_dags()
-                    dags_list.extend(list(bundle_dagbag.dags.values()))
-                    dagbag_import_errors += len(bundle_dagbag.import_errors)
-        else:
-            dagbag = DagBag()
-            dagbag.collect_dags()
-            dags_list.extend(list(dagbag.dags.values()))
-            dagbag_import_errors += len(dagbag.import_errors)
+        for _, bundle_dagbag in _get_bundle_dagbags(args.bundle_name):
+            bundle_dagbag.collect_dags()
+            dags_list.extend(list(bundle_dagbag.dags.values()))
+            dagbag_import_errors += len(bundle_dagbag.import_errors)
     else:
         dags_list.extend(cast("DAG", sm.dag) for sm in session.scalars(select(SerializedDagModel)))
         pie_stmt = select(func.count()).select_from(ParseImportError)
@@ -589,24 +587,9 @@ def dag_list_import_errors(args, session: Session = NEW_SESSION) -> None:
 
     if args.local:
         # Get import errors from local areas
-
-        if args.bundle_name:
-            manager = DagBundlesManager()
-            validate_dag_bundle_arg(args.bundle_name)
-            all_bundles = list(manager.get_all_dag_bundles())
-            bundles_to_search = set(args.bundle_name)
-
-            for bundle in all_bundles:
-                if bundle.name in bundles_to_search:
-                    bundle_dagbag = BundleDagBag(
-                        bundle.path, bundle_path=bundle.path, bundle_name=bundle.name
-                    )
-                    for filename, errors in bundle_dagbag.import_errors.items():
-                        data.append({"bundle_name": bundle.name, "filepath": filename, "error": errors})
-        else:
-            dagbag = DagBag()
-            for filename, errors in dagbag.import_errors.items():
-                data.append({"filepath": filename, "error": errors})
+        for bundle, bundle_dagbag in _get_bundle_dagbags(args.bundle_name):
+            for filename, errors in bundle_dagbag.import_errors.items():
+                data.append({"bundle_name": bundle.name, "filepath": filename, "error": errors})
 
     else:
         # Get import errors from the DB
