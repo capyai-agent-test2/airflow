@@ -4084,9 +4084,35 @@ def test_calculate_dagrun_date_fields(
     run = dag_maker.create_dagrun()
     serdag = dag_maker.serialized_dag
     dag_model = dag_maker.dag_model
-    dag_model.calculate_dagrun_date_fields(dag=serdag, last_automated_run=run)
+    dag_model.calculate_dagrun_date_fields(dag=serdag, reference_run=run)
     assert dag_model.next_dagrun_data_interval == next_interval
     assert dag_model.next_dagrun == next_run
     assert dag_model.next_dagrun_create_after == next_run_after
     assert dag_model.next_dagrun_partition_key == next_partition_key
     assert dag_model.next_dagrun_partition_date == next_partition_date
+
+
+def test_calculate_dagrun_date_fields_does_not_move_next_run_backwards(dag_maker):
+    with dag_maker(schedule="@daily", catchup=True, start_date=TEST_DATE):
+        BashOperator(task_id="hi", bash_command="yo")
+
+    first_run = dag_maker.create_dagrun(
+        logical_date=TEST_DATE,
+        data_interval=(TEST_DATE, TEST_DATE + timedelta(days=1)),
+        run_after=TEST_DATE + timedelta(days=1),
+        run_type=DagRunType.SCHEDULED,
+    )
+    second_run = dag_maker.create_dagrun(
+        logical_date=TEST_DATE + timedelta(days=1),
+        data_interval=(TEST_DATE + timedelta(days=1), TEST_DATE + timedelta(days=2)),
+        run_after=TEST_DATE + timedelta(days=2),
+        run_type=DagRunType.SCHEDULED,
+    )
+    serdag = dag_maker.serialized_dag
+    dag_model = dag_maker.dag_model
+
+    dag_model.calculate_dagrun_date_fields(dag=serdag, reference_run=second_run)
+    assert dag_model.next_dagrun == TEST_DATE + timedelta(days=2)
+
+    dag_model.calculate_dagrun_date_fields(dag=serdag, reference_run=first_run)
+    assert dag_model.next_dagrun == TEST_DATE + timedelta(days=2)

@@ -759,28 +759,39 @@ class DagModel(Base):
         self,
         dag: SerializedDAG | LazyDeserializedDAG,
         *,
-        last_automated_run: DagRun | None,
+        reference_run: DagRun | None,
     ) -> None:
         """
         Calculate ``next_dagrun`` and `next_dagrun_create_after``.
 
         :param dag: The DAG object
-        :param last_automated_run: DagRun of most recent run of this dag, or none
-            if not yet scheduled.
-            TODO: AIP-76 This is not always latest run! See https://github.com/apache/airflow/issues/59618.
+        :param reference_run: DagRun used to calculate the next run, or none if not yet scheduled.
         """
         # TODO: AIP-76 perhaps we need to add validation for manual runs ensure consistency between
         #   partition_key / partition_date and run_after
 
-        if isinstance(last_automated_run, datetime):
+        if isinstance(reference_run, datetime):
             raise ValueError(
                 "Passing a datetime to `DagModel.calculate_dagrun_date_fields` is not supported. "
                 "Provide a data interval instead."
             )
 
+        if (
+            self.next_dagrun is not None
+            and reference_run
+            and reference_run.logical_date is not None
+            and reference_run.logical_date < self.next_dagrun
+        ):
+            log.info(
+                "skipping next dagrun update from stale reference run",
+                reference_run_logical_date=str(reference_run.logical_date),
+                current_next_dagrun=str(self.next_dagrun),
+            )
+            return
+
         last_run_info = None
-        if last_automated_run:
-            last_run_info = dag.timetable.run_info_from_dag_run(dag_run=last_automated_run)
+        if reference_run:
+            last_run_info = dag.timetable.run_info_from_dag_run(dag_run=reference_run)
         next_dagrun_info = dag.next_dagrun_info(last_automated_run_info=last_run_info)
         if next_dagrun_info is None:
             # there is no next dag run after the last dag run; set everything to None
