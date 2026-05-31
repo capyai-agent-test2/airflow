@@ -1433,6 +1433,11 @@
                     ],
                     "default": null
                 },
+                "metadataSecretKey": {
+                    "description": "Key containing the metadata connection string in the secret.",
+                    "type": "string",
+                    "default": "connection"
+                },
                 "resultBackendSecretName": {
                     "description": "Result backend connection string secret.",
                     "type": [
@@ -1440,6 +1445,11 @@
                         "null"
                     ],
                     "default": null
+                },
+                "resultBackendSecretKey": {
+                    "description": "Key containing the result backend connection string in the secret.",
+                    "type": "string",
+                    "default": "connection"
                 },
                 "brokerUrlSecretName": {
                     "description": "Redis broker URL secret.",
