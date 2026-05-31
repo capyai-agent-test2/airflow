@@ -97,6 +97,8 @@ type TIRunContext struct {
 	LogicalDate       *time.Time
 	DataIntervalStart *time.Time
 	DataIntervalEnd   *time.Time
+	ShouldRetry       bool
+	MaxTries          int
 }
 
 func decodeTIRunContext(m map[string]any) (TIRunContext, error) {
@@ -121,6 +123,20 @@ func decodeTIRunContext(m map[string]any) (TIRunContext, error) {
 			return TIRunContext{}, fmt.Errorf("ti_context.%s: %w", f.key, err)
 		}
 		*f.dst = &t
+	}
+	if raw, present := m["should_retry"]; present && raw != nil {
+		shouldRetry, ok := raw.(bool)
+		if !ok {
+			return TIRunContext{}, fmt.Errorf("ti_context.should_retry: expected bool, got %T", raw)
+		}
+		ctx.ShouldRetry = shouldRetry
+	}
+	if raw, present := m["max_tries"]; present && raw != nil {
+		maxTries, err := toInt(raw)
+		if err != nil {
+			return TIRunContext{}, fmt.Errorf("ti_context.max_tries: %w", err)
+		}
+		ctx.MaxTries = maxTries
 	}
 	return ctx, nil
 }
@@ -367,6 +383,19 @@ func (m TaskStateMsg) toMap() map[string]any {
 	return map[string]any{
 		"type":     "TaskState",
 		"state":    string(m.State),
+		"end_date": m.EndDate.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+// RetryTaskMsg is sent as a terminal message when a task should be retried.
+type RetryTaskMsg struct {
+	EndDate time.Time
+}
+
+func (m RetryTaskMsg) toMap() map[string]any {
+	return map[string]any{
+		"type":     "RetryTask",
+		"state":    "up_for_retry",
 		"end_date": m.EndDate.UTC().Format(time.RFC3339Nano),
 	}
 }

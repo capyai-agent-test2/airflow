@@ -344,11 +344,19 @@ func (w *worker) ExecuteTaskWorkload(ctx context.Context, workload api.ExecuteTa
 			"type",
 			fmt.Sprintf("%T", err),
 		)
-		finalState = api.TerminalTIStateFailed
-		body.FromTITerminalStatePayload(api.TITerminalStatePayload{
-			State:   api.TerminalStateNonSuccess(finalState),
-			EndDate: time.Now().UTC(),
-		})
+		if runtimeContext.ShouldRetry != nil && *runtimeContext.ShouldRetry {
+			finalState = api.TerminalTIState(api.UpForRetry)
+			body.FromTIRetryStatePayload(api.TIRetryStatePayload{
+				State:   api.UpForRetry,
+				EndDate: time.Now().UTC(),
+			})
+		} else {
+			finalState = api.TerminalTIStateFailed
+			body.FromTITerminalStatePayload(api.TITerminalStatePayload{
+				State:   api.TerminalStateNonSuccess(finalState),
+				EndDate: time.Now().UTC(),
+			})
+		}
 	} else {
 		if logger != taskLogger {
 			// If we are sending task logs to stdout, don't log this here else we'll get it twice
