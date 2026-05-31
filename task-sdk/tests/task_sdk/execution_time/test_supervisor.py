@@ -35,7 +35,6 @@ from operator import attrgetter
 from random import randint
 from textwrap import dedent
 from time import sleep
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -157,6 +156,7 @@ from airflow.sdk.execution_time.comms import (
     _RequestFrame,
     _ResponseFrame,
 )
+from airflow.sdk.execution_time.coordinator import BaseCoordinator, CoordinatorManager
 from airflow.sdk.execution_time.supervisor import (
     ActivitySubprocess,
     InProcessSupervisorComms,
@@ -782,11 +782,11 @@ class TestWatchedSubprocess:
         mask_secrets = mocker.patch.object(
             supervisor.conf, "mask_secrets", side_effect=lambda: calls.append("mask")
         )
-        coordinator = mocker.Mock()
-        coordinator.execute_task.return_value = SimpleNamespace(
+        coordinator = mocker.Mock(spec=BaseCoordinator)
+        coordinator.execute_task.return_value = BaseCoordinator.ExecutionResult(
             exit_code=0, final_state=TaskInstanceState.SUCCESS
         )
-        coordinator_manager = mocker.Mock()
+        coordinator_manager = mocker.Mock(spec=CoordinatorManager)
         coordinator_manager.for_queue.return_value = coordinator
         mocker.patch(
             "airflow.sdk.execution_time.supervisor.get_coordinator_manager", return_value=coordinator_manager
