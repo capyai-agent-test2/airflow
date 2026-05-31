@@ -2566,6 +2566,13 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         for executor, stuck_tis in self._executor_to_workloads(tasks_stuck_in_queued, session).items():
             try:
                 for ti in stuck_tis:
+                    session.refresh(ti)
+                    if not self._is_task_instance_still_stuck_in_queued(ti):
+                        self.log.info(
+                            "Task instance is no longer stuck in queued; skipping requeue. task_instance=%s",
+                            ti,
+                        )
+                        continue
                     executor.revoke_task(ti=ti)
                     self._maybe_requeue_stuck_ti(
                         ti=ti,
@@ -2586,6 +2593,14 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             )
         )
 
+    def _is_task_instance_still_stuck_in_queued(self, ti: TaskInstance) -> bool:
+        return (
+            ti.state == TaskInstanceState.QUEUED
+            and ti.queued_dttm is not None
+            and ti.queued_dttm < (timezone.utcnow() - timedelta(seconds=self._task_queued_timeout))
+            and ti.queued_by_job_id == self.job.id
+        )
+
     def _maybe_requeue_stuck_ti(self, *, ti, session, executor):
         """
         Requeue task if it has not been attempted too many times.
@@ -2595,6 +2610,12 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         num_times_stuck = self._get_num_times_stuck_in_queued(ti, session)
         if num_times_stuck < self._num_stuck_queued_retries:
             self.log.info("Task stuck in queued; will try to requeue. task_instance=%s", ti)
+            if not self._reschedule_stuck_task(ti, session=session):
+                self.log.info(
+                    "Task instance is no longer stuck in queued; skipping requeue. task_instance=%s",
+                    ti,
+                )
+                return
             session.add(
                 Log(
                     event=TASK_STUCK_IN_QUEUED_RESCHEDULE_EVENT,
@@ -2605,7 +2626,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     ),
                 )
             )
-            self._reschedule_stuck_task(ti, session=session)
         else:
             self.log.info(
                 "Task requeue attempts exceeded max; marking failed. task_instance=%s",
@@ -2667,13 +2687,18 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 ti.set_state(TaskInstanceState.FAILED, session=session)
                 executor.fail(ti.key)
 
-    def _reschedule_stuck_task(self, ti: TaskInstance, session: Session):
+    def _reschedule_stuck_task(self, ti: TaskInstance, session: Session) -> bool:
         filter_for_tis = TI.filter_for_tis([ti])
         if filter_for_tis is None:
-            return
-        session.execute(
+            return False
+        result = session.execute(
             update(TI)
             .where(filter_for_tis)
+            .where(
+                TI.state == TaskInstanceState.QUEUED,
+                TI.queued_dttm == ti.queued_dttm,
+                TI.queued_by_job_id == self.job.id,
+            )
             .values(
                 state=TaskInstanceState.SCHEDULED,
                 queued_dttm=None,
@@ -2682,6 +2707,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             )
             .execution_options(synchronize_session=False)
         )
+        return getattr(result, "rowcount", 0) > 0
 
     @provide_session
     def _get_num_times_stuck_in_queued(self, ti: TaskInstance, session: Session = NEW_SESSION) -> int:
