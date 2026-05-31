@@ -103,10 +103,14 @@ func (s *WorkerSuite) TearDownSuite() {
 // ExpectTaskRun sets up  a matcher for the "/task-instances/{id}/run" end point and adds a finalize check
 // that it has been called
 func (s *WorkerSuite) ExpectTaskRun(taskId string) {
+	s.ExpectTaskRunWithContext(taskId, &api.TIRunContext{})
+}
+
+func (s *WorkerSuite) ExpectTaskRunWithContext(taskId string, runtimeContext *api.TIRunContext) {
 	s.T().Helper()
 	s.ti.EXPECT().
 		Run(mock.Anything, uuid.MustParse(taskId), mock.Anything).
-		Return(&api.TIRunContext{}, nil)
+		Return(runtimeContext, nil)
 	s.client.EXPECT().TaskInstances().Return(s.ti)
 }
 
@@ -125,6 +129,22 @@ func (s *WorkerSuite) ExpectTaskState(taskId string, state api.TerminalTIState) 
 				if err == nil && payload.State == api.TISuccessStatePayloadState(state) {
 					return nil
 				}
+			}
+			return fmt.Errorf("Error")
+		}).
+		Once()
+
+	s.client.EXPECT().TaskInstances().Return(s.ti)
+}
+
+func (s *WorkerSuite) ExpectTaskRetry(taskId string) {
+	s.T().Helper()
+	s.ti.EXPECT().
+		UpdateState(mock.AnythingOfType("context.backgroundCtx"), uuid.MustParse(taskId), mock.AnythingOfType("*api.TIUpdateStatePayload")).
+		RunAndReturn(func(ctx context.Context, taskInstanceId uuid.UUID, body *api.TIUpdateStatePayload) error {
+			payload, err := body.AsTIRetryStatePayload()
+			if err == nil && payload.State == api.UpForRetry {
+				return nil
 			}
 			return fmt.Errorf("Error")
 		}).
@@ -184,7 +204,33 @@ func (s *WorkerSuite) TestTaskPanicReportsFailedState() {
 }
 
 func (s *WorkerSuite) TestTaskReturnErrorReportsFailedState() {
-	s.T().Skip("TODO: Not implemented yet")
+	id := uuid.New().String()
+	testWorkload := newTestWorkLoad(id, id[:8])
+	s.registry.AddDag(testWorkload.TI.DagId).AddTaskWithName(testWorkload.TI.TaskId, func() error {
+		return fmt.Errorf("simulated task error")
+	})
+
+	shouldRetry := false
+	s.ExpectTaskRunWithContext(id, &api.TIRunContext{ShouldRetry: &shouldRetry})
+	s.ExpectTaskState(id, api.TerminalTIStateFailed)
+	err := s.worker.ExecuteTaskWorkload(context.Background(), testWorkload)
+
+	s.NoError(err, "ExecuteTaskWorkload should not report an error")
+}
+
+func (s *WorkerSuite) TestTaskReturnErrorReportsRetryStateWhenRetriesRemain() {
+	id := uuid.New().String()
+	testWorkload := newTestWorkLoad(id, id[:8])
+	s.registry.AddDag(testWorkload.TI.DagId).AddTaskWithName(testWorkload.TI.TaskId, func() error {
+		return fmt.Errorf("simulated task error")
+	})
+
+	shouldRetry := true
+	s.ExpectTaskRunWithContext(id, &api.TIRunContext{ShouldRetry: &shouldRetry, MaxTries: 2})
+	s.ExpectTaskRetry(id)
+	err := s.worker.ExecuteTaskWorkload(context.Background(), testWorkload)
+
+	s.NoError(err, "ExecuteTaskWorkload should not report an error")
 }
 
 func (s *WorkerSuite) TestTaskHeartbeatsWhileRunning() {

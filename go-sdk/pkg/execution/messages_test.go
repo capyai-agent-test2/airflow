@@ -48,6 +48,8 @@ func TestDecodeStartupDetails(t *testing.T) {
 			"logical_date":        "2024-01-15T00:00:00Z",
 			"data_interval_start": "2024-01-14T00:00:00Z",
 			"data_interval_end":   "2024-01-15T00:00:00Z",
+			"should_retry":        true,
+			"max_tries":           int64(3),
 		},
 	}
 
@@ -64,6 +66,8 @@ func TestDecodeStartupDetails(t *testing.T) {
 	assert.Equal(t, "example_dags", details.BundleInfo.Name)
 	assert.Equal(t, "1.0.0", details.BundleInfo.Version)
 	assert.NotNil(t, details.TIContext.LogicalDate)
+	assert.True(t, details.TIContext.ShouldRetry)
+	assert.Equal(t, 3, details.TIContext.MaxTries)
 }
 
 func TestDecodeStartupDetails_MalformedStartDate(t *testing.T) {
@@ -85,20 +89,35 @@ func TestDecodeStartupDetails_MalformedStartDate(t *testing.T) {
 }
 
 func TestDecodeStartupDetails_MalformedTIRunContext(t *testing.T) {
-	m := map[string]any{
-		"type": "StartupDetails",
-		"ti": map[string]any{
-			"id":      "550e8400-e29b-41d4-a716-446655440000",
-			"task_id": "t", "dag_id": "d", "run_id": "r",
-			"try_number": int64(1),
-		},
-		"ti_context": map[string]any{
-			"logical_date": "garbage",
-		},
+	base := func(tiContext map[string]any) map[string]any {
+		return map[string]any{
+			"type": "StartupDetails",
+			"ti": map[string]any{
+				"id":      "550e8400-e29b-41d4-a716-446655440000",
+				"task_id": "t", "dag_id": "d", "run_id": "r",
+				"try_number": int64(1),
+			},
+			"ti_context": tiContext,
+		}
 	}
-	_, err := decodeStartupDetails(m)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "logical_date")
+
+	t.Run("logical_date", func(t *testing.T) {
+		_, err := decodeStartupDetails(base(map[string]any{"logical_date": "garbage"}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "logical_date")
+	})
+
+	t.Run("should_retry", func(t *testing.T) {
+		_, err := decodeStartupDetails(base(map[string]any{"should_retry": "yes"}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "should_retry")
+	})
+
+	t.Run("max_tries", func(t *testing.T) {
+		_, err := decodeStartupDetails(base(map[string]any{"max_tries": "three"}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "max_tries")
+	})
 }
 
 func TestDecodeStartupDetails_RequiresTryNumber(t *testing.T) {
@@ -308,6 +327,15 @@ func TestTaskStateMsgToMap_PreservesSubsecondPrecision(t *testing.T) {
 	endDate := time.Date(2024, 1, 15, 10, 30, 0, 123456789, time.UTC)
 	msg := TaskStateMsg{State: TaskStateFailed, EndDate: endDate}
 	m := msg.toMap()
+	assert.Equal(t, "2024-01-15T10:30:00.123456789Z", m["end_date"])
+}
+
+func TestRetryTaskMsgToMap(t *testing.T) {
+	endDate := time.Date(2024, 1, 15, 10, 30, 0, 123456789, time.UTC)
+	msg := RetryTaskMsg{EndDate: endDate}
+	m := msg.toMap()
+	assert.Equal(t, "RetryTask", m["type"])
+	assert.Equal(t, "up_for_retry", m["state"])
 	assert.Equal(t, "2024-01-15T10:30:00.123456789Z", m["end_date"])
 }
 
