@@ -97,8 +97,8 @@ def _render_external_task_marker_logical_date(
                 }
             )
         )
-    except UndefinedError:
-        if logical_date is None:
+    except UndefinedError as e:
+        if logical_date is None and "'None' has no attribute" in str(e):
             return None
         raise
     return parse_datetime(rendered)

@@ -1992,6 +1992,16 @@ def test_external_task_marker_logical_date_template_with_null_source_date(templa
     assert _render_external_task_marker_logical_date(template, None) == expected
 
 
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Test for 3.0+")
+def test_external_task_marker_unrelated_template_error_with_null_source_date():
+    from jinja2 import UndefinedError
+
+    from airflow.serialization.definitions.dag import _render_external_task_marker_logical_date
+
+    with pytest.raises(UndefinedError, match="'missing' is undefined"):
+        _render_external_task_marker_logical_date("{{ missing.isoformat() }}", None)
+
+
 @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Different test for 3.0+")
 @provide_session
 def test_external_task_marker_clear_activate(dag_bag_parent_child, session):
