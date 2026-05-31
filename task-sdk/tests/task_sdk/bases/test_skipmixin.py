@@ -67,6 +67,20 @@ class TestSkipMixin:
         )
         assert exc_info.value.tasks == ["task1"]
 
+    def test_skip_does_not_immediately_skip_tasks_waiting_for_past_depends(self):
+        mixin = SkipMixin()
+        mixin.task_id = "branch_task"
+
+        task1 = MagicMock(spec=BaseOperator, task_id="task1", wait_for_past_depends_before_skipping=True)
+        ti = Mock(spec=RuntimeTaskInstanceProtocol, map_index=-1)
+
+        mixin.skip(ti=ti, tasks=[task1])
+
+        ti.xcom_push.assert_called_once_with(
+            key=XCOM_SKIPMIXIN_KEY,
+            value={XCOM_SKIPMIXIN_SKIPPED: ["task1"]},
+        )
+
     def test_skip_none_tasks(self):
         """skip() should return None when no tasks are provided."""
         ti = Mock(spec=RuntimeTaskInstanceProtocol)
@@ -137,6 +151,31 @@ class TestSkipMixin:
             mixin.skip_all_except(ti=ti, branch_task_ids="down1")
 
         assert exc_info.value.tasks == [("down2", -1)]
+        ti.xcom_push.assert_called_once_with(
+            key=XCOM_SKIPMIXIN_KEY,
+            value={XCOM_SKIPMIXIN_FOLLOWED: ["down1"]},
+        )
+
+    def test_skip_all_except_does_not_immediately_skip_tasks_waiting_for_past_depends(self):
+        mixin = SkipMixin()
+
+        downstream1 = MagicMock(spec=BaseOperator, task_id="down1")
+        downstream1.get_flat_relative_ids.return_value = set()
+        downstream2 = MagicMock(
+            spec=BaseOperator, task_id="down2", wait_for_past_depends_before_skipping=True
+        )
+
+        mock_task = MagicMock(spec=BaseOperator)
+        mock_task.downstream_list = [downstream1, downstream2]
+        mock_dag = MagicMock(spec=DAG)
+        mock_dag.task_ids = ["task1", "down1", "down2"]
+        mock_dag.get_task.return_value = downstream1
+        mock_task.dag = mock_dag
+
+        ti = Mock(spec=RuntimeTaskInstanceProtocol, map_index=-1, task=mock_task)
+
+        mixin.skip_all_except(ti=ti, branch_task_ids="down1")
+
         ti.xcom_push.assert_called_once_with(
             key=XCOM_SKIPMIXIN_KEY,
             value={XCOM_SKIPMIXIN_FOLLOWED: ["down1"]},

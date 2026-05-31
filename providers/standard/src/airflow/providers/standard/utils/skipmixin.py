@@ -44,6 +44,12 @@ def _ensure_tasks(nodes: Iterable[DAGNode]) -> Sequence[Operator]:
     return [n for n in nodes if isinstance(n, (BaseOperator, MappedOperator))]
 
 
+def _get_tasks_to_skip_immediately(tasks: Sequence[Operator]) -> Sequence[Operator]:
+    return [
+        task for task in tasks if getattr(task, "wait_for_past_depends_before_skipping", False) is not True
+    ]
+
+
 # This class should only be used in Airflow 3.0 and later.
 class SkipMixin(LoggingMixin):
     """A Mixin to skip Tasks Instances."""
@@ -100,7 +106,8 @@ class SkipMixin(LoggingMixin):
                 value={XCOM_SKIPMIXIN_SKIPPED: task_ids_list},
             )
 
-        self._set_state_to_skipped(task_ids_list, ti.map_index)
+        immediate_task_ids = [d.task_id for d in _get_tasks_to_skip_immediately(task_list)]
+        self._set_state_to_skipped(immediate_task_ids, ti.map_index)
 
     def skip_all_except(
         self,
@@ -178,7 +185,9 @@ class SkipMixin(LoggingMixin):
                 branch_task_id_set.update(dag.get_task(branch_task_id).get_flat_relative_ids(upstream=False))
 
             skip_tasks = [
-                (t.task_id, ti.map_index) for t in downstream_tasks if t.task_id not in branch_task_id_set
+                (t.task_id, ti.map_index)
+                for t in _get_tasks_to_skip_immediately(downstream_tasks)
+                if t.task_id not in branch_task_id_set
             ]
 
             follow_task_ids = [t.task_id for t in downstream_tasks if t.task_id in branch_task_id_set]
