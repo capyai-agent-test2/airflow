@@ -129,6 +129,18 @@ class DagVersion(Base):
         :param session: The database session.
         :return: The DagVersion object.
         """
+        # Avoid a circular import through airflow.models.taskinstance.
+        from airflow.models.dag import DagModel
+
+        session.scalar(
+            with_row_locks(
+                select(DagModel).where(DagModel.dag_id == dag_id),
+                of=DagModel,
+                session=session,
+                nowait=True,
+                key_share=False,
+            )
+        )
         existing_dag_version = session.scalar(
             with_row_locks(cls._latest_version_select(dag_id), of=DagVersion, session=session, nowait=True)
         )

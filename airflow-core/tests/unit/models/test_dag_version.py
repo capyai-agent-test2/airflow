@@ -19,6 +19,8 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import func, select
 
+import airflow.models.dag_version as dag_version_module
+from airflow.models.dag import DagModel
 from airflow.models.dag_version import DagVersion
 from airflow.providers.standard.operators.empty import EmptyOperator
 
@@ -122,3 +124,32 @@ class TestDagVersion:
         retrieved = DagVersion.get_latest_version("test_no_version_data", session=session)
         assert retrieved.version_data is None
         assert retrieved.bundle_version == "abc123"
+
+    @pytest.mark.db_test
+    def test_write_dag_locks_dag_model_before_latest_version(self, dag_maker, monkeypatch, session):
+        """Test that DagVersion writes are serialized per Dag before checking latest version."""
+        with dag_maker("test_dag_version_lock"):
+            pass
+
+        lock_calls = []
+        original_with_row_locks = dag_version_module.with_row_locks
+
+        def record_with_row_locks(query, session, **kwargs):
+            lock_calls.append(kwargs)
+            return original_with_row_locks(query, session, **kwargs)
+
+        monkeypatch.setattr(dag_version_module, "with_row_locks", record_with_row_locks)
+
+        DagVersion.write_dag(
+            dag_id="test_dag_version_lock",
+            bundle_name="testing",
+            session=session,
+        )
+        session.flush()
+
+        assert lock_calls[0] == {
+            "of": DagModel,
+            "nowait": True,
+            "key_share": False,
+        }
+        assert lock_calls[1] == {"of": DagVersion, "nowait": True}
