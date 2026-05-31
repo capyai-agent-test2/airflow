@@ -2382,6 +2382,57 @@ class TestRuntimeTaskInstance:
                 assert not mock_get_all.called
 
     @pytest.mark.parametrize(
+        ("map_indexes", "expected_message"),
+        [
+            pytest.param(
+                NOTSET,
+                GetXComSequenceSlice(
+                    run_id="test_run",
+                    key=None,
+                    task_id="task_a",
+                    dag_id="test_dag",
+                    start=None,
+                    stop=None,
+                    step=None,
+                ),
+                id="implicit-map-indexes",
+            ),
+            pytest.param(
+                None,
+                GetXCom(
+                    run_id="test_run",
+                    key=None,
+                    task_id="task_a",
+                    dag_id="test_dag",
+                    map_index=None,
+                ),
+                id="explicit-all-map-indexes",
+            ),
+        ],
+    )
+    def test_xcom_pull_accepts_none_key(
+        self,
+        create_runtime_ti,
+        mock_supervisor_comms,
+        map_indexes,
+        expected_message,
+    ):
+        task = BaseOperator(task_id="pull_task")
+        runtime_ti = create_runtime_ti(task=task)
+        ser_value = BaseXCom.serialize_value("value")
+
+        def mock_send_side_effect(*args, **kwargs):
+            msg = kwargs.get("msg") or args[0]
+            if isinstance(msg, GetXComSequenceSlice):
+                return XComSequenceSliceResult(root=[ser_value])
+            return XComResult(key="xcom_1", value=ser_value)
+
+        mock_supervisor_comms.send.side_effect = mock_send_side_effect
+
+        assert runtime_ti.xcom_pull(key=None, task_ids="task_a", map_indexes=map_indexes) == "value"
+        mock_supervisor_comms.send.assert_called_once_with(msg=expected_message)
+
+    @pytest.mark.parametrize(
         "api_return_value",
         [
             pytest.param(("data", "test_value"), id="api returns tuple"),

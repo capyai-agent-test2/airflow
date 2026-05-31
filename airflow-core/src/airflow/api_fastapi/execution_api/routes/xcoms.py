@@ -42,12 +42,12 @@ async def has_xcom_access(
     dag_id: str,
     run_id: str,
     task_id: str,
-    xcom_key: Annotated[str, Path(alias="key", min_length=1)],
     request: Request,
     token=CurrentTIToken,
 ) -> bool:
     """Check if the task has access to the XCom."""
     write = request.method not in {"GET", "HEAD", "OPTIONS"}
+    xcom_key = request.path_params.get("key")
 
     log.debug(
         "Checking %s XCom access for xcom from TaskInstance with key '%s' to XCom '%s'",
@@ -92,6 +92,70 @@ async def xcom_query(
         map_indexes=map_index,
     )
     return query
+
+
+def _get_xcom_query(
+    *,
+    dag_id: str,
+    run_id: str,
+    task_id: str,
+    key: str | None,
+    include_prior_dates: bool,
+) -> Select:
+    return XComModel.get_many(
+        run_id=run_id,
+        key=key,
+        task_ids=task_id,
+        dag_ids=dag_id,
+        include_prior_dates=include_prior_dates,
+    )
+
+
+def _get_xcom_response(
+    *,
+    dag_id: str,
+    run_id: str,
+    task_id: str,
+    key: str | None,
+    params: GetXcomFilterParams,
+    session: SessionDep,
+) -> XComResponse:
+    xcom_query = _get_xcom_query(
+        run_id=run_id,
+        key=key,
+        task_id=task_id,
+        dag_id=dag_id,
+        include_prior_dates=params.include_prior_dates,
+    )
+    if params.offset is not None:
+        xcom_query = xcom_query.where(XComModel.value.is_not(None)).order_by(None)
+        if params.offset >= 0:
+            xcom_query = xcom_query.order_by(XComModel.map_index.asc()).offset(params.offset)
+        else:
+            xcom_query = xcom_query.order_by(XComModel.map_index.desc()).offset(-1 - params.offset)
+    else:
+        xcom_query = xcom_query.where(XComModel.map_index == params.map_index)
+
+    result: tuple[XComModel] | None
+    if (result := session.scalars(xcom_query).first()) is None:
+        key_detail = "any key" if key is None else f"key={key!r}"
+        if params.offset is None:
+            message = (
+                f"XCom with {key_detail} map_index={params.map_index} not found for "
+                f"task {task_id!r} in DAG run {run_id!r} of {dag_id!r}"
+            )
+        else:
+            message = (
+                f"XCom with {key_detail} offset={params.offset} not found for "
+                f"task {task_id!r} in DAG run {run_id!r} of {dag_id!r}"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"reason": "not_found", "message": message},
+        )
+
+    xcom = result[0] if isinstance(result, tuple) else result
+    return XComResponse(key=xcom.key, value=xcom.value)
 
 
 @router.get(
@@ -139,23 +203,20 @@ class GetXComSliceFilterParams(BaseModel):
     include_prior_dates: bool = False
 
 
-@router.get(
-    "/{dag_id}/{run_id}/{task_id}/{key:path}/slice",
-    description="Get XCom values from a mapped task by sequence slice",
-)
-def get_mapped_xcom_by_slice(
+def _get_mapped_xcom_slice_response(
+    *,
     dag_id: str,
     run_id: str,
     task_id: str,
-    key: Annotated[str, Path(min_length=1)],
-    params: Annotated[GetXComSliceFilterParams, Query()],
+    key: str | None,
+    params: GetXComSliceFilterParams,
     session: SessionDep,
 ) -> XComSequenceSliceResponse:
-    query = XComModel.get_many(
+    query = _get_xcom_query(
         run_id=run_id,
         key=key,
-        task_ids=task_id,
-        dag_ids=dag_id,
+        task_id=task_id,
+        dag_id=dag_id,
         include_prior_dates=params.include_prior_dates,
     )
     query = query.order_by(None)
@@ -221,6 +282,49 @@ def get_mapped_xcom_by_slice(
     return XComSequenceSliceResponse(values)
 
 
+@router.get(
+    "/{dag_id}/{run_id}/{task_id}/slice",
+    description="Get XCom values from a mapped task by sequence slice without filtering by key",
+)
+def get_mapped_xcom_by_slice_without_key(
+    dag_id: str,
+    run_id: str,
+    task_id: str,
+    params: Annotated[GetXComSliceFilterParams, Query()],
+    session: SessionDep,
+) -> XComSequenceSliceResponse:
+    return _get_mapped_xcom_slice_response(
+        dag_id=dag_id,
+        run_id=run_id,
+        task_id=task_id,
+        key=None,
+        params=params,
+        session=session,
+    )
+
+
+@router.get(
+    "/{dag_id}/{run_id}/{task_id}/{key:path}/slice",
+    description="Get XCom values from a mapped task by sequence slice",
+)
+def get_mapped_xcom_by_slice(
+    dag_id: str,
+    run_id: str,
+    task_id: str,
+    key: Annotated[str, Path(min_length=1)],
+    params: Annotated[GetXComSliceFilterParams, Query()],
+    session: SessionDep,
+) -> XComSequenceSliceResponse:
+    return _get_mapped_xcom_slice_response(
+        dag_id=dag_id,
+        run_id=run_id,
+        task_id=task_id,
+        key=key,
+        params=params,
+        session=session,
+    )
+
+
 @router.head(
     "/{dag_id}/{run_id}/{task_id}/{key:path}",
     responses={
@@ -264,6 +368,28 @@ class GetXcomFilterParams(BaseModel):
 
 
 @router.get(
+    "/{dag_id}/{run_id}/{task_id}",
+    description="Get a single XCom Value without filtering by key",
+)
+def get_xcom_without_key(
+    dag_id: str,
+    run_id: str,
+    task_id: str,
+    session: SessionDep,
+    params: Annotated[GetXcomFilterParams, Query()],
+) -> XComResponse:
+    """Get an Airflow XCom from database - not other XCom Backends."""
+    return _get_xcom_response(
+        dag_id=dag_id,
+        run_id=run_id,
+        task_id=task_id,
+        key=None,
+        params=params,
+        session=session,
+    )
+
+
+@router.get(
     "/{dag_id}/{run_id}/{task_id}/{key:path}",
     description="Get a single XCom Value",
 )
@@ -276,45 +402,14 @@ def get_xcom(
     params: Annotated[GetXcomFilterParams, Query()],
 ) -> XComResponse:
     """Get an Airflow XCom from database - not other XCom Backends."""
-    xcom_query = XComModel.get_many(
+    return _get_xcom_response(
+        dag_id=dag_id,
         run_id=run_id,
+        task_id=task_id,
         key=key,
-        task_ids=task_id,
-        dag_ids=dag_id,
-        include_prior_dates=params.include_prior_dates,
+        params=params,
+        session=session,
     )
-    if params.offset is not None:
-        xcom_query = xcom_query.where(XComModel.value.is_not(None)).order_by(None)
-        if params.offset >= 0:
-            xcom_query = xcom_query.order_by(XComModel.map_index.asc()).offset(params.offset)
-        else:
-            xcom_query = xcom_query.order_by(XComModel.map_index.desc()).offset(-1 - params.offset)
-    else:
-        xcom_query = xcom_query.where(XComModel.map_index == params.map_index)
-
-    # We use `BaseXCom.get_many` to fetch XComs directly from the database, bypassing the XCom Backend.
-    # This avoids deserialization via the backend (e.g., from a remote storage like S3) and instead
-    # retrieves the raw serialized value from the database. By not relying on `XCom.get_many` or `XCom.get_one`
-    # (which automatically deserializes using the backend), we avoid potential
-    # performance hits from retrieving large data files into the API server.
-    result: tuple[XComModel] | None
-    if (result := session.scalars(xcom_query).first()) is None:
-        if params.offset is None:
-            message = (
-                f"XCom with {key=} map_index={params.map_index} not found for "
-                f"task {task_id!r} in DAG run {run_id!r} of {dag_id!r}"
-            )
-        else:
-            message = (
-                f"XCom with {key=} offset={params.offset} not found for "
-                f"task {task_id!r} in DAG run {run_id!r} of {dag_id!r}"
-            )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"reason": "not_found", "message": message},
-        )
-
-    return XComResponse(key=key, value=(result[0] if isinstance(result, tuple) else result).value)
 
 
 # TODO: once we have JWT tokens, then remove dag_id/run_id/task_id from the URL and just use the info in
