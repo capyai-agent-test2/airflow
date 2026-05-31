@@ -88,8 +88,9 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
     }
 
     const queuedAt = queuedAssetEvents.get(event.id);
+    const lastUpdate = event.lastUpdate ?? queuedAt;
 
-    return queuedAt === undefined ? [] : [{ ...event, lastUpdate: event.lastUpdate ?? queuedAt }];
+    return lastUpdate === undefined ? [] : [{ ...event, lastUpdate }];
   });
   const isLoading = isNextRunLoading || (!timetablePartitioned && isQueuedEventsLoading);
 
