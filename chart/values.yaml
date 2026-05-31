@@ -529,7 +529,9 @@ data:
 # Note: `fernetKey` can only be set during 'helm install', not 'helm upgrade' command
 fernetKey: ~
 
-# If set, the secret must contain a 'fernet-key' key with a base64-encoded key value
+# If set, the secret must contain a 'fernet-key' key with a base64-encoded key value.
+# Set this value when creating the Fernet key secret outside the chart, even if using the
+# default chart-generated secret name.
 fernetKeySecretName: ~
 # Fernet key secret example:
 #  kind: Secret
@@ -549,7 +551,9 @@ apiSecretKey: ~
 # Add custom annotations to the api secret
 apiSecretAnnotations: {}
 
-# If set, the secret must contain a key 'api-secret-key' with a base64-encoded key value
+# If set, the secret must contain a key 'api-secret-key' with a base64-encoded key value.
+# Set this value when creating the API secret outside the chart, even if using the
+# default chart-generated secret name.
 apiSecretKeySecretName: ~
 # API secret key example:
 #  kind: Secret
@@ -568,7 +572,9 @@ jwtSecret: ~
 # Add custom annotations to the JWT secret
 jwtSecretAnnotations: {}
 
-# If set, the secret must contain a key 'jwt-secret' with a base64-encoded key value
+# If set, the secret must contain a key 'jwt-secret' with a base64-encoded key value.
+# Set this value when creating the JWT secret outside the chart, even if using the
+# default chart-generated secret name.
 jwtSecretName: ~
 # JWT secret example:
 #  kind: Secret
