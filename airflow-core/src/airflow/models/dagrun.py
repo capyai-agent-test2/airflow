@@ -999,15 +999,18 @@ class DagRun(Base, LoggingMixin):
         :param session: SQLAlchemy ORM Session
         :param state: the dag run state
         """
-        if not dag_run or dag_run.logical_date is None:
+        if not dag_run:
             return None
-        filters = [
-            DagRun.dag_id == dag_run.dag_id,
-            DagRun.logical_date < dag_run.logical_date,
-        ]
+        filters = [DagRun.dag_id == dag_run.dag_id]
+        if dag_run.logical_date is None:
+            filters.append(DagRun.run_after < dag_run.run_after)
+            order_by = (DagRun.run_after.desc(), DagRun.id.desc())
+        else:
+            filters.append(DagRun.logical_date < dag_run.logical_date)
+            order_by = (DagRun.logical_date.desc(),)
         if state is not None:
             filters.append(DagRun.state == state)
-        return session.scalar(select(DagRun).where(*filters).order_by(DagRun.logical_date.desc()).limit(1))
+        return session.scalar(select(DagRun).where(*filters).order_by(*order_by).limit(1))
 
     @staticmethod
     @provide_session
@@ -1023,18 +1026,23 @@ class DagRun(Base, LoggingMixin):
         :param session: SQLAlchemy ORM Session
         """
         dag_run = session.get(DagRun, dag_run_id)
-        if not dag_run or not dag_run.logical_date:
+        if not dag_run:
             return None
-        return session.scalar(
-            select(DagRun)
-            .where(
+        if dag_run.logical_date is None:
+            filters = [
+                DagRun.dag_id == dag_run.dag_id,
+                DagRun.run_after < dag_run.run_after,
+                DagRun.run_type != DagRunType.MANUAL,
+            ]
+            order_by = (DagRun.run_after.desc(), DagRun.id.desc())
+        else:
+            filters = [
                 DagRun.dag_id == dag_run.dag_id,
                 DagRun.logical_date < dag_run.logical_date,
                 DagRun.run_type != DagRunType.MANUAL,
-            )
-            .order_by(DagRun.logical_date.desc())
-            .limit(1)
-        )
+            ]
+            order_by = (DagRun.logical_date.desc(),)
+        return session.scalar(select(DagRun).where(*filters).order_by(*order_by).limit(1))
 
     def _tis_for_dagrun_state(self, *, dag, tis):
         """

@@ -54,6 +54,7 @@ from airflow.models.dag import (
     DagOwnerAttributes,
     DagTag,
     get_asset_triggered_next_run_info,
+    get_last_dagrun,
     get_next_data_interval,
     get_run_data_interval,
 )
@@ -198,6 +199,34 @@ class TestDag:
         clear_db_runs()
         clear_db_dags()
         clear_db_assets()
+
+    def test_get_last_dagrun_uses_run_after_for_runs_without_logical_date(self, session):
+        dag = DAG("test_get_last_dagrun", schedule=None, start_date=DEFAULT_DATE)
+        EmptyOperator(task_id="task", dag=dag)
+        scheduler_dag = sync_dag_to_db(dag)
+        first_run_after = timezone.datetime(2016, 1, 1)
+        second_run = scheduler_dag.create_dagrun(
+            run_id="second_run",
+            logical_date=None,
+            data_interval=None,
+            run_after=first_run_after + timedelta(days=1),
+            run_type=DagRunType.ASSET_TRIGGERED,
+            state=DagRunState.SUCCESS,
+            triggered_by=DagRunTriggeredByType.TEST,
+            session=session,
+        )
+        scheduler_dag.create_dagrun(
+            run_id="first_run",
+            logical_date=None,
+            data_interval=None,
+            run_after=first_run_after,
+            run_type=DagRunType.ASSET_TRIGGERED,
+            state=DagRunState.SUCCESS,
+            triggered_by=DagRunTriggeredByType.TEST,
+            session=session,
+        )
+
+        assert get_last_dagrun(dag.dag_id, session=session) == second_run
 
     @conf_vars({("core", "load_examples"): "false"})
     def test_dag_test_auto_parses_when_not_serialized(self, test_dags_bundle, session):
