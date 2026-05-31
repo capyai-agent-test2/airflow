@@ -144,7 +144,7 @@ class WeaviateHook(BaseHook):
             http_port=conn.port or (443 if http_secure else 80),
             http_secure=http_secure,
             grpc_host=extras.pop("grpc_host", conn.host),
-            grpc_port=extras.pop("grpc_port", 443 if grpc_secure else 80),
+            grpc_port=extras.pop("grpc_port", None) or (443 if grpc_secure else 50051),
             grpc_secure=grpc_secure,
             headers=extras.pop("additional_headers", {}),
             auth_credentials=self._extract_auth_credentials(conn),  # type: ignore[arg-type]
