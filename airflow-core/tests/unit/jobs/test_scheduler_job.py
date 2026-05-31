@@ -9571,6 +9571,58 @@ def test_mark_backfills_complete_keeps_old_backfill_with_running_dagruns(dag_mak
     assert b.completed_at is None
 
 
+def test_mark_backfills_complete_keeps_backfill_with_running_task_instances(dag_maker, session):
+    clear_db_backfills()
+    dag_id = "test_backfill_with_running_tis"
+    with dag_maker(serialized=True, dag_id=dag_id, schedule="@daily"):
+        task = EmptyOperator(task_id="hi")
+    dag_version = DagVersion.get_latest_version(dag_id, session=session)
+    b = Backfill(
+        dag_id=dag_id,
+        from_date=pendulum.parse("2021-01-01"),
+        to_date=pendulum.parse("2021-01-03"),
+        max_active_runs=10,
+        dag_run_conf={},
+        reprocess_behavior=ReprocessBehavior.NONE,
+    )
+    session.add(b)
+    session.commit()
+    backfill_id = b.id
+    dr = DagRun(
+        dag_id=dag_id,
+        run_id="backfill__2021-01-01T00:00:00+00:00",
+        run_type=DagRunType.BACKFILL_JOB,
+        logical_date=pendulum.parse("2021-01-01"),
+        data_interval=(pendulum.parse("2021-01-01"), pendulum.parse("2021-01-02")),
+        run_after=pendulum.parse("2021-01-02"),
+        state=DagRunState.SUCCESS,
+        backfill_id=backfill_id,
+    )
+    session.add(dr)
+    session.flush()
+    session.add(
+        BackfillDagRun(
+            backfill_id=backfill_id,
+            dag_run_id=dr.id,
+            logical_date=pendulum.parse("2021-01-01"),
+            sort_ordinal=1,
+        )
+    )
+    ti = TaskInstance(
+        task=task, run_id=dr.run_id, state=TaskInstanceState.RUNNING, dag_version_id=dag_version.id
+    )
+    ti.dag_run = dr
+    session.add(ti)
+    session.commit()
+    session.expunge_all()
+    runner = SchedulerJobRunner(
+        job=Job(job_type=SchedulerJobRunner.job_type), executors=[MockExecutor(do_update=False)]
+    )
+    runner._mark_backfills_complete()
+    b = session.get(Backfill, backfill_id)
+    assert b.completed_at is None
+
+
 def test_mark_backfills_complete_young_backfill_with_finished_runs(dag_maker, session):
     """Young backfill (<2 min) with all SUCCESS DagRuns completes immediately."""
     clear_db_backfills()
