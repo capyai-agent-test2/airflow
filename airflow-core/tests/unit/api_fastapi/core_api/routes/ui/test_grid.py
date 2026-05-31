@@ -912,6 +912,26 @@ class TestGetGridDataEndpoint:
         actual = sort_dict(actual)
         assert actual == expected
 
+    def test_grid_ti_summaries_mapped_prefers_skipped_over_success(self, session, test_client):
+        run_id = "run_2"
+        mapped_tis = session.scalars(
+            select(TaskInstance)
+            .where(TaskInstance.dag_id == DAG_ID)
+            .where(TaskInstance.run_id == run_id)
+            .where(TaskInstance.task_id == "task_group.mapped_task")
+        ).all()
+        for ti in mapped_tis:
+            ti.state = TaskInstanceState.SKIPPED if ti.map_index == 1 else TaskInstanceState.SUCCESS
+        session.commit()
+
+        response = test_client.get(f"/grid/ti_summaries/{DAG_ID}?run_ids={run_id}")
+
+        assert response.status_code == 200
+        [data] = self._parse_ndjson(response)
+        mapped_task = next(ti for ti in data["task_instances"] if ti["task_id"] == "task_group.mapped_task")
+        assert mapped_task["state"] == "skipped"
+        assert mapped_task["child_states"] == {"success": 3, "skipped": 1}
+
     def test_structure_includes_historical_removed_task_with_proper_shape(self, session, test_client):
         # Ensure the structure endpoint returns synthetic node for historical/removed task
 

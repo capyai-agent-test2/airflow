@@ -31,6 +31,7 @@ from airflow.models.taskmap import TaskMap
 from airflow.serialization.definitions.baseoperator import SerializedBaseOperator
 from airflow.serialization.definitions.mappedoperator import SerializedMappedOperator
 from airflow.serialization.definitions.taskgroup import SerializedTaskGroup
+from airflow.utils.state import TaskInstanceState
 
 log = structlog.get_logger(logger_name=__name__)
 
@@ -114,17 +115,25 @@ def _merge_node_dicts(current: list[dict[str, Any]], new: list[dict[str, Any]] |
             current_nodes_by_id[node_id] = node
 
 
-def agg_state(states):
+def agg_state(states, *, prioritize_skipped: bool = False):
     state_counts = states if isinstance(states, Counter) else Counter(states)
-    for state in state_priority:
+    priorities = state_priority
+    if prioritize_skipped:
+        priorities = [
+            *state_priority[: state_priority.index(TaskInstanceState.SUCCESS)],
+            TaskInstanceState.SKIPPED,
+            TaskInstanceState.SUCCESS,
+            *state_priority[state_priority.index(TaskInstanceState.SKIPPED) + 1 :],
+        ]
+    for state in priorities:
         if state in state_counts:
             return state
     return None
 
 
-def _get_aggs_for_node(summary: GridNodeAgg) -> dict[str, Any]:
+def _get_aggs_for_node(summary: GridNodeAgg, *, prioritize_skipped: bool = False) -> dict[str, Any]:
     return {
-        "state": agg_state(summary.child_states),
+        "state": agg_state(summary.child_states, prioritize_skipped=prioritize_skipped),
         "min_start_date": summary.min_start_date,
         "max_end_date": summary.max_end_date,
         "child_states": dict(summary.child_states),
@@ -155,7 +164,7 @@ def _find_aggregates(
                 "task_display_name": node.task_display_name,
                 "type": "mapped_task",
                 "parent_id": parent_id,
-                **_get_aggs_for_node(mapped_summary),
+                **_get_aggs_for_node(mapped_summary, prioritize_skipped=True),
             },
             mapped_summary,
         )
