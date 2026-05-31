@@ -865,6 +865,38 @@ class TestPatchXComEntry(TestXComEndpoint):
         assert response.json()["value"] == new_value
         check_last_log(session, dag_id=TEST_DAG_ID, event="update_xcom_entry", logical_date=None)
 
+    def test_create_get_patch_get_xcom_string_value(self, test_client, session):
+        key = "string_value_xcom"
+        create_value = "test_value1"
+        patch_value = "test_value2"
+
+        response = test_client.post(
+            f"/dags/{TEST_DAG_ID}/dagRuns/{run_id}/taskInstances/{TEST_TASK_ID}/xcomEntries",
+            json={"key": key, "value": create_value},
+        )
+        assert response.status_code == 201
+        assert response.json()["value"] == create_value
+
+        response = test_client.get(
+            f"/dags/{TEST_DAG_ID}/dagRuns/{run_id}/taskInstances/{TEST_TASK_ID}/xcomEntries/{key}"
+        )
+        assert response.status_code == 200
+        assert response.json()["value"] == create_value
+
+        response = test_client.patch(
+            f"/dags/{TEST_DAG_ID}/dagRuns/{run_id}/taskInstances/{TEST_TASK_ID}/xcomEntries/{key}",
+            json={"value": patch_value},
+        )
+        assert response.status_code == 200
+        assert response.json()["value"] == patch_value
+
+        response = test_client.get(
+            f"/dags/{TEST_DAG_ID}/dagRuns/{run_id}/taskInstances/{TEST_TASK_ID}/xcomEntries/{key}"
+        )
+        assert response.status_code == 200
+        assert response.json()["value"] == patch_value
+        check_last_log(session, dag_id=TEST_DAG_ID, event="update_xcom_entry", logical_date=None)
+
     @pytest.mark.parametrize(
         ("key", "value"),
         [
