@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -210,7 +210,8 @@ class TestDbtCloudRunJobOperator:
             execution_timeout=timedelta(seconds=3),
         )
 
-        dbt_op.execute(MagicMock())
+        with patch("airflow.providers.dbt.cloud.operators.dbt.time.time", return_value=1000.0):
+            dbt_op.execute(MagicMock())
 
         # Explicitly pass timeout=None to defer() so Airflow's framework-level
         # deferred timeout handling does not raise TaskDeferredTimeout before
@@ -226,8 +227,8 @@ class TestDbtCloudRunJobOperator:
         mock_dbt_trigger.assert_called_once_with(
             conn_id=ACCOUNT_ID_CONN,
             run_id=5555,
-            end_time=ANY,
-            execution_deadline=ANY,
+            end_time=1003.0,
+            execution_deadline=1003.0,
             account_id=None,
             poll_interval=1,
         )
