@@ -732,6 +732,41 @@ class TestWatchedSubprocess:
         assert proc.wait() == 0
         spy_agency.assert_spy_not_called(heartbeat_spy)
 
+    def test_task_usage_metrics(self, mocker):
+        proc = ActivitySubprocess(
+            process_log=mocker.MagicMock(),
+            id=TI_ID,
+            pid=12345,
+            stdin=mocker.MagicMock(),
+            client=mocker.MagicMock(),
+            process=mocker.MagicMock(
+                spec=ProcessTracker,
+                ProcessNotFound=psutil.NoSuchProcess,
+                TimeoutExpired=psutil.TimeoutExpired,
+            ),
+        )
+        proc.ti = TaskInstanceDTO(
+            id=TI_ID,
+            task_id="task",
+            dag_id="dag",
+            run_id="run",
+            try_number=1,
+            dag_version_id=uuid7(),
+            pool_slots=1,
+            queue="default",
+            priority_weight=1,
+        )
+        proc._process.get_resource_usage.return_value = (12.5, 34.5)
+        gauge = mocker.patch("airflow.sdk.execution_time.supervisor.stats.gauge", autospec=True)
+        mocker.patch("airflow.sdk.execution_time.supervisor.time.monotonic", return_value=10.0)
+
+        proc._emit_task_usage_metrics()
+
+        assert gauge.call_args_list == [
+            mock.call("task.cpu_usage", 12.5, tags={"dag_id": "dag", "task_id": "task"}),
+            mock.call("task.mem_usage", 34.5, tags={"dag_id": "dag", "task_id": "task"}),
+        ]
+
     def test_run_simple_dag(self, test_dags_dir, captured_logs, time_machine, mocker, client_with_ti_start):
         """Test running a simple DAG in a subprocess and capturing the output."""
 
