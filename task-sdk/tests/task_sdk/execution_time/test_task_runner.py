@@ -5170,6 +5170,34 @@ class TestTaskInstanceMetrics:
             )
             backend.incr.assert_any_call("ti_failures", tags=stats_tags)
 
+    @pytest.mark.parametrize(
+        "task_callable",
+        [
+            pytest.param(lambda: "success", id="success"),
+            pytest.param(lambda: (_ for _ in ()).throw(AirflowSkipException()), id="skipped"),
+            pytest.param(lambda: (_ for _ in ()).throw(AirflowFailException("fail")), id="failed"),
+        ],
+    )
+    def test_task_duration_metric_emitted_for_terminal_states(
+        self, task_callable, create_runtime_ti, mock_supervisor_comms
+    ):
+        task = PythonOperator(task_id="test", python_callable=task_callable)
+        ti = create_runtime_ti(task=task)
+        ti.start_date = datetime(2024, 1, 1, tzinfo=dt_timezone.utc)
+
+        with mock.patch("airflow.sdk._shared.observability.metrics.stats._get_backend") as mock_get_backend:
+            backend = mock.MagicMock(spec=StatsLogger)
+            mock_get_backend.return_value = backend
+
+            context = ti.get_template_context()
+            state, _, error = run(ti, context=context, log=mock.MagicMock())
+            finalize(ti, state, context, mock.MagicMock(), error)
+
+            stats_tags = {"dag_id": ti.dag_id, "task_id": ti.task_id}
+            assert ti.end_date is not None
+            backend.timing.assert_any_call(f"dag.{ti.dag_id}.{ti.task_id}.duration", mock.ANY)
+            backend.timing.assert_any_call("task.duration", mock.ANY, tags=stats_tags)
+
 
 class TestDetailSpan:
     """Tests for the detail_span decorator / context manager."""
