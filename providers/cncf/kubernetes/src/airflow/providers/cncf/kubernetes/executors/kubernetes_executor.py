@@ -256,7 +256,8 @@ class KubernetesExecutor(BaseExecutor):
 
             del self.queued_tasks[key]
             self.execute_async(key=key, command=command, queue=queue, executor_config=executor_config)
-            self.running.add(key)
+            if self.event_buffer.get(key, (None, None))[0] != TaskInstanceState.FAILED:
+                self.running.add(key)
 
     def sync(self) -> None:
         """Synchronize task state."""
