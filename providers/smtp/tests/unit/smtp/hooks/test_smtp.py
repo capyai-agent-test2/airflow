@@ -443,6 +443,35 @@ class TestSmtpHook:
         assert create_default_context.called
         assert mock_smtp_ssl().sendmail.call_count == 10
 
+    @patch("smtplib.SMTP_SSL")
+    @patch("ssl.create_default_context")
+    def test_send_mime_zero_retry_limit_attempts_once(
+        self, create_default_context, mock_smtp_ssl, create_connection_without_db
+    ):
+        conn = Connection(
+            conn_id="smtp_zero_retry",
+            conn_type=CONN_TYPE,
+            host=SMTP_HOST,
+            login=SMTP_LOGIN,
+            password=SMTP_PASSWORD,
+            port=DEFAULT_PORT,
+            extra=json.dumps(dict(from_email=FROM_EMAIL, retry_limit=0)),
+        )
+        create_connection_without_db(conn)
+
+        with SmtpHook(smtp_conn_id="smtp_zero_retry") as smtp_hook:
+            assert smtp_hook.smtp_retry_limit == 1
+            smtp_hook.send_email_smtp(to=TO_EMAIL, subject=TEST_SUBJECT, html_content=TEST_BODY)
+
+        mock_smtp_ssl.assert_called_once_with(
+            host=SMTP_HOST,
+            port=DEFAULT_PORT,
+            timeout=DEFAULT_TIMEOUT,
+            context=create_default_context.return_value,
+        )
+        assert mock_smtp_ssl().sendmail.call_count == 1
+        assert mock_smtp_ssl().close.call_count == 1
+
     @patch(smtplib_string)
     def test_oauth2_auth_called(self, mock_smtplib):
         mock_conn = _create_fake_smtp(mock_smtplib, use_ssl=False)

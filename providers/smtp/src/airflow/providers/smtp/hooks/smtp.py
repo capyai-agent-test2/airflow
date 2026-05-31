@@ -82,7 +82,9 @@ class SmtpHook(BaseHook):
         return await self.aget_conn()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._smtp_client.close()
+        if self._smtp_client:
+            self._smtp_client.close()
+            self._smtp_client = None
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._smtp_client:
@@ -654,7 +656,7 @@ class SmtpHook(BaseHook):
 
     @property
     def smtp_retry_limit(self) -> int:
-        return int(self.conn.extra_dejson.get("retry_limit", 5))
+        return max(1, int(self.conn.extra_dejson.get("retry_limit", 5)))
 
     @property
     def from_email(self) -> str | None:
