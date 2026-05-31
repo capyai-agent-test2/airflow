@@ -329,6 +329,53 @@ class TestCliDags:
         parse_and_sync_to_db(os.devnull, include_examples=True)
 
     @conf_vars({("core", "load_examples"): "false"})
+    def test_cli_list_local_dags_with_import_from_dags_folder(
+        self, tmp_path, configure_dag_bundles, stdout_capture
+    ):
+        module_dir = tmp_path / "module"
+        module_dir.mkdir()
+        (module_dir / "task_b.py").write_text(
+            """
+from airflow.sdk import task
+
+
+@task
+def task_b():
+    print("This is Task B")
+"""
+        )
+        (tmp_path / "my_dag.py").write_text(
+            """
+from airflow.sdk import dag, task
+from module.task_b import task_b
+
+
+@dag
+def my_dag():
+    @task
+    def task_a():
+        print("This is Task A")
+
+    task_a() >> task_b()
+
+
+my_dag()
+"""
+        )
+
+        clear_db_dags()
+        args = self.parser.parse_args(["dags", "list", "--output", "json", "--local"])
+        with configure_dag_bundles({"dags-folder": tmp_path}):
+            with stdout_capture as temp_stdout:
+                dag_command.dag_list_dags(args)
+                dag_list = json.loads(temp_stdout.getvalue())
+
+        assert any(dag["dag_id"] == "my_dag" for dag in dag_list)
+
+        # Rebuild Test DB for other tests
+        parse_and_sync_to_db(os.devnull, include_examples=True)
+
+    @conf_vars({("core", "load_examples"): "false"})
     def test_cli_list_local_dags_with_bundle_name(self, configure_testing_dag_bundle, stdout_capture):
         # Clear the database
         clear_db_dags()
