@@ -27,7 +27,7 @@ import {
   VStack,
   type SelectValueChangeDetails,
 } from "@chakra-ui/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CgRedo } from "react-icons/cg";
 
@@ -132,7 +132,7 @@ const ClearTaskInstanceDialog = (props: Props) => {
     dagLevelConfig: dagDetails?.rerun_with_latest_version,
     fallback: dagVersionsDiffer,
   });
-  const [selectedDagVersionId, setSelectedDagVersionId] = useState<string | undefined>();
+  const [selectedDagVersionIdOverride, setSelectedDagVersionIdOverride] = useState<string | undefined>();
   const { data: dagVersions } = useDagVersionServiceGetDagVersions(
     { dagId, orderBy: ["-version_number"] },
     undefined,
@@ -145,22 +145,17 @@ const ClearTaskInstanceDialog = (props: Props) => {
     })),
   });
 
-  useEffect(() => {
-    if (shouldShowRunOnLatestOption && selectedDagVersionId === undefined) {
-      setSelectedDagVersionId(
-        runOnLatestVersion ? dagDetails?.latest_dag_version?.id : taskInstance?.dag_version?.id,
-      );
-    }
-  }, [
-    dagDetails?.latest_dag_version?.id,
-    runOnLatestVersion,
-    selectedDagVersionId,
-    shouldShowRunOnLatestOption,
-    taskInstance?.dag_version?.id,
-  ]);
+  const defaultDagVersionId = runOnLatestVersion
+    ? dagDetails?.latest_dag_version?.id
+    : taskInstance?.dag_version?.id;
+  const selectedDagVersionId = selectedDagVersionIdOverride ?? defaultDagVersionId;
 
   const clearDagVersionId = shouldShowRunOnLatestOption ? selectedDagVersionId : undefined;
   const selectedDagVersion = versionOptions.items.find((item) => item.value === selectedDagVersionId);
+  const closeDialog = () => {
+    setSelectedDagVersionIdOverride(undefined);
+    onCloseDialog();
+  };
 
   const refetchInterval = useAutoRefresh({ dagId });
 
@@ -194,7 +189,7 @@ const ClearTaskInstanceDialog = (props: Props) => {
 
   return (
     <>
-      <Dialog.Root lazyMount onOpenChange={onCloseDialog} open={openDialog ? !open : false}>
+      <Dialog.Root lazyMount onOpenChange={closeDialog} open={openDialog ? !open : false}>
         <Dialog.Content backdrop>
           <Dialog.Header>
             <VStack align="start" gap={4}>
@@ -264,7 +259,7 @@ const ClearTaskInstanceDialog = (props: Props) => {
                   collection={versionOptions}
                   disabled={(dagVersions?.dag_versions.length ?? 0) === 0}
                   onValueChange={({ items }: SelectValueChangeDetails<VersionSelected>) =>
-                    setSelectedDagVersionId(items[0]?.value)
+                    setSelectedDagVersionIdOverride(items[0]?.value)
                   }
                   size="sm"
                   value={selectedDagVersionId === undefined ? [] : [selectedDagVersionId]}
@@ -360,7 +355,7 @@ const ClearTaskInstanceDialog = (props: Props) => {
                 taskId,
               });
             }
-            onCloseDialog();
+            closeDialog();
           }}
           open={open}
           preventRunningTask={preventRunningTask}
