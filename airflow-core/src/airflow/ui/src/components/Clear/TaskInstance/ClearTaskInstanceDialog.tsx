@@ -16,13 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Button, Flex, Heading, useDisclosure, VStack } from "@chakra-ui/react";
-import { useState } from "react";
+import {
+  Button,
+  createListCollection,
+  Flex,
+  Heading,
+  Select,
+  Text,
+  useDisclosure,
+  VStack,
+  type SelectValueChangeDetails,
+} from "@chakra-ui/react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CgRedo } from "react-icons/cg";
 
-import { useDagServiceGetDagDetails } from "openapi/queries";
-import type { TaskInstanceResponse } from "openapi/requests/types.gen";
+import { useDagServiceGetDagDetails, useDagVersionServiceGetDagVersions } from "openapi/queries";
+import type { DagVersionResponse, TaskInstanceResponse } from "openapi/requests/types.gen";
 import { ActionAccordion } from "src/components/ActionAccordion";
 import { useRerunWithLatestVersion } from "src/components/Clear/useRerunWithLatestVersion";
 import Time from "src/components/Time";
@@ -35,6 +45,11 @@ import { isStatePending, useAutoRefresh } from "src/utils";
 
 import ClearTaskInstanceConfirmationDialog from "./ClearTaskInstanceConfirmationDialog";
 import { getRunOnLatestVersionState } from "./runOnLatestVersion";
+
+type VersionSelected = {
+  value: string;
+  version: DagVersionResponse;
+};
 
 // Discriminated union: callers pass either `allMapped: true` together with
 // `dagId`/`dagRunId`/`taskId` (clears every mapped TI of the task), or a full
@@ -113,10 +128,39 @@ const ClearTaskInstanceDialog = (props: Props) => {
 
   // dagVersionsDiffer becomes the fallback so the historical "auto-check when versions
   // differ" heuristic still applies when neither DAG-level nor global config is set.
-  const { setValue: setRunOnLatestVersion, value: runOnLatestVersion } = useRerunWithLatestVersion({
+  const { value: runOnLatestVersion } = useRerunWithLatestVersion({
     dagLevelConfig: dagDetails?.rerun_with_latest_version,
     fallback: dagVersionsDiffer,
   });
+  const [selectedDagVersionId, setSelectedDagVersionId] = useState<string | undefined>();
+  const { data: dagVersions } = useDagVersionServiceGetDagVersions(
+    { dagId, orderBy: ["-version_number"] },
+    undefined,
+    { enabled: openDialog && shouldShowRunOnLatestOption },
+  );
+  const versionOptions = createListCollection({
+    items: (dagVersions?.dag_versions ?? []).map((version) => ({
+      value: version.id,
+      version,
+    })),
+  });
+
+  useEffect(() => {
+    if (shouldShowRunOnLatestOption && selectedDagVersionId === undefined) {
+      setSelectedDagVersionId(
+        runOnLatestVersion ? dagDetails?.latest_dag_version?.id : taskInstance?.dag_version?.id,
+      );
+    }
+  }, [
+    dagDetails?.latest_dag_version?.id,
+    runOnLatestVersion,
+    selectedDagVersionId,
+    shouldShowRunOnLatestOption,
+    taskInstance?.dag_version?.id,
+  ]);
+
+  const clearDagVersionId = shouldShowRunOnLatestOption ? selectedDagVersionId : undefined;
+  const selectedDagVersion = versionOptions.items.find((item) => item.value === selectedDagVersionId);
 
   const refetchInterval = useAutoRefresh({ dagId });
 
@@ -131,13 +175,14 @@ const ClearTaskInstanceDialog = (props: Props) => {
       refetchOnMount: "always",
     },
     requestBody: {
+      ...(clearDagVersionId === undefined ? { run_on_latest_version: runOnLatestVersion } : {}),
+      ...(clearDagVersionId === undefined ? {} : { dag_version_id: clearDagVersionId }),
       dag_run_id: dagRunId,
       include_downstream: downstream,
       include_future: future,
       include_past: past,
       include_upstream: upstream,
       only_failed: onlyFailed,
-      run_on_latest_version: runOnLatestVersion,
       task_ids: allMapped ? [taskId] : [[taskId, mapIndex as number]],
     },
   });
@@ -215,12 +260,47 @@ const ClearTaskInstanceDialog = (props: Props) => {
               mt={3}
             >
               {shouldShowRunOnLatestOption ? (
-                <Checkbox
-                  checked={runOnLatestVersion}
-                  onCheckedChange={(event) => setRunOnLatestVersion(Boolean(event.checked))}
+                <Select.Root
+                  collection={versionOptions}
+                  disabled={(dagVersions?.dag_versions.length ?? 0) === 0}
+                  onValueChange={({ items }: SelectValueChangeDetails<VersionSelected>) =>
+                    setSelectedDagVersionId(items[0]?.value)
+                  }
+                  size="sm"
+                  value={selectedDagVersionId === undefined ? [] : [selectedDagVersionId]}
+                  width="250px"
                 >
-                  {translate("dags:runAndTaskActions.options.runOnLatestVersion")}
-                </Checkbox>
+                  <Select.Label fontSize="xs">{translate("common:dagVersion")}</Select.Label>
+                  <Select.Control>
+                    <Select.Trigger>
+                      <Select.ValueText>
+                        {selectedDagVersion === undefined ? undefined : (
+                          <Text>
+                            {translate("components:versionSelect.versionCode", {
+                              versionCode: selectedDagVersion.version.version_number,
+                            })}
+                          </Text>
+                        )}
+                      </Select.ValueText>
+                    </Select.Trigger>
+                    <Select.IndicatorGroup>
+                      <Select.Indicator />
+                    </Select.IndicatorGroup>
+                  </Select.Control>
+                  <Select.Positioner>
+                    <Select.Content>
+                      {versionOptions.items.map((option) => (
+                        <Select.Item item={option} key={option.value}>
+                          <Text>
+                            {translate("components:versionSelect.versionCode", {
+                              versionCode: option.version.version_number,
+                            })}
+                          </Text>
+                        </Select.Item>
+                      ))}
+                    </Select.Content>
+                  </Select.Positioner>
+                </Select.Root>
               ) : undefined}
               <Checkbox
                 checked={preventRunningTask}
@@ -258,6 +338,8 @@ const ClearTaskInstanceDialog = (props: Props) => {
             mutate({
               dagId,
               requestBody: {
+                ...(clearDagVersionId === undefined ? { run_on_latest_version: runOnLatestVersion } : {}),
+                ...(clearDagVersionId === undefined ? {} : { dag_version_id: clearDagVersionId }),
                 dag_run_id: dagRunId,
                 dry_run: false,
                 include_downstream: downstream,
@@ -265,7 +347,6 @@ const ClearTaskInstanceDialog = (props: Props) => {
                 include_past: past,
                 include_upstream: upstream,
                 only_failed: onlyFailed,
-                run_on_latest_version: runOnLatestVersion,
                 task_ids: allMapped ? [taskId] : [[taskId, mapIndex as number]],
                 ...(preventRunningTask ? { prevent_running_task: true } : {}),
               },

@@ -787,6 +787,48 @@ class TestClearTasks:
         assert tis["1"].dag_version_id == old_dag_version.id
         assert dr_after.created_dag_version_id == new_dag_version.id
 
+    def test_clear_task_instances_with_selected_dag_version(self, dag_maker, session):
+        with dag_maker(
+            "test_clear_selected_version",
+            start_date=DEFAULT_DATE,
+            end_date=DEFAULT_DATE + datetime.timedelta(days=10),
+            catchup=True,
+            bundle_version="v1",
+        ):
+            EmptyOperator(task_id="0", retries=1)
+        dr = dag_maker.create_dagrun(
+            state=State.RUNNING,
+            run_type=DagRunType.SCHEDULED,
+        )
+
+        old_dag_version = DagVersion.get_latest_version(dr.dag_id)
+        ti = dag_maker.run_ti("0", dr)
+        dr.state = DagRunState.SUCCESS
+        session.merge(dr)
+        session.flush()
+
+        with dag_maker(
+            "test_clear_selected_version",
+            start_date=DEFAULT_DATE,
+            end_date=DEFAULT_DATE + datetime.timedelta(days=10),
+            catchup=True,
+            bundle_version="v2",
+        ):
+            EmptyOperator(task_id="0", retries=3)
+        selected_dag_version = DagVersion.get_latest_version(dr.dag_id)
+
+        assert old_dag_version.id != selected_dag_version.id
+
+        clear_task_instances([ti], session, dag_version_id=selected_dag_version.id)
+        session.commit()
+
+        dr_after = session.scalar(select(DagRun).where(DagRun.dag_id == dr.dag_id))
+        ti_after = dr_after.task_instances[0]
+        assert dr_after.created_dag_version_id == selected_dag_version.id
+        assert dr_after.bundle_version == selected_dag_version.bundle_version
+        assert ti_after.dag_version_id == selected_dag_version.id
+        assert ti_after.max_tries == ti_after.try_number + 3
+
     def test_clear_only_new_tasks(self, dag_maker, session):
         """Test that only_new queues only newly added tasks without clearing existing ones."""
 
