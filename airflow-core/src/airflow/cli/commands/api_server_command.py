@@ -241,6 +241,9 @@ def api_server(args: Namespace):
         )
         return
 
+    if not args.daemon and args.log_file:
+        cli_utils.setup_logging(args.log_file)
+
     run_command_with_daemon_option(
         args=args,
         process_name="api_server",
@@ -251,6 +254,7 @@ def api_server(args: Namespace):
             worker_timeout=worker_timeout,
             proxy_headers=proxy_headers,
         ),
+        should_setup_logging=True,
     )
 
 

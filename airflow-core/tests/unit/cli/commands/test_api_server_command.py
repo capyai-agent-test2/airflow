@@ -206,18 +206,21 @@ class TestCliApiServer(_CommonCLIUvicornTestClass):
         [True, False],
     )
     @mock.patch("airflow.cli.commands.daemon_utils.TimeoutPIDLockFile")
+    @mock.patch("airflow.cli.commands.daemon_utils.setup_logging")
     @mock.patch("airflow.cli.commands.daemon_utils.setup_locations")
     @mock.patch("airflow.cli.commands.daemon_utils.daemon")
     @mock.patch("airflow.cli.commands.daemon_utils.check_if_pidfile_process_is_running")
     @mock.patch("airflow.cli.commands.api_server_command.uvicorn")
     def test_run_command_daemon(
-        self, mock_uvicorn, _, mock_daemon, mock_setup_locations, mock_pid_file, demonize
+        self, mock_uvicorn, _, mock_daemon, mock_setup_locations, mock_setup_logging, mock_pid_file, demonize
     ):
+        log_stream = object()
+        mock_setup_logging.return_value = log_stream
         mock_setup_locations.return_value = (
             mock.MagicMock(name="pidfile"),
             mock.MagicMock(name="stdout"),
             mock.MagicMock(name="stderr"),
-            mock.MagicMock(name="INVALID"),
+            mock.MagicMock(name="log_file"),
         )
         args = self.parser.parse_args(
             [
@@ -257,7 +260,7 @@ class TestCliApiServer(_CommonCLIUvicornTestClass):
             assert mock_daemon.mock_calls[:3] == [
                 mock.call.DaemonContext(
                     pidfile=mock_pid_file.return_value,
-                    files_preserve=None,
+                    files_preserve=[log_stream],
                     stdout=mock_open.return_value,
                     stderr=mock_open.return_value,
                     umask=0o077,
@@ -274,6 +277,7 @@ class TestCliApiServer(_CommonCLIUvicornTestClass):
                     log=None,
                 )
             ]
+            mock_setup_logging.assert_called_once_with(mock_setup_locations.return_value[3])
             mock_pid_file.assert_has_calls([mock.call(mock_setup_locations.return_value[0], -1)])
             if sys.version_info >= (3, 13):
                 # extra close is called in Python 3.13+ to close the file descriptors
@@ -303,8 +307,19 @@ class TestCliApiServer(_CommonCLIUvicornTestClass):
         else:
             assert mock_daemon.mock_calls == []
             assert mock_setup_locations.mock_calls == []
+            mock_setup_logging.assert_not_called()
             mock_pid_file.assert_not_called()
             mock_open.assert_not_called()
+
+    @mock.patch("airflow.utils.cli.setup_logging")
+    @mock.patch("airflow.cli.commands.api_server_command.uvicorn")
+    def test_api_server_log_file_sets_up_foreground_logging(self, mock_uvicorn, mock_setup_logging):
+        args = self.parser.parse_args(["api-server", "--log-file", "/tmp/api-server.log"])
+
+        api_server_command.api_server(args)
+
+        mock_setup_logging.assert_called_once_with("/tmp/api-server.log")
+        mock_uvicorn.run.assert_called_once()
 
     @pytest.mark.parametrize(
         ("ssl_arguments", "error_pattern"),
