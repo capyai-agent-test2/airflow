@@ -1590,6 +1590,18 @@ export const $ClearTaskInstancesBody = {
             title: 'Task Ids',
             description: 'A list of `task_id` or [`task_id`, `map_index`]. If only the `task_id` is provided for a mapped task, all of its map indices will be targeted.'
         },
+        task_group_id: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Task Group Id',
+            description: 'The task group ID whose task instances should be targeted.'
+        },
         dag_run_id: {
             anyOf: [
                 {

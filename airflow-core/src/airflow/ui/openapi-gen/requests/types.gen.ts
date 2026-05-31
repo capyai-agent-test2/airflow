@@ -504,6 +504,10 @@ export type ClearTaskInstancesBody = {
     string,
     number
 ])> | null;
+    /**
+     * The task group ID whose task instances should be targeted.
+     */
+    task_group_id?: string | null;
     dag_run_id?: string | null;
     include_upstream?: boolean;
     include_downstream?: boolean;

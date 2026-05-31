@@ -211,6 +211,10 @@ class ClearTaskInstancesBody(StrictBaseModel):
         description="A list of `task_id` or [`task_id`, `map_index`]. "
         "If only the `task_id` is provided for a mapped task, all of its map indices will be targeted.",
     )
+    task_group_id: str | None = Field(
+        default=None,
+        description="The task group ID whose task instances should be targeted.",
+    )
     dag_run_id: str | None = None
     include_upstream: bool = False
     include_downstream: bool = False
@@ -244,6 +248,8 @@ class ClearTaskInstancesBody(StrictBaseModel):
             raise ValidationError("Exactly one of dag_run_id or end_date must be provided")
         if isinstance(data.get("task_ids"), list) and len(data.get("task_ids")) < 1:
             raise ValidationError("task_ids list should have at least 1 element.")
+        if data.get("task_ids") is not None and data.get("task_group_id") is not None:
+            raise ValueError("Exactly one of task_ids or task_group_id must be provided")
         return data
 
 
