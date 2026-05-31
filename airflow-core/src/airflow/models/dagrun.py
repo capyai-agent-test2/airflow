@@ -1003,7 +1003,12 @@ class DagRun(Base, LoggingMixin):
             return None
         filters = [DagRun.dag_id == dag_run.dag_id]
         if dag_run.logical_date is None:
-            filters.append(DagRun.run_after < dag_run.run_after)
+            filters.append(
+                or_(
+                    DagRun.run_after < dag_run.run_after,
+                    and_(DagRun.run_after == dag_run.run_after, DagRun.id < dag_run.id),
+                )
+            )
             order_by = (DagRun.run_after.desc(), DagRun.id.desc())
         else:
             filters.append(DagRun.logical_date < dag_run.logical_date)
@@ -1031,7 +1036,10 @@ class DagRun(Base, LoggingMixin):
         if dag_run.logical_date is None:
             filters = [
                 DagRun.dag_id == dag_run.dag_id,
-                DagRun.run_after < dag_run.run_after,
+                or_(
+                    DagRun.run_after < dag_run.run_after,
+                    and_(DagRun.run_after == dag_run.run_after, DagRun.id < dag_run.id),
+                ),
                 DagRun.run_type != DagRunType.MANUAL,
             ]
             order_by = (DagRun.run_after.desc(), DagRun.id.desc())
