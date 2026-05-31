@@ -53,6 +53,8 @@ from airflow.api_fastapi.core_api.security import (
 from airflow.api_fastapi.core_api.services.public.connections import (
     BulkConnectionService,
     update_orm_from_pydantic,
+    validate_connection_extra_fields,
+    validate_connection_update_extra_fields,
 )
 from airflow.api_fastapi.logging.decorators import action_logging
 from airflow.configuration import conf
@@ -160,6 +162,7 @@ def post_connection(
     session: SessionDep,
 ) -> ConnectionResponse:
     """Create connection entry."""
+    validate_connection_extra_fields(post_body.conn_type, post_body.extra)
     connection = Connection(**post_body.model_dump(by_alias=True))
     session.add(connection)
     return connection
@@ -218,6 +221,7 @@ def patch_connection(
         except ValidationError as e:
             raise RequestValidationError(errors=e.errors())
 
+    validate_connection_update_extra_fields(connection, patch_body, update_mask)
     update_orm_from_pydantic(connection, patch_body, update_mask)
     return connection
 

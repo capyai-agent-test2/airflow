@@ -35,6 +35,81 @@ from airflow.api_fastapi.core_api.datamodels.common import (
 from airflow.api_fastapi.core_api.datamodels.connections import ConnectionBody
 from airflow.api_fastapi.core_api.services.public.common import BulkService
 from airflow.models.connection import Connection
+from airflow.providers_manager import ProvidersManager
+
+
+class _ConnectionExtraFormData:
+    def __init__(self, extra: dict):
+        self.extra = extra
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.extra
+
+    def getlist(self, key: str) -> list:
+        value = self.extra.get(key)
+        if value is None:
+            return []
+        return value if isinstance(value, list) else [value]
+
+
+def validate_connection_extra_fields(conn_type: str, extra_value: str | None) -> None:
+    """Validate connection extra fields defined by legacy WTForms widgets."""
+    if not extra_value:
+        return
+
+    try:
+        extra = json.loads(extra_value)
+    except json.JSONDecodeError:
+        return
+
+    form_fields = {}
+    field_prefix = f"extra__{conn_type}__"
+    for prefixed_field_name, form_widget in ProvidersManager().connection_form_widgets.items():
+        if not prefixed_field_name.startswith(field_prefix):
+            continue
+        if type(form_widget.field).__name__ == "UnboundField":
+            form_fields[form_widget.field_name] = form_widget.field
+
+    if not form_fields:
+        return
+
+    from wtforms import Form
+
+    form = type("ConnectionExtraForm", (Form,), form_fields)(formdata=_ConnectionExtraFormData(extra))
+    if not form.validate():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"extra": form.errors},
+        )
+
+
+def get_merged_connection_extra(orm_conn: Connection, pydantic_conn: ConnectionBody) -> str | None:
+    """Return the extra value that would be persisted for a connection update."""
+    if pydantic_conn.extra is None or orm_conn.extra is None:
+        return pydantic_conn.extra
+    try:
+        merged_extra = merge(json.loads(pydantic_conn.extra), json.loads(orm_conn.extra))
+        return json.dumps(merged_extra)
+    except json.JSONDecodeError:
+        return pydantic_conn.extra
+
+
+def validate_connection_update_extra_fields(
+    orm_conn: Connection, pydantic_conn: ConnectionBody, update_mask: list[str] | None = None
+) -> None:
+    """Validate connection extra fields against the effective persisted update values."""
+    if update_mask and not {"extra", "conn_type"}.intersection(update_mask):
+        return
+
+    conn_type = (
+        pydantic_conn.conn_type if not update_mask or "conn_type" in update_mask else orm_conn.conn_type
+    )
+    extra = (
+        get_merged_connection_extra(orm_conn, pydantic_conn)
+        if not update_mask or "extra" in update_mask
+        else orm_conn.extra
+    )
+    validate_connection_extra_fields(conn_type, extra)
 
 
 def update_orm_from_pydantic(
@@ -70,12 +145,7 @@ def update_orm_from_pydantic(
         if pydantic_conn.extra is None or orm_conn.extra is None:
             orm_conn.set_extra(pydantic_conn.extra)
             return
-        try:
-            merged_extra = merge(json.loads(pydantic_conn.extra), json.loads(orm_conn.extra))
-            orm_conn.set_extra(json.dumps(merged_extra))
-        except json.JSONDecodeError:
-            # We can't merge fields in an unstructured `extra`
-            orm_conn.set_extra(pydantic_conn.extra)
+        orm_conn.set_extra(get_merged_connection_extra(orm_conn, pydantic_conn))
 
 
 class BulkConnectionService(BulkService[ConnectionBody]):
@@ -119,6 +189,7 @@ class BulkConnectionService(BulkService[ConnectionBody]):
 
             for connection in action.entities:
                 if connection.connection_id in create_connection_ids:
+                    validate_connection_extra_fields(connection.conn_type, connection.extra)
                     if connection.connection_id in matched_connection_ids:
                         existed_connection = existed_connections_dict[connection.connection_id]
                         for key, val in connection.model_dump(by_alias=True).items():
@@ -159,7 +230,8 @@ class BulkConnectionService(BulkService[ConnectionBody]):
                         )
                     ConnectionBody(**connection.model_dump())
 
-                    update_orm_from_pydantic(old_connection, connection)
+                    validate_connection_update_extra_fields(old_connection, connection, action.update_mask)
+                    update_orm_from_pydantic(old_connection, connection, action.update_mask)
                     results.success.append(connection.connection_id)
 
         except HTTPException as e:
