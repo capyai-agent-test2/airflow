@@ -1835,7 +1835,7 @@ class TestDagFileProcessorManager:
         bundle.initialize.assert_called_once()
 
     @mock.patch("airflow.dag_processing.manager.DagBundlesManager")
-    def test_prepare_callback_bundle_skips_initialize_for_unversioned_request(self, mock_bundle_manager):
+    def test_prepare_callback_bundle_initializes_versioned_bundle_without_version(self, mock_bundle_manager):
         manager = DagFileProcessorManager(max_runs=1)
         bundle = MagicMock(spec=BaseDagBundle)
         bundle.supports_versioning = True
@@ -1852,7 +1852,7 @@ class TestDagFileProcessorManager:
         )
 
         assert manager.prepare_callback_bundle(request) is bundle
-        bundle.initialize.assert_not_called()
+        bundle.initialize.assert_called_once()
 
     @mock.patch("airflow.dag_processing.manager.DagBundlesManager")
     def test_prepare_callback_bundle_skips_initialize_for_non_versioning_bundle(self, mock_bundle_manager):
@@ -1937,6 +1937,35 @@ class TestDagFileProcessorManager:
         [(file_info, requests)] = manager._callback_to_execute.items()
         assert file_info.rel_path == Path("file1.py")
         assert file_info.bundle_name == "testing"
+        assert requests == [request]
+
+    @mock.patch("airflow.dag_processing.manager.DagBundlesManager")
+    def test_add_callback_queues_file_info_after_initializing_bundle_without_version(
+        self, mock_bundle_manager
+    ):
+        manager = DagFileProcessorManager(max_runs=1)
+        bundle = MagicMock(spec=BaseDagBundle)
+        bundle.supports_versioning = True
+        bundle.path = Path("/dev/null")
+        bundle.initialize.side_effect = lambda: setattr(bundle, "path", Path("/tmp/bundle"))
+        mock_bundle_manager.return_value.get_bundle.return_value = bundle
+
+        request = DagCallbackRequest(
+            filepath="file1.py",
+            dag_id="dag1",
+            run_id="run1",
+            is_failure_callback=False,
+            bundle_name="testing",
+            bundle_version=None,
+            msg=None,
+        )
+
+        manager._add_callback_to_queue(request)
+
+        bundle.initialize.assert_called_once()
+        [(file_info, requests)] = manager._callback_to_execute.items()
+        assert file_info.bundle_path == Path("/tmp/bundle")
+        assert file_info.bundle_version is None
         assert requests == [request]
 
     @mock.patch("airflow.dag_processing.manager.DagBundlesManager")
