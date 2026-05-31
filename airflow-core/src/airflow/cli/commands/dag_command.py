@@ -512,7 +512,23 @@ def dag_list_dags(args, *, session: Session = NEW_SESSION) -> None:
             dags_list.extend(list(dagbag.dags.values()))
             dagbag_import_errors += len(dagbag.import_errors)
     else:
-        dags_list.extend(cast("DAG", sm.dag) for sm in session.scalars(select(SerializedDagModel)))
+        latest_serialized_dags = select(
+            SerializedDagModel.id.label("id"),
+            func.row_number()
+            .over(
+                partition_by=SerializedDagModel.dag_id,
+                order_by=SerializedDagModel.created_at.desc(),
+            )
+            .label("row_number"),
+        ).subquery()
+        dags_list.extend(
+            cast("DAG", sm.dag)
+            for sm in session.scalars(
+                select(SerializedDagModel)
+                .join(latest_serialized_dags, SerializedDagModel.id == latest_serialized_dags.c.id)
+                .where(latest_serialized_dags.c.row_number == 1)
+            )
+        )
         pie_stmt = select(func.count()).select_from(ParseImportError)
         if args.bundle_name:
             pie_stmt = pie_stmt.where(ParseImportError.bundle_name.in_(args.bundle_name))
