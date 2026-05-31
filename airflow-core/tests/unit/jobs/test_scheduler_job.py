@@ -5334,8 +5334,14 @@ class TestSchedulerJob:
             BashOperator(task_id="producer", bash_command="echo 1", outlets=[asset])
 
         asset_manager = AssetManager()
+        earlier_event_time = pendulum.datetime(2025, 1, 1, 0, 0, tz="UTC")
+        later_event_time = pendulum.datetime(2025, 1, 1, 0, 1, tz="UTC")
         event_times = [
-            pendulum.datetime(2025, 1, 1, 0, 0, tz="UTC"),
+            later_event_time,
+            earlier_event_time,
+        ]
+        expected_consumed_event_times = [
+            earlier_event_time,
             pendulum.datetime(2025, 1, 1, 0, 1, tz="UTC"),
         ]
         for index, event_time in enumerate(event_times, start=1):
@@ -5357,7 +5363,7 @@ class TestSchedulerJob:
                 AssetDagRunQueue.target_dag_id == consumer_dag.dag_id,
             )
         ).one()
-        assert queued.created_at == event_times[-1]
+        assert queued.created_at == later_event_time
 
         active_run.state = DagRunState.SUCCESS
         session.flush()
@@ -5372,7 +5378,10 @@ class TestSchedulerJob:
                 DagRun.run_type == DagRunType.ASSET_TRIGGERED,
             )
         ).one()
-        assert [event.timestamp for event in created_run.consumed_asset_events] == event_times
+        assert (
+            sorted(event.timestamp for event in created_run.consumed_asset_events)
+            == expected_consumed_event_times
+        )
 
     @pytest.mark.need_serialized_dag
     def test_create_dag_runs_asset_alias_with_asset_event_attached(self, session, dag_maker):

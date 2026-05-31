@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import structlog
-from sqlalchemy import exc, or_, select, update
+from sqlalchemy import case, exc, or_, select, update
 from sqlalchemy.orm import joinedload
 
 from airflow._shared.observability.metrics import stats
@@ -644,7 +644,7 @@ class AssetManager(LoggingMixin):
             # https://docs.sqlalchemy.org/en/14/orm/session_transaction.html#using-savepoint
             try:
                 with session.begin_nested():
-                    session.merge(item)
+                    session.add(item)
             except exc.IntegrityError:
                 cls.logger().debug("Skipping record %s", item, exc_info=True)
                 session.execute(
@@ -653,7 +653,12 @@ class AssetManager(LoggingMixin):
                         AssetDagRunQueue.asset_id == asset_id,
                         AssetDagRunQueue.target_dag_id == dag.dag_id,
                     )
-                    .values(created_at=created_at)
+                    .values(
+                        created_at=case(
+                            (AssetDagRunQueue.created_at < created_at, created_at),
+                            else_=AssetDagRunQueue.created_at,
+                        )
+                    )
                 )
             return dag.dag_id
 
@@ -671,7 +676,12 @@ class AssetManager(LoggingMixin):
         stmt = insert(AssetDagRunQueue).values(asset_id=asset_id)
         stmt = stmt.on_conflict_do_update(
             index_elements=[AssetDagRunQueue.asset_id, AssetDagRunQueue.target_dag_id],
-            set_={"created_at": stmt.excluded.created_at},
+            set_={
+                "created_at": case(
+                    (AssetDagRunQueue.created_at < stmt.excluded.created_at, stmt.excluded.created_at),
+                    else_=AssetDagRunQueue.created_at,
+                )
+            },
         )
         session.execute(stmt, values)
 
