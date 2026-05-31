@@ -27,7 +27,7 @@ class TestStatsd:
 
     def test_should_create_statsd_default(self):
         docs = render_chart(
-            values={"statsd": {"enabled": True, "cache": {"size": 1000, "type": "lru", "ttl": "0s"}}},
+            values={"statsd": {"enabled": True, "cache": {"size": 1000, "type": "lru", "ttl": "24h"}}},
             show_only=["templates/statsd/statsd-deployment.yaml"],
         )
 
@@ -70,7 +70,7 @@ class TestStatsd:
         if ttl:
             assert mappings_yml_obj["defaults"]["ttl"] == ttl
         else:
-            assert mappings_yml_obj["defaults"]["ttl"] == "0s"
+            assert mappings_yml_obj["defaults"]["ttl"] == "24h"
 
         assert "mappings" in mappings_yml_obj
 
