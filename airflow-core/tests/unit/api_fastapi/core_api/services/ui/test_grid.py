@@ -17,7 +17,8 @@
 
 from __future__ import annotations
 
-from airflow.api_fastapi.core_api.services.ui.grid import _merge_node_dicts
+from airflow.api_fastapi.core_api.services.ui.grid import _merge_node_dicts, agg_state
+from airflow.utils.state import TaskInstanceState
 
 
 def test_merge_node_dicts_with_none_new_list():
@@ -136,3 +137,24 @@ def test_merge_node_dicts_large_merge_keeps_unique_nodes():
         "group_399.old_task",
         "group_399.new_task",
     }
+
+
+def test_agg_state_keeps_success_before_skipped_by_default():
+    assert agg_state([TaskInstanceState.SUCCESS, TaskInstanceState.SKIPPED]) == TaskInstanceState.SUCCESS
+
+
+def test_agg_state_can_prioritize_skipped_for_mapped_tasks():
+    assert (
+        agg_state([TaskInstanceState.SUCCESS, TaskInstanceState.SKIPPED], prioritize_skipped=True)
+        == TaskInstanceState.SKIPPED
+    )
+
+
+def test_agg_state_prioritizes_running_before_skipped_for_mapped_tasks():
+    assert (
+        agg_state(
+            [TaskInstanceState.SUCCESS, TaskInstanceState.SKIPPED, TaskInstanceState.RUNNING],
+            prioritize_skipped=True,
+        )
+        == TaskInstanceState.RUNNING
+    )
