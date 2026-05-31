@@ -1470,14 +1470,17 @@ class ActivitySubprocess(WatchedSubprocess):
         result = None
         error: BaseException | None = None
         done = threading.Event()
+        current_context = otel_context.get_current()
 
         def run() -> None:
             nonlocal result, error
+            token = otel_context.attach(current_context)
             try:
                 result = func()
             except BaseException as e:
                 error = e
             finally:
+                otel_context.detach(token)
                 done.set()
 
         thread = threading.Thread(target=run, name="airflow-supervisor-api-call")

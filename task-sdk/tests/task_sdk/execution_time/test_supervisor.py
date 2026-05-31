@@ -4119,6 +4119,41 @@ def test_ipc_trace_context_propagation(mocker):
     assert get_current_span().get_span_context().span_id != expected_span_id
 
 
+def test_set_xcom_thread_preserves_trace_context(mocker):
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(InMemorySpanExporter()))
+    tracer = provider.get_tracer("test")
+
+    with tracer.start_as_current_span("task_span") as span:
+        frame = CommsDecoder(socket=None)._make_frame(  # type: ignore[arg-type]
+            SetXCom(dag_id="test_dag", run_id="test_run", task_id="test_task", key="test_key", value="v")
+        )
+        expected_span_id = span.get_span_context().span_id
+
+    _, write_end = socket.socketpair()
+    proc = ActivitySubprocess(
+        process_log=mocker.MagicMock(),
+        id=TI_ID,
+        pid=12345,
+        stdin=write_end,
+        client=mocker.Mock(),
+        process=mocker.Mock(),
+    )
+    captured: list[int] = []
+
+    def capture_on_set(*args, **kwargs):
+        captured.append(get_current_span().get_span_context().span_id)
+
+    proc.client.xcoms.set.side_effect = capture_on_set
+
+    generator = proc.handle_requests(log=mocker.Mock())
+    next(generator)
+    generator.send(frame)
+
+    assert captured == [expected_span_id]
+    assert get_current_span().get_span_context().span_id != expected_span_id
+
+
 class TestMakeBufferedSocketReader:
     """Tests for the data= pre-seeding parameter added to make_buffered_socket_reader.
 
