@@ -135,6 +135,17 @@ core:
       type: integer
       example: ~
       default: "16"
+    max_active_tasks_include_deferred:
+      description: |
+        Whether deferred task instances count toward the ``max_active_tasks`` limit.
+
+        By default, only queued and running task instances count toward the limit because deferred
+        tasks do not consume worker slots. Set this to ``True`` to also count deferred tasks when
+        applying ``max_active_tasks``.
+      version_added: 3.3.0
+      type: boolean
+      example: ~
+      default: "False"
     dags_are_paused_at_creation:
       description: |
         Are DAGs paused by default at creation

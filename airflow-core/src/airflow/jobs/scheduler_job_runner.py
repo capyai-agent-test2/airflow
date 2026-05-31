@@ -222,6 +222,7 @@ class ConcurrencyMap:
         self.dag_run_active_tasks_map.clear()
         self.task_concurrency_map.clear()
         self.task_dagrun_concurrency_map.clear()
+        dag_run_active_states = _get_dag_run_active_states()
         query = session.execute(
             select(TI.dag_id, TI.task_id, TI.run_id, TI.state, func.count("*"))
             .where(TI.state.in_(ACTIVE_STATES))
@@ -232,9 +233,9 @@ class ConcurrencyMap:
             # max_active_tis_per_dagrun), including DEFERRED.
             self.task_concurrency_map[(dag_id, task_id)] += count
             self.task_dagrun_concurrency_map[(dag_id, run_id, task_id)] += count
-            # Only count non-deferred states towards DAG-run active tasks
+            # Count states configured for DAG-run active tasks
             # (max_active_tasks / worker slot accounting).
-            if state != TaskInstanceState.DEFERRED:
+            if state in dag_run_active_states:
                 self.dag_run_active_tasks_map[dag_id, run_id] += count
 
 
@@ -256,6 +257,13 @@ def _get_current_dr_task_concurrency(states: Iterable[TaskInstanceState]) -> Sub
         .group_by(TI.dag_id, TI.run_id)
         .subquery()
     )
+
+
+def _get_dag_run_active_states() -> set[TaskInstanceState]:
+    """Get states that count toward the DAG max_active_tasks limit."""
+    if conf.getboolean("core", "max_active_tasks_include_deferred"):
+        return ACTIVE_STATES
+    return EXECUTION_STATES
 
 
 class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
@@ -571,7 +579,9 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             # subquery object that is then executed along with main query.
             # The results of 'load()' aren't used again here because by the time the main query
             # executes, there could be a change that will be ignored.
-            dr_task_concurrency_subquery = _get_current_dr_task_concurrency(states=EXECUTION_STATES)
+            dr_task_concurrency_subquery = _get_current_dr_task_concurrency(
+                states=_get_dag_run_active_states()
+            )
 
             query = (
                 select(TI)
