@@ -17,19 +17,45 @@
 # under the License.
 from __future__ import annotations
 
+import signal
 from pathlib import Path
 from textwrap import dedent
 from unittest import mock
 
 import pytest
 
-from airflow.providers.standard.utils.python_virtualenv import _generate_pip_conf, _use_uv, prepare_virtualenv
+from airflow.providers.standard.utils.python_virtualenv import (
+    _execute_in_subprocess,
+    _generate_pip_conf,
+    _use_uv,
+    prepare_virtualenv,
+)
 
 from tests_common.test_utils.config import conf_vars
 from tests_common.test_utils.version_compat import remove_task_decorator
 
 
 class TestPrepareVirtualenv:
+    @mock.patch("airflow.providers.standard.utils.python_virtualenv.os.killpg")
+    @mock.patch("airflow.providers.standard.utils.python_virtualenv.subprocess.Popen")
+    def test_execute_in_subprocess_kills_process_group_when_interrupted(self, mock_popen, mock_killpg):
+        fake_stdout = mock.MagicMock()
+        fake_stdout.__enter__.return_value = fake_stdout
+        fake_stdout.readline.side_effect = TimeoutError
+
+        fake_proc = mock.MagicMock()
+        fake_proc.pid = 123
+        fake_proc.stdout = fake_stdout
+        fake_proc.poll.return_value = None
+        fake_proc.__enter__.return_value = fake_proc
+        mock_popen.return_value = fake_proc
+
+        with pytest.raises(TimeoutError):
+            _execute_in_subprocess(["python", "script.py"])
+
+        mock_killpg.assert_called_once_with(123, signal.SIGKILL)
+        fake_proc.wait.assert_called_once_with()
+
     @mock.patch("shutil.which")
     def test_use_uv(self, mock_shutil_which):
         with conf_vars({("standard", "venv_install_method"): "auto"}):

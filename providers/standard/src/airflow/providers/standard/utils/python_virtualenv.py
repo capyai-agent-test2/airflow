@@ -23,8 +23,10 @@ import logging
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import warnings
+from contextlib import suppress
 from pathlib import Path
 
 import jinja2
@@ -145,22 +147,35 @@ def _execute_in_subprocess(cmd: list[str], cwd: str | None = None, env: dict[str
     log = logging.getLogger(__name__)
 
     log.info("Executing cmd: %s", " ".join(shlex.quote(c) for c in cmd))
-    with subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        bufsize=0,
-        close_fds=False,
-        cwd=cwd,
-        env=env,
-    ) as proc:
-        log.info("Output:")
-        if proc.stdout:
-            with proc.stdout:
-                for line in iter(proc.stdout.readline, b""):
-                    log.info("%s", line.decode().rstrip())
+    popen_kwargs = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "bufsize": 0,
+        "close_fds": False,
+        "cwd": cwd,
+        "env": env,
+    }
+    if os.name != "nt":
+        popen_kwargs["start_new_session"] = True
 
-        exit_code = proc.wait()
+    with subprocess.Popen(cmd, **popen_kwargs) as proc:
+        log.info("Output:")
+        try:
+            if proc.stdout:
+                with proc.stdout:
+                    for line in iter(proc.stdout.readline, b""):
+                        log.info("%s", line.decode().rstrip())
+
+            exit_code = proc.wait()
+        except BaseException:
+            if proc.poll() is None:
+                if os.name == "nt":
+                    proc.kill()
+                else:
+                    with suppress(ProcessLookupError):
+                        os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
+            raise
     if exit_code != 0:
         raise subprocess.CalledProcessError(exit_code, cmd)
 
