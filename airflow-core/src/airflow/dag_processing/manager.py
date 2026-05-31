@@ -651,8 +651,8 @@ class DagFileProcessorManager(LoggingMixin):
         """
         Return the bundle to run the callback against, or ``None`` to skip the callback.
 
-        Default implementation looks the bundle up via :class:`DagBundlesManager` and, for
-        versioned requests on bundles that support versioning, calls ``bundle.initialize()``.
+        Default implementation looks the bundle up via :class:`DagBundlesManager` and,
+        for bundles that support versioning, calls ``bundle.initialize()``.
         Override to source the bundle from an API.
         """
         try:
@@ -660,7 +660,7 @@ class DagFileProcessorManager(LoggingMixin):
         except ValueError:
             self.log.error("Bundle %s no longer configured, skipping callback", request.bundle_name)
             return None
-        if bundle.supports_versioning and request.bundle_version:
+        if bundle.supports_versioning:
             try:
                 bundle.initialize()
             except Exception:
