@@ -39,6 +39,7 @@ import msgspec
 import pytest
 import time_machine
 from sqlalchemy import func, select
+from structlog import _output as structlog_output
 from uuid6 import uuid7
 
 from airflow._shared.timezones import timezone
@@ -51,6 +52,7 @@ from airflow.dag_processing.manager import (
     DagFileInfo,
     DagFileProcessorManager,
     DagFileStat,
+    _close_logger_filehandle,
 )
 from airflow.dag_processing.processor import DagFileParsingResult, DagFileProcessorProcess
 from airflow.models import DagModel, DbCallbackRequest
@@ -181,6 +183,16 @@ class TestDagFileProcessorManager:
         clear_db_callbacks()
         clear_db_import_errors()
         clear_db_dag_bundles()
+
+    def test_close_logger_filehandle_drops_structlog_write_lock(self, tmp_path, monkeypatch):
+        filehandle = (tmp_path / "processor.log").open("ab")
+        write_locks = {filehandle: object()}
+        monkeypatch.setattr(structlog_output, "WRITE_LOCKS", write_locks)
+
+        _close_logger_filehandle(filehandle)
+
+        assert filehandle.closed
+        assert filehandle not in write_locks
 
     def mock_processor(self, start_time: float | None = None) -> tuple[DagFileProcessorProcess, socket]:
         proc = MagicMock()
