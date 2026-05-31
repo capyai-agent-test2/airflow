@@ -428,6 +428,24 @@ _SERIALIZERS: dict[_SerializerTypeDef, Any] = {
 }
 
 
+def _is_task_instance_template_value(value: Any) -> bool:
+    return value.__class__.__name__ in {"RuntimeTaskInstance", "TaskInstance"} and all(
+        hasattr(value, attr) for attr in ("dag_id", "task_id", "run_id", "try_number")
+    )
+
+
+def _stringify_task_instance_template_values(value: Any) -> Any:
+    if _is_task_instance_template_value(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _stringify_task_instance_template_values(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_stringify_task_instance_template_values(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_stringify_task_instance_template_values(v) for v in value)
+    return value
+
+
 class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):
     BASE_SERIALIZABLE_CONTEXT_KEYS = {
         "ds",
@@ -585,10 +603,11 @@ class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):
 
         if self.op_args or self.op_kwargs:
             self.log.info("Use %r as serializer.", self.serializer)
-            resolved_kwargs = resolve_proxies(self.op_kwargs)
+            resolved_args = _stringify_task_instance_template_values(resolve_proxies(self.op_args))
+            resolved_kwargs = _stringify_task_instance_template_values(resolve_proxies(self.op_kwargs))
             try:
                 file.write_bytes(
-                    self.pickling_library.dumps({"args": self.op_args, "kwargs": resolved_kwargs})
+                    self.pickling_library.dumps({"args": resolved_args, "kwargs": resolved_kwargs})
                 )
             except Exception:
                 # Identify which specific kwarg(s) failed to serialize so the
