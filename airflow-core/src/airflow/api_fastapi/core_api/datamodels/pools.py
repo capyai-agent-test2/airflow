@@ -26,7 +26,7 @@ from airflow.api_fastapi.core_api.base import BaseModel, StrictBaseModel
 from airflow.configuration import conf
 
 
-def _call_function(function: Callable[[], int]) -> int:
+def _call_function(function: Callable[[], int | float]) -> int | float:
     """
     Call the given function.
 
@@ -50,7 +50,7 @@ class BasePool(BaseModel):
     include_deferred: bool
 
 
-def _sanitize_open_slots(value) -> int:
+def _sanitize_open_slots(value: int | float) -> int:
     if isinstance(value, float) and value == float("inf"):
         return -1
     return value
