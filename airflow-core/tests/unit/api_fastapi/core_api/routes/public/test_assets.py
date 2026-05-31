@@ -478,6 +478,41 @@ class TestGetAssets(TestAssets):
             "total_entries": 3,
         }
 
+    def test_should_ignore_stale_dag_events_for_last_asset_event(
+        self, test_client, session, testing_dag_bundle
+    ):
+        self.create_assets(session, num=1)
+        session.add_all(
+            [
+                DagModel(dag_id="active_dag", is_stale=False, bundle_name="testing"),
+                DagModel(dag_id="stale_dag", is_stale=True, bundle_name="testing"),
+                AssetEvent(
+                    id=1,
+                    asset_id=1,
+                    extra={},
+                    source_task_id="task",
+                    source_dag_id="active_dag",
+                    source_run_id="active_run",
+                    timestamp=DEFAULT_DATE,
+                ),
+                AssetEvent(
+                    id=2,
+                    asset_id=1,
+                    extra={},
+                    source_task_id="task",
+                    source_dag_id="stale_dag",
+                    source_run_id="stale_run",
+                    timestamp=DEFAULT_DATE + timedelta(days=1),
+                ),
+            ]
+        )
+        session.commit()
+
+        response = test_client.get("/assets")
+
+        assert response.status_code == 200
+        assert response.json()["assets"][0]["last_asset_event"]["id"] == 1
+
     def test_should_respond_401(self, unauthenticated_test_client):
         response = unauthenticated_test_client.get("/assets")
         assert response.status_code == 401
