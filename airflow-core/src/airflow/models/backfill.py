@@ -398,6 +398,7 @@ def _create_backfill_dag_run_non_partitioned(
                     sort_ordinal=backfill_sort_ordinal,
                     run_on_latest=run_on_latest_version,
                     dag_run_conf=dag_run_conf,
+                    triggering_user_name=triggering_user_name,
                 )
             else:
                 session.add(
@@ -553,6 +554,7 @@ def _handle_clear_run(
     sort_ordinal: int,
     run_on_latest: bool = False,
     dag_run_conf: dict | None = None,
+    triggering_user_name: str | None = None,
 ) -> None:
     """Clear the existing Dag run and update backfill metadata."""
     from sqlalchemy.sql import update
@@ -577,6 +579,7 @@ def _handle_clear_run(
             backfill_id=backfill_id,
             run_type=DagRunType.BACKFILL_JOB,
             triggered_by=DagRunTriggeredByType.BACKFILL,
+            triggering_user_name=triggering_user_name,
         )
     )
     if dag_run_conf is not None:

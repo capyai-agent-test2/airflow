@@ -388,6 +388,8 @@ def test_reprocess_behavior(reprocess_behavior, num_in_b, exc_reasons, dag_maker
     assert all(x.run_type == DagRunType.BACKFILL_JOB for x in dag_runs_in_b)
     # verify they all have the right triggered by type
     assert all(x.triggered_by == DagRunTriggeredByType.BACKFILL for x in dag_runs_in_b)
+    # verify they all preserve the user that triggered the backfill
+    assert all(x.triggering_user_name == "pytest" for x in dag_runs_in_b)
     # every run associated with the backfill should have the backfill id
     assert all(x.backfill_id == b.id for x in dag_runs_in_b)
 
