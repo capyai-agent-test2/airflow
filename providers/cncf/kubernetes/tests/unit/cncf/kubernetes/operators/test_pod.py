@@ -16,6 +16,7 @@
 # under the License.
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import re
@@ -281,6 +282,28 @@ class TestKubernetesPodOperator:
         self.await_pod_mock.return_value = remote_pod_mock
         operator.execute(context=context)
         return self.await_start_mock.call_args.kwargs["pod"], context
+
+    def test_await_pod_start_from_running_event_loop(self):
+        k = KubernetesPodOperator(task_id="task", image="ubuntu", name="test")
+        pod = k8s.V1Pod(metadata=k8s.V1ObjectMeta(name="test"))
+
+        async def await_start(**_):
+            await asyncio.sleep(0)
+
+        self.await_start_mock.side_effect = await_start
+
+        async def run_await_pod_start():
+            k.await_pod_start(pod)
+
+        asyncio.run(run_await_pod_start())
+
+        self.await_start_mock.assert_awaited_once_with(
+            pod=pod,
+            schedule_timeout=k.schedule_timeout_seconds,
+            startup_timeout=k.startup_timeout_seconds,
+            check_interval=k.startup_check_interval_seconds,
+        )
+        self.watch_pod_events_mock.assert_awaited_once_with(pod, k.startup_check_interval_seconds)
 
     def sanitize_for_serialization(self, obj):
         return ApiClient().sanitize_for_serialization(obj)

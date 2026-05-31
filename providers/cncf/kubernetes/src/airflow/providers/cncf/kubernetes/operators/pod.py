@@ -28,7 +28,8 @@ import os
 import re
 import shlex
 import string
-from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+import threading
+from collections.abc import Callable, Container, Coroutine, Iterable, Mapping, Sequence
 from contextlib import AbstractContextManager, suppress
 from enum import Enum
 from functools import cached_property
@@ -111,6 +112,29 @@ log = logging.getLogger(__name__)
 alphanum_lower = string.ascii_lowercase + string.digits
 
 KUBE_CONFIG_ENV_VAR = "KUBECONFIG"
+
+
+def _run_async_from_sync(coro: Coroutine[Any, Any, None]) -> None:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(coro)
+        return
+
+    result: dict[str, BaseException | None] = {"exception": None}
+
+    def target():
+        try:
+            asyncio.run(coro)
+        except BaseException as exception:
+            result["exception"] = exception
+
+    thread = threading.Thread(target=target)
+    thread.start()
+    thread.join()
+
+    if exception := result["exception"]:
+        raise exception
 
 
 class PodEventType(Enum):
@@ -665,7 +689,7 @@ class KubernetesPodOperator(BaseOperator):
                     with suppress(asyncio.CancelledError):
                         await events_task
 
-            asyncio.run(_await_pod_start())
+            _run_async_from_sync(_await_pod_start())
         except PodLaunchFailedException:
             if self.log_events_on_failure:
                 self._read_pod_container_states(pod, reraise=False)
