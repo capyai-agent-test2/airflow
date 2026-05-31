@@ -18,11 +18,15 @@
  */
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import { Wrapper } from "src/utils/Wrapper";
 
 import { NothingFoundInfo } from "./NothingFoundInfo";
+
+vi.mock("openapi/queries", () => ({
+  useVersionServiceGetVersion: vi.fn(() => ({ data: { version: "3.3.0" } })),
+}));
 
 describe("NothingFoundInfo", () => {
   it("should have correct external link attributes", () => {
@@ -32,5 +36,14 @@ describe("NothingFoundInfo", () => {
 
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("falls back to stable docs for unpublished versions", () => {
+    render(<NothingFoundInfo />, { wrapper: Wrapper });
+
+    expect(screen.getByRole("link")).toHaveAttribute(
+      "href",
+      "https://airflow.apache.org/docs/apache-airflow/stable/howto/connection.html#visibility-in-ui-and-cli",
+    );
   });
 });

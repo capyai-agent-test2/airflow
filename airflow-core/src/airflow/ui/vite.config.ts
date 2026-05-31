@@ -18,6 +18,7 @@
  */
 import babel from "@rolldown/plugin-babel";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 import cssInjectedByJsPlugin from "vite-plugin-css-injected-by-js";
 import { defineConfig } from "vitest/config";
 
@@ -56,6 +57,9 @@ export default defineConfig({
   resolve: { alias: { openapi: "/openapi-gen", src: "/src" } },
   server: {
     cors: true, // Only used by the dev server.
+    fs: {
+      allow: [fileURLToPath(new URL("../../../docs", import.meta.url))],
+    },
     // The dev SPA shell is served by the airflow api-server (a different origin), so
     // Vite must emit fully-qualified URLs — otherwise asset paths (notably worker
     // module URLs) resolve against the api-server origin and 404. The `dev` script
