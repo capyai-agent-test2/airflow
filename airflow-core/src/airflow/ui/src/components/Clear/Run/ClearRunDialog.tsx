@@ -17,7 +17,7 @@
  * under the License.
  */
 import { Button, Flex, Heading, VStack } from "@chakra-ui/react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CgRedo } from "react-icons/cg";
 
@@ -52,7 +52,11 @@ const ClearRunDialog = ({ dagRun, onClose, open }: Props) => {
     dagId,
   });
 
-  const { setValue: setRunOnLatestVersion, value: runOnLatestVersion } = useRerunWithLatestVersion({
+  const {
+    resetValue: resetRunOnLatestVersion,
+    setValue: setRunOnLatestVersion,
+    value: runOnLatestVersion,
+  } = useRerunWithLatestVersion({
     dagLevelConfig: dagDetails?.rerun_with_latest_version,
   });
 
@@ -62,6 +66,7 @@ const ClearRunDialog = ({ dagRun, onClose, open }: Props) => {
     dagId,
     dagRunId,
     options: {
+      enabled: open,
       refetchInterval: (query) =>
         query.state.data?.task_instances.some((ti) => "state" in ti && isStatePending(ti.state))
           ? refetchInterval
@@ -73,6 +78,23 @@ const ClearRunDialog = ({ dagRun, onClose, open }: Props) => {
       run_on_latest_version: runOnLatestVersion,
     },
   });
+
+  const resetForm = useCallback(() => {
+    setNote(dagRun.note);
+    setSelectedOptions(["existingTasks"]);
+    resetRunOnLatestVersion();
+  }, [dagRun.note, resetRunOnLatestVersion]);
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  useEffect(() => {
+    if (open) {
+      resetForm();
+    }
+  }, [open, resetForm]);
 
   const { isPending, mutate } = useClearDagRun({
     dagId,
@@ -96,7 +118,15 @@ const ClearRunDialog = ({ dagRun, onClose, open }: Props) => {
   const shouldShowBundleVersionOption = versionsDiffer && !onlyNew;
 
   return (
-    <Dialog.Root lazyMount onOpenChange={onClose} open={open}>
+    <Dialog.Root
+      lazyMount
+      onOpenChange={({ open: nextOpen }) => {
+        if (!nextOpen) {
+          handleClose();
+        }
+      }}
+      open={open}
+    >
       <Dialog.Content backdrop>
         <Dialog.Header>
           <VStack align="start" gap={4}>
@@ -115,6 +145,7 @@ const ClearRunDialog = ({ dagRun, onClose, open }: Props) => {
           <Flex justifyContent="center">
             <SegmentedControl
               defaultValues={["existingTasks"]}
+              key={open ? "open" : "closed"}
               onChange={setSelectedOptions}
               options={[
                 {

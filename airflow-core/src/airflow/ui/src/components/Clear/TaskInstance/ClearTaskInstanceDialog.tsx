@@ -17,7 +17,7 @@
  * under the License.
  */
 import { Button, Flex, Heading, useDisclosure, VStack } from "@chakra-ui/react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CgRedo } from "react-icons/cg";
 
@@ -113,7 +113,11 @@ const ClearTaskInstanceDialog = (props: Props) => {
 
   // dagVersionsDiffer becomes the fallback so the historical "auto-check when versions
   // differ" heuristic still applies when neither DAG-level nor global config is set.
-  const { setValue: setRunOnLatestVersion, value: runOnLatestVersion } = useRerunWithLatestVersion({
+  const {
+    resetValue: resetRunOnLatestVersion,
+    setValue: setRunOnLatestVersion,
+    value: runOnLatestVersion,
+  } = useRerunWithLatestVersion({
     dagLevelConfig: dagDetails?.rerun_with_latest_version,
     fallback: dagVersionsDiffer,
   });
@@ -147,9 +151,82 @@ const ClearTaskInstanceDialog = (props: Props) => {
     total_entries: 0,
   };
 
+  const resetForm = useCallback(() => {
+    setNote(taskInstance?.note ?? null);
+    setPreventRunningTask(true);
+    setSelectedOptions(["downstream"]);
+    resetRunOnLatestVersion();
+  }, [resetRunOnLatestVersion, taskInstance?.note]);
+
+  const handleClose = useCallback(() => {
+    onClose();
+    resetForm();
+    onCloseDialog();
+  }, [onClose, onCloseDialog, resetForm]);
+
+  const handleConfirm = useCallback(() => {
+    mutate({
+      dagId,
+      requestBody: {
+        dag_run_id: dagRunId,
+        dry_run: false,
+        include_downstream: downstream,
+        include_future: future,
+        include_past: past,
+        include_upstream: upstream,
+        only_failed: onlyFailed,
+        run_on_latest_version: runOnLatestVersion,
+        task_ids: allMapped ? [taskId] : [[taskId, mapIndex as number]],
+        ...(preventRunningTask ? { prevent_running_task: true } : {}),
+      },
+    });
+    if (note !== (taskInstance?.note ?? null)) {
+      mutatePatchTaskInstance({
+        dagId,
+        dagRunId,
+        ...(allMapped ? {} : { mapIndex }),
+        requestBody: { note },
+        taskId,
+      });
+    }
+    handleClose();
+  }, [
+    allMapped,
+    dagId,
+    dagRunId,
+    downstream,
+    future,
+    handleClose,
+    mapIndex,
+    mutate,
+    mutatePatchTaskInstance,
+    note,
+    onlyFailed,
+    past,
+    preventRunningTask,
+    runOnLatestVersion,
+    taskId,
+    taskInstance?.note,
+    upstream,
+  ]);
+
+  useEffect(() => {
+    if (openDialog) {
+      resetForm();
+    }
+  }, [openDialog, resetForm]);
+
   return (
     <>
-      <Dialog.Root lazyMount onOpenChange={onCloseDialog} open={openDialog ? !open : false}>
+      <Dialog.Root
+        lazyMount
+        onOpenChange={({ open: nextOpen }) => {
+          if (!nextOpen) {
+            handleClose();
+          }
+        }}
+        open={openDialog ? !open : false}
+      >
         <Dialog.Content backdrop>
           <Dialog.Header>
             <VStack align="start" gap={4}>
@@ -179,6 +256,7 @@ const ClearTaskInstanceDialog = (props: Props) => {
             <Flex justifyContent="center">
               <SegmentedControl
                 defaultValues={["downstream"]}
+                key={openDialog ? "open" : "closed"}
                 multiple
                 onChange={setSelectedOptions}
                 options={[
@@ -240,51 +318,23 @@ const ClearTaskInstanceDialog = (props: Props) => {
           </Dialog.Body>
         </Dialog.Content>
       </Dialog.Root>
-      {open ? (
-        <ClearTaskInstanceConfirmationDialog
-          dagDetails={{
-            dagId,
-            dagRunId,
-            downstream,
-            future,
-            mapIndex,
-            onlyFailed,
-            past,
-            taskId,
-            upstream,
-          }}
-          onClose={onClose}
-          onConfirm={() => {
-            mutate({
-              dagId,
-              requestBody: {
-                dag_run_id: dagRunId,
-                dry_run: false,
-                include_downstream: downstream,
-                include_future: future,
-                include_past: past,
-                include_upstream: upstream,
-                only_failed: onlyFailed,
-                run_on_latest_version: runOnLatestVersion,
-                task_ids: allMapped ? [taskId] : [[taskId, mapIndex as number]],
-                ...(preventRunningTask ? { prevent_running_task: true } : {}),
-              },
-            });
-            if (note !== (taskInstance?.note ?? null)) {
-              mutatePatchTaskInstance({
-                dagId,
-                dagRunId,
-                ...(allMapped ? {} : { mapIndex }),
-                requestBody: { note },
-                taskId,
-              });
-            }
-            onCloseDialog();
-          }}
-          open={open}
-          preventRunningTask={preventRunningTask}
-        />
-      ) : null}
+      <ClearTaskInstanceConfirmationDialog
+        dagDetails={{
+          dagId,
+          dagRunId,
+          downstream,
+          future,
+          mapIndex,
+          onlyFailed,
+          past,
+          taskId,
+          upstream,
+        }}
+        onClose={onClose}
+        onConfirm={handleConfirm}
+        open={open}
+        preventRunningTask={preventRunningTask}
+      />
     </>
   );
 };

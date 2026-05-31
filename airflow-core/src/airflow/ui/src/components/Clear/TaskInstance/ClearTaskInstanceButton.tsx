@@ -53,10 +53,18 @@ const ClearTaskInstanceButton = ({
 }: Props) => {
   const { onClose, onOpen: onOpenInternal, open } = useDisclosure();
   const { t: translate } = useTranslation();
-  const isGroup = groupTaskInstance && !taskInstance;
+  const isGroup = Boolean(groupTaskInstance && !taskInstance);
   const useInternalDialog = !Boolean(onOpen);
 
   const selectedInstance = taskInstance ?? groupTaskInstance;
+  const hasAllMappedDetails =
+    useInternalDialog &&
+    !isGroup &&
+    allMapped &&
+    dagId !== undefined &&
+    dagRunId !== undefined &&
+    taskId !== undefined;
+  const hasSingleTaskInstance = useInternalDialog && !isGroup && !allMapped && taskInstance !== undefined;
 
   useHotkeys(
     "shift+c",
@@ -87,29 +95,31 @@ const ClearTaskInstanceButton = ({
         <CgRedo />
       </IconButton>
 
-      {useInternalDialog && open && isGroup ? (
-        <ClearGroupTaskInstanceDialog onClose={onClose} open={open} taskInstance={groupTaskInstance} />
+      {useInternalDialog && isGroup && groupTaskInstance !== undefined ? (
+        <ClearGroupTaskInstanceDialog
+          onClose={onClose}
+          open={Boolean(open && isGroup)}
+          taskInstance={groupTaskInstance}
+        />
       ) : undefined}
 
-      {useInternalDialog &&
-      open &&
-      !isGroup &&
-      allMapped &&
-      dagId !== undefined &&
-      dagRunId !== undefined &&
-      taskId !== undefined ? (
+      {hasAllMappedDetails ? (
         <ClearTaskInstanceDialog
           allMapped
           dagId={dagId}
           dagRunId={dagRunId}
           onClose={onClose}
-          open={open}
+          open={Boolean(open && !isGroup)}
           taskId={taskId}
         />
       ) : undefined}
 
-      {useInternalDialog && open && !isGroup && !allMapped && taskInstance ? (
-        <ClearTaskInstanceDialog onClose={onClose} open={open} taskInstance={taskInstance} />
+      {hasSingleTaskInstance ? (
+        <ClearTaskInstanceDialog
+          onClose={onClose}
+          open={Boolean(open && !isGroup)}
+          taskInstance={taskInstance}
+        />
       ) : undefined}
     </>
   );
