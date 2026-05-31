@@ -625,7 +625,12 @@ class DagModel(Base):
         return any_deactivated
 
     @classmethod
-    def dags_needing_dagruns(cls, session: Session) -> tuple[Any, dict[str, datetime]]:
+    def dags_needing_dagruns(
+        cls,
+        session: Session,
+        *,
+        include_non_asset_dags: bool = True,
+    ) -> tuple[Any, dict[str, datetime]]:
         """
         Return (and lock) a list of Dag objects that are due to create a new DagRun.
 
@@ -732,6 +737,14 @@ class DagModel(Base):
                     k: v for k, v in triggered_date_by_dag.items() if k not in exclusion_list
                 }
 
+        dagrun_create_after_where_clause = (
+            or_(
+                cls.next_dagrun_create_after <= func.now(),
+                cls.dag_id.in_(asset_triggered_dag_ids),
+            )
+            if include_non_asset_dags
+            else cls.dag_id.in_(asset_triggered_dag_ids)
+        )
         # We limit so that _one_ scheduler doesn't try to do all the creation of dag runs
         query = (
             select(cls)
@@ -740,10 +753,7 @@ class DagModel(Base):
                 cls.is_stale == expression.false(),
                 cls.has_import_errors == expression.false(),
                 cls.exceeds_max_non_backfill == expression.false(),
-                or_(
-                    cls.next_dagrun_create_after <= func.now(),
-                    cls.dag_id.in_(asset_triggered_dag_ids),
-                ),
+                dagrun_create_after_where_clause,
             )
             .order_by(cls.next_dagrun_create_after)
             .limit(cls.NUM_DAGS_PER_DAGRUN_QUERY)

@@ -5318,7 +5318,10 @@ class TestSchedulerJob:
 
     @pytest.mark.need_serialized_dag
     @conf_vars({("scheduler", "use_job_schedule"): "False"})
-    def test_do_scheduling_creates_asset_dag_runs_when_job_schedule_disabled(self, session, dag_maker):
+    def test_do_scheduling_creates_asset_dag_runs_when_job_schedule_disabled(
+        self, session, dag_maker, monkeypatch
+    ):
+        monkeypatch.setattr(DagModel, "NUM_DAGS_PER_DAGRUN_QUERY", 1)
         asset = Asset(uri="test://asset", name="test_asset", group="test_group")
 
         with dag_maker(dag_id="asset-producer", start_date=timezone.utcnow(), session=session):
@@ -5339,6 +5342,7 @@ class TestSchedulerJob:
         with dag_maker(dag_id="asset-consumer", schedule=[asset], session=session):
             EmptyOperator(task_id="consumer-task")
         consumer_dag = dag_maker.dag
+        dag_maker.dag_model.next_dagrun_create_after = DEFAULT_DATE + timedelta(days=1)
 
         with dag_maker(dag_id="time-based", schedule="@daily", start_date=DEFAULT_DATE, session=session):
             EmptyOperator(task_id="time-based-task")
