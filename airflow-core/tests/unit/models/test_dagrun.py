@@ -903,6 +903,68 @@ class TestDagRun:
             f"task_instance_mutation_hook was called with run_id=None. Observed run_ids: {observed_run_ids}"
         )
 
+    def test_get_previous_dagrun_uses_run_after_when_logical_date_is_none(self, dag_maker, session):
+        with dag_maker(
+            dag_id="test_previous_dagrun_without_logical_date", schedule=None, session=session
+        ) as dag:
+            EmptyOperator(task_id="task")
+
+        previous_run_after = timezone.datetime(2016, 1, 1)
+        previous_dr = dag.create_dagrun(
+            run_id="previous_run",
+            run_type=DagRunType.MANUAL,
+            logical_date=None,
+            data_interval=None,
+            run_after=previous_run_after,
+            state=DagRunState.SUCCESS,
+            triggered_by=DagRunTriggeredByType.TEST,
+            session=session,
+        )
+        current_dr = dag.create_dagrun(
+            run_id="current_run",
+            run_type=DagRunType.MANUAL,
+            logical_date=None,
+            data_interval=None,
+            run_after=previous_run_after,
+            state=DagRunState.RUNNING,
+            triggered_by=DagRunTriggeredByType.TEST,
+            session=session,
+        )
+
+        assert DagRun.get_previous_dagrun(current_dr, session=session) == previous_dr
+
+    def test_get_previous_scheduled_dagrun_uses_run_after_and_id_without_logical_date(
+        self, dag_maker, session
+    ):
+        with dag_maker(
+            dag_id="test_previous_scheduled_dagrun_without_logical_date", schedule=None, session=session
+        ) as dag:
+            EmptyOperator(task_id="task")
+
+        run_after = timezone.datetime(2016, 1, 1)
+        previous_dr = dag.create_dagrun(
+            run_id="previous_run",
+            run_type=DagRunType.ASSET_TRIGGERED,
+            logical_date=None,
+            data_interval=None,
+            run_after=run_after,
+            state=DagRunState.SUCCESS,
+            triggered_by=DagRunTriggeredByType.TEST,
+            session=session,
+        )
+        current_dr = dag.create_dagrun(
+            run_id="current_run",
+            run_type=DagRunType.ASSET_TRIGGERED,
+            logical_date=None,
+            data_interval=None,
+            run_after=run_after,
+            state=DagRunState.RUNNING,
+            triggered_by=DagRunTriggeredByType.TEST,
+            session=session,
+        )
+
+        assert DagRun.get_previous_scheduled_dagrun(current_dr.id, session=session) == previous_dr
+
     @pytest.mark.parametrize(
         ("prev_ti_state", "is_ti_schedulable"),
         [

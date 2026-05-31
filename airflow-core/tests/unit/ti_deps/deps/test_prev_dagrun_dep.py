@@ -96,6 +96,43 @@ class TestPrevDagrunDep:
             assert dep.is_met(ti=ti, dep_context=dep_context)
             mock_has_any_prior_tis.assert_called_once_with(ti, session=ANY)
 
+    def test_depends_on_past_checks_previous_manual_run_without_logical_date(
+        self, testing_dag_bundle, session
+    ):
+        dag = DAG("test_dag", schedule=None, start_date=START_DATE)
+        task = BaseOperator(task_id="test_task", dag=dag, depends_on_past=True)
+        scheduler_dag = sync_dag_to_db(dag)
+
+        previous_run_after = convert_to_utc(datetime(2016, 1, 1))
+        previous_dr = scheduler_dag.create_dagrun(
+            run_id="previous_run",
+            state=DagRunState.SUCCESS,
+            logical_date=None,
+            run_type=DagRunType.MANUAL,
+            data_interval=None,
+            run_after=previous_run_after,
+            triggered_by=DagRunTriggeredByType.TEST,
+        )
+        previous_ti = previous_dr.get_task_instance(task.task_id)
+        previous_ti.set_state(TaskInstanceState.FAILED, session=session)
+
+        current_dr = create_scheduler_dag(dag).create_dagrun(
+            run_id="current_run",
+            state=DagRunState.RUNNING,
+            logical_date=None,
+            run_type=DagRunType.MANUAL,
+            data_interval=None,
+            run_after=previous_run_after + timedelta(days=1),
+            triggered_by=DagRunTriggeredByType.TEST,
+        )
+        ti = current_dr.get_task_instance(task.task_id)
+        ti.task = task
+
+        dep_context = DepContext(ignore_depends_on_past=False)
+        dep = PrevDagrunDep()
+
+        assert not dep.is_met(ti=ti, dep_context=dep_context)
+
 
 @pytest.mark.parametrize(
     "kwargs",
