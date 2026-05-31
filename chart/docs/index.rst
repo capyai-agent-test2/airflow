@@ -187,6 +187,20 @@ To run database migrations with Argo CD automatically, you will need to add:
 
 This will run database migrations every time there is a ``Sync`` event in Argo CD. While it is not ideal to run the migrations on every sync, it is a trade-off that allows them to be run automatically.
 
+If you create any of the built-in Kubernetes Secrets outside the chart, configure the matching
+``*SecretName`` value even when the Secret uses the chart's default name. Otherwise, the chart
+will still render the built-in Secret resource for that default name, and tools that reconcile
+Helm resources can delete or replace the externally created Secret.
+
+For example, if you create the Fernet key Secret named ``<RELEASE_NAME>-fernet-key`` yourself:
+
+.. code-block:: yaml
+   :caption: values.yaml
+
+   fernetKeySecretName: <RELEASE_NAME>-fernet-key
+
+The same rule applies to the other built-in Secrets listed in :doc:`production-guide`.
+
 If you use the ``CeleryExecutor`` with the built-in Redis, it is recommended that you set up a static Redis password either by supplying ``redis.passwordSecretName`` and ``data.brokerUrlSecretName`` or ``redis.password``.
 
 .. note::
