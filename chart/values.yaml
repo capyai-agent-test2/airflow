@@ -473,7 +473,8 @@ extraEnvFrom: ~
 
 # Airflow database & redis config
 data:
-  # If secret name is provided, secret itself has to be created manually with 'connection' key like:
+  # If secret name is provided, secret itself has to be created manually with the
+  # key configured by metadataSecretKey.
   #
   # kind: Secret
   # apiVersion: v1
@@ -483,14 +484,16 @@ data:
   # data:
   #   connection: base64_encoded_connection_string
   #
-  # The 'connection' key is base64-encoded SQLAlchemy connection string, e.g.:
+  # The secret key is base64-encoded SQLAlchemy connection string, e.g.:
   #   postgresql+psycopg2://airflow:password@postgres/airflow
   metadataSecretName: ~
+  metadataSecretKey: connection
 
-  # If not set, falls back to metadataSecretName. The secret must contain 'connection' key which is
-  # a base64-encoded connection string, e.g.:
+  # If not set, falls back to metadataSecretName. The secret must contain the key
+  # configured by resultBackendSecretKey which is a base64-encoded connection string, e.g.:
   #   postgresql+psycopg2://user:password@host/db
   resultBackendSecretName: ~
+  resultBackendSecretKey: connection
 
   brokerUrlSecretName: ~
 

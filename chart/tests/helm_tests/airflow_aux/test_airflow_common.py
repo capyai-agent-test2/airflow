@@ -396,6 +396,38 @@ class TestAirflowCommon:
                 f"Wrong vars in {component}"
             )
 
+    def test_should_use_configured_database_secret_keys(self):
+        docs = render_chart(
+            values={
+                "executor": "CeleryExecutor",
+                "data": {
+                    "metadataSecretName": "external-metadata-secret",
+                    "metadataSecretKey": "uri",
+                    "resultBackendSecretName": "external-result-backend-secret",
+                    "resultBackendSecretKey": "result-uri",
+                },
+            },
+            show_only=["templates/scheduler/scheduler-deployment.yaml"],
+        )
+
+        env = jmespath.search("spec.template.spec.containers[0].env", docs[0])
+
+        assert next(
+            env_var["valueFrom"]["secretKeyRef"]
+            for env_var in env
+            if env_var["name"] == "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"
+        ) == {"name": "external-metadata-secret", "key": "uri"}
+        assert next(
+            env_var["valueFrom"]["secretKeyRef"]
+            for env_var in env
+            if env_var["name"] == "AIRFLOW_CONN_AIRFLOW_DB"
+        ) == {"name": "external-metadata-secret", "key": "uri"}
+        assert next(
+            env_var["valueFrom"]["secretKeyRef"]
+            for env_var in env
+            if env_var["name"] == "AIRFLOW__CELERY__RESULT_BACKEND"
+        ) == {"name": "external-result-backend-secret", "key": "result-uri"}
+
     def test_have_all_config_mounts_on_init_containers(self):
         docs = render_chart(
             show_only=[

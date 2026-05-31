@@ -75,14 +75,14 @@ If release name contains chart name it will be used as a full name.
     valueFrom:
       secretKeyRef:
         name: {{ template "airflow_metadata_secret" . }}
-        key: connection
+        key: {{ .Values.data.metadataSecretKey }}
   {{- end }}
   {{- if .Values.enableBuiltInSecretEnvVars.AIRFLOW_CONN_AIRFLOW_DB }}
   - name: AIRFLOW_CONN_AIRFLOW_DB
     valueFrom:
       secretKeyRef:
         name: {{ template "airflow_metadata_secret" . }}
-        key: connection
+        key: {{ .Values.data.metadataSecretKey }}
   {{- end }}
   {{- $kedaEnabled := .Values.workers.keda.enabled }}
   {{- $kedaUsePgBouncer := .Values.workers.keda.usePgbouncer }}
@@ -120,7 +120,7 @@ If release name contains chart name it will be used as a full name.
     valueFrom:
       secretKeyRef:
         name: {{ template "airflow_result_backend_secret" . }}
-        key: connection
+        key: {{ .Values.data.resultBackendSecretKey }}
     {{- end }}
     {{- if .Values.enableBuiltInSecretEnvVars.AIRFLOW__CELERY__BROKER_URL }}
   - name: AIRFLOW__CELERY__BROKER_URL
