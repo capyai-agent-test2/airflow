@@ -175,6 +175,7 @@ const BulkMarkTaskInstancesAsButton = ({ deselectKeys, selectedTaskInstances }: 
                         action: "update" as const,
                         action_on_non_existence: "skip",
                         entities: directlyAffected.map((ti) => ({
+                          clear_downstream: downstream,
                           dag_id: ti.dag_id,
                           dag_run_id: ti.dag_run_id,
                           include_downstream: downstream,

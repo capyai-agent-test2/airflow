@@ -3062,6 +3062,53 @@ def test_set_task_instance_state(run_id, session, dag_maker):
 
 
 @pytest.mark.need_serialized_dag
+def test_set_task_instance_state_without_clearing_downstream(session, dag_maker):
+    start_date = datetime_tz(2020, 1, 1)
+    with dag_maker(
+        "test_set_task_instance_state_without_clearing_downstream",
+        start_date=start_date,
+        session=session,
+        serialized=True,
+    ) as dag:
+        task_1 = EmptyOperator(task_id="task_1")
+        task_2 = EmptyOperator(task_id="task_2")
+        task_3 = EmptyOperator(task_id="task_3")
+        task_1 >> [task_2, task_3]
+
+    dagrun = dag_maker.create_dagrun(
+        run_id="test-run-id",
+        state=State.FAILED,
+        run_type=DagRunType.SCHEDULED,
+    )
+
+    def get_ti_from_db(task):
+        return session.scalar(
+            select(TI).where(
+                TI.dag_id == dag.dag_id,
+                TI.task_id == task.task_id,
+                TI.run_id == dagrun.run_id,
+            )
+        )
+
+    get_ti_from_db(task_1).state = State.FAILED
+    get_ti_from_db(task_2).state = State.UPSTREAM_FAILED
+    get_ti_from_db(task_3).state = State.FAILED
+    session.flush()
+
+    dag.set_task_instance_state(
+        task_id=task_1.task_id,
+        run_id=dagrun.run_id,
+        state=State.SUCCESS,
+        clear_downstream=False,
+        session=session,
+    )
+
+    assert get_ti_from_db(task_1).state == State.SUCCESS
+    assert get_ti_from_db(task_2).state == State.UPSTREAM_FAILED
+    assert get_ti_from_db(task_3).state == State.FAILED
+
+
+@pytest.mark.need_serialized_dag
 def test_set_task_instance_state_mapped(dag_maker, session):
     """Test that when setting an individual mapped TI that the other TIs are not affected"""
     task_id = "t1"

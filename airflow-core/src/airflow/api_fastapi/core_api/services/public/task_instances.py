@@ -255,6 +255,7 @@ def _patch_task_instance_state(
         downstream=task_instance_body.include_downstream,
         future=task_instance_body.include_future,
         past=task_instance_body.include_past,
+        clear_downstream=task_instance_body.clear_downstream,
         commit=True,
         session=session,
     )
@@ -290,6 +291,7 @@ def _patch_task_group_state(
         downstream=body.include_downstream,
         future=body.include_future,
         past=body.include_past,
+        clear_downstream=body.clear_downstream,
         commit=True,
         session=session,
     )

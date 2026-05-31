@@ -393,6 +393,7 @@ export type BulkTaskInstanceBody = {
     include_downstream?: boolean;
     include_future?: boolean;
     include_past?: boolean;
+    clear_downstream?: boolean;
     task_id: string;
     map_index?: number | null;
     dag_id?: string | null;
@@ -1288,6 +1289,7 @@ export type PatchTaskInstanceBody = {
     include_downstream?: boolean;
     include_future?: boolean;
     include_past?: boolean;
+    clear_downstream?: boolean;
 };
 
 /**

@@ -68,6 +68,7 @@ const MarkTaskInstanceAsDialog = ({ onClose, open, state, taskInstance }: Props)
       refetchOnMount: "always",
     },
     requestBody: {
+      clear_downstream: downstream,
       include_downstream: downstream,
       include_future: future,
       include_past: past,
@@ -107,7 +108,7 @@ const MarkTaskInstanceAsDialog = ({ onClose, open, state, taskInstance }: Props)
         <Dialog.Body width="full">
           <Flex justifyContent="center">
             <SegmentedControl
-              defaultValues={["downstream"]}
+              defaultValues={[]}
               multiple
               onChange={setSelectedOptions}
               options={[
@@ -142,6 +143,7 @@ const MarkTaskInstanceAsDialog = ({ onClose, open, state, taskInstance }: Props)
                   dagRunId,
                   mapIndex,
                   requestBody: {
+                    clear_downstream: downstream,
                     include_downstream: downstream,
                     include_future: future,
                     include_past: past,
