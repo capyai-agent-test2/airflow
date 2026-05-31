@@ -170,6 +170,7 @@ from airflow.sdk.execution_time.task_runner import (
     run,
     startup,
 )
+from airflow.sdk.execution_time.timeout import TimeoutPosix
 from airflow.sdk.execution_time.workloads.task import TaskInstanceDTO
 from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.serde import deserialize
@@ -1118,6 +1119,28 @@ def test_run_raises_airflow_exception(time_machine, create_runtime_ti, mock_supe
     mock_supervisor_comms.send.assert_called_with(TaskState(state=TaskInstanceState.FAILED, end_date=instant))
 
 
+def test_run_handles_failure_when_logging_pipe_is_closed(
+    time_machine, create_runtime_ti, mock_supervisor_comms
+):
+    """Test task failure handling when task logging is no longer writable."""
+    task = PythonOperator(
+        task_id="af_exception_task",
+        python_callable=lambda: (_ for _ in ()).throw(AirflowException("task failed")),
+    )
+    ti = create_runtime_ti(task=task, dag_id="basic_dag_af_exception")
+
+    instant = timezone.datetime(2024, 12, 3, 10, 0)
+    time_machine.move_to(instant, tick=False)
+    log = mock.MagicMock()
+    log.exception.side_effect = BrokenPipeError("task log pipe closed")
+    log.info.side_effect = BrokenPipeError("task log pipe closed")
+
+    run(ti, context=ti.get_template_context(), log=log)
+
+    assert ti.state == TaskInstanceState.FAILED
+    mock_supervisor_comms.send.assert_called_with(TaskState(state=TaskInstanceState.FAILED, end_date=instant))
+
+
 def test_run_task_timeout(time_machine, create_runtime_ti, mock_supervisor_comms):
     """Test running a basic task that times out."""
     from time import sleep
@@ -1139,6 +1162,15 @@ def test_run_task_timeout(time_machine, create_runtime_ti, mock_supervisor_comms
 
     # this state can only be reached if the try block passed down the exception to handler of AirflowTaskTimeout
     mock_supervisor_comms.send.assert_called_with(TaskState(state=TaskInstanceState.FAILED, end_date=instant))
+
+
+def test_timeout_raises_when_logging_pipe_is_closed():
+    timeout = TimeoutPosix(seconds=1, error_message="Timeout")
+    timeout.log = mock.MagicMock()
+    timeout.log.error.side_effect = BrokenPipeError("task log pipe closed")
+
+    with pytest.raises(AirflowTaskTimeout):
+        timeout.handle_timeout(signum=None, frame=None)
 
 
 def test_execution_timeout(create_runtime_ti):
