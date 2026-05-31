@@ -3303,6 +3303,8 @@ class TestMappedTaskInstanceReceiveValue:
         assert len(result) == 3
         assert result[0] == 2
         assert result[2] == 6
+        assert result[:] == [2, 6]
+        assert result[::-1] == [6, 2]
         with pytest.raises(IndexError):
             result[1]
 

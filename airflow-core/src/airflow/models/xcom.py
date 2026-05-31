@@ -441,7 +441,18 @@ class LazyMappedXComSelectSequence(LazyXComSelectSequence):
                 raise IndexError(key)
             return self._process_row(row)
         if isinstance(key, slice):
-            return [self[i] for i in range(*key.indices(len(self)))]
+            map_indexes = list(range(*key.indices(len(self))))
+            if not map_indexes:
+                return []
+            rows = self._session.execute(
+                self._select_asc.order_by(None).where(XComModel.map_index.in_(map_indexes))
+            )
+            values_by_map_index = {row.map_index: self._process_row(row) for row in rows}
+            return [
+                values_by_map_index[map_index]
+                for map_index in map_indexes
+                if map_index in values_by_map_index
+            ]
         raise TypeError(f"Sequence indices must be integers or slices, not {type(key).__name__}")
 
 
