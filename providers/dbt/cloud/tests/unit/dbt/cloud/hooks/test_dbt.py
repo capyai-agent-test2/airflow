@@ -257,7 +257,7 @@ class TestDbtCloudHook:
         hook.list_accounts()
 
         assert hook.method == "GET"
-        hook.run.assert_called_once_with(endpoint=None, data=None, extra_options=None)
+        hook.run.assert_called_once_with(endpoint="api/v2/accounts/", data=None, extra_options=None)
         hook._paginate.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -1137,7 +1137,7 @@ class TestDbtCloudHook:
         ids=["default_account", "explicit_account"],
     )
     def test_connection_success(self, requests_mock, conn_id):
-        requests_mock.get(BASE_URL, status_code=200)
+        requests_mock.get(f"{BASE_URL}api/v2/accounts/", status_code=200)
         status, msg = DbtCloudHook(conn_id).test_connection()
 
         assert status is True
@@ -1149,7 +1149,11 @@ class TestDbtCloudHook:
         ids=["default_account", "explicit_account"],
     )
     def test_connection_failure(self, requests_mock, conn_id):
-        requests_mock.get(BASE_URL, status_code=403, reason="Authentication credentials were not provided")
+        requests_mock.get(
+            f"{BASE_URL}api/v2/accounts/",
+            status_code=403,
+            reason="Authentication credentials were not provided",
+        )
         status, msg = DbtCloudHook(conn_id).test_connection()
 
         assert status is False

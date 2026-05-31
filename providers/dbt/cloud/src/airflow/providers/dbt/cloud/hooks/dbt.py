@@ -401,7 +401,7 @@ class DbtCloudHook(HttpHook):
         api_version: str = "v2",
     ) -> Any:
         self.method = method
-        full_endpoint = f"api/{api_version}/accounts/{endpoint}" if endpoint else None
+        full_endpoint = f"api/{api_version}/accounts/{endpoint}" if endpoint is not None else None
         proxies = self._get_proxies(self.connection)
         extra_options: dict[str, Any] = {}
         if self.timeout_seconds is not None:
@@ -457,7 +457,7 @@ class DbtCloudHook(HttpHook):
 
         :return: List of request responses.
         """
-        return self._run_and_get_response()
+        return self._run_and_get_response(endpoint="")
 
     @fallback_to_default_account
     def get_account(self, account_id: int | None = None) -> Response:
@@ -955,7 +955,7 @@ class DbtCloudHook(HttpHook):
     def test_connection(self) -> tuple[bool, str]:
         """Test dbt Cloud connection."""
         try:
-            self._run_and_get_response()
+            self.list_accounts()
             return True, "Successfully connected to dbt Cloud."
         except Exception as e:
             return False, str(e)
