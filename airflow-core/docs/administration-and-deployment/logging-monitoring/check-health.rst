@@ -143,8 +143,8 @@ For details about installation, see: :doc:`apache-airflow-providers-celery:celer
 CLI Check for Celery Workers
 ----------------------------
 
-To verify that the Celery workers are working correctly, you can use the ``celery inspect ping`` command. On failure, the command will exit
-with a non-zero error code.
+To verify that a Celery worker is working correctly, you can use the ``airflow celery worker-health`` command. On failure, the command will exit
+with a non-zero error code. This command checks that the worker is consuming at least one queue.
 
 .. note::
 
@@ -155,12 +155,12 @@ To check if the worker running on the local host is working correctly, run:
 
 .. code-block:: bash
 
-    celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d celery@${HOSTNAME}
+    airflow celery worker-health --celery-hostname celery@${HOSTNAME}
 
-To check if the all workers in the cluster running is working correctly, run:
+To list all workers in the cluster and their active queues, run:
 
 .. code-block:: bash
 
-    celery --app airflow.providers.celery.executors.celery_executor.app inspect ping
+    airflow celery list-workers
 
 For more information, see: `Management Command-line Utilities (inspect/control) <https://docs.celeryproject.org/en/stable/userguide/monitoring.html#monitoring-control>`__ and `Workers Guide <https://docs.celeryproject.org/en/stable/userguide/workers.html>`__ in the Celery documentation.
