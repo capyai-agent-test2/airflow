@@ -20,6 +20,7 @@ import random
 import re
 import string
 import time
+import uuid
 from datetime import datetime, timedelta
 from unittest import mock
 
@@ -29,6 +30,8 @@ from kubernetes.client import models as k8s
 from kubernetes.client.rest import ApiException
 from urllib3 import HTTPResponse
 
+from airflow.executors.workloads.base import BundleInfo
+from airflow.executors.workloads.task import ExecuteTask, TaskInstanceDTO
 from airflow.models.taskinstancekey import TaskInstanceKey
 from airflow.providers.cncf.kubernetes import pod_generator
 from airflow.providers.cncf.kubernetes.executors.kubernetes_executor import (
@@ -819,6 +822,42 @@ class TestKubernetesExecutor:
             )
 
             assert next(iter(executor.event_buffer.values()))[1] == "Invalid executor_config passed"
+        finally:
+            executor.end()
+
+    @mock.patch("airflow.providers.cncf.kubernetes.executors.kubernetes_executor_utils.KubernetesJobWatcher")
+    @mock.patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
+    def test_invalid_executor_config_from_workload_is_not_running(
+        self, mock_get_kube_client, mock_kubernetes_job_watcher
+    ):
+        executor = self.kubernetes_executor
+        workload = ExecuteTask(
+            ti=TaskInstanceDTO(
+                id=uuid.uuid4(),
+                dag_version_id=uuid.uuid4(),
+                task_id="task",
+                dag_id="dag",
+                run_id="run_id",
+                try_number=1,
+                pool_slots=1,
+                queue="default",
+                priority_weight=1,
+                executor_config={"KubernetesExecutor": {"config_file": "/some/path/kubeconfig.yaml"}},
+            ),
+            dag_rel_path="dag.py",
+            token="",
+            log_path="dag/task/run/1.log",
+            bundle_info=BundleInfo(name="dags-folder", version=None),
+        )
+        key = workload.ti.key
+        executor.queued_tasks[key] = workload
+        executor.start()
+        try:
+            executor._process_workloads([workload])
+
+            assert key not in executor.running
+            assert key not in executor.queued_tasks
+            assert executor.event_buffer[key] == (State.FAILED, "Invalid executor_config passed")
         finally:
             executor.end()
 
