@@ -126,12 +126,14 @@ export const hasUniformExternalConnectivity = (
 ): boolean => {
   const sourcesPerChild = new Map<string, Set<string>>();
   const targetsPerChild = new Map<string, Set<string>>();
+  const externallyConnectedChildren = new Set<string>();
 
   for (const edge of edges) {
     const sourceIsChild = childIdSet.has(edge.source_id);
     const targetIsChild = childIdSet.has(edge.target_id);
 
     if (!sourceIsChild && targetIsChild) {
+      externallyConnectedChildren.add(edge.target_id);
       const existing = sourcesPerChild.get(edge.target_id) ?? new Set<string>();
 
       existing.add(edge.source_id);
@@ -139,6 +141,7 @@ export const hasUniformExternalConnectivity = (
     }
 
     if (sourceIsChild && !targetIsChild) {
+      externallyConnectedChildren.add(edge.source_id);
       const existing = targetsPerChild.get(edge.source_id) ?? new Set<string>();
 
       existing.add(edge.target_id);
@@ -169,12 +172,16 @@ export const hasUniformExternalConnectivity = (
 
   // Every child's external sources must equal allSources (same size sufficient
   // given allSources is already the union — a child with fewer differs in size).
-  for (const sources of sourcesPerChild.values()) {
+  for (const childId of externallyConnectedChildren) {
+    const sources = sourcesPerChild.get(childId) ?? new Set<string>();
+
     if (sources.size !== allSources.size) {
       return false;
     }
   }
-  for (const targets of targetsPerChild.values()) {
+  for (const childId of externallyConnectedChildren) {
+    const targets = targetsPerChild.get(childId) ?? new Set<string>();
+
     if (targets.size !== allTargets.size) {
       return false;
     }
