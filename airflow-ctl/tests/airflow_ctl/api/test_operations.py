@@ -1489,6 +1489,22 @@ class TestVariablesOperations:
         response = client.variables.get(self.key)
         assert response == self.variable_response
 
+    def test_get_with_null_value(self):
+        variable_response = VariableResponse(
+            key=self.key,
+            value=None,
+            description=self.description,
+            is_encrypted=True,
+        )
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == f"/api/v2/variables/{self.key}"
+            return httpx.Response(200, json=json.loads(variable_response.model_dump_json()))
+
+        client = make_api_client(transport=httpx.MockTransport(handle_request))
+        response = client.variables.get(self.key)
+        assert response == variable_response
+
     def test_list(self):
         def handle_request(request: httpx.Request) -> httpx.Response:
             assert request.url.path == "/api/v2/variables"
