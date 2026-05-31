@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from unittest import mock
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -237,7 +237,7 @@ class TestPowerBIDatasetRefreshOperator:
     def test_execute_fire_and_forget_mode(self, mock_connection, mock_hook_class):
         """Test fire-and-forget mode (wait_for_completion=False)"""
         mock_hook_instance = mock_hook_class.return_value
-        mock_hook_instance.trigger_dataset_refresh.return_value = NEW_REFRESH_REQUEST_ID
+        mock_hook_instance.trigger_dataset_refresh = AsyncMock(return_value=NEW_REFRESH_REQUEST_ID)
 
         operator = PowerBIDatasetRefreshOperator(
             **CONFIG,
@@ -250,7 +250,7 @@ class TestPowerBIDatasetRefreshOperator:
         result = operator.execute(context)
 
         # Verify hook was called correctly
-        mock_hook_instance.trigger_dataset_refresh.assert_called_once_with(
+        mock_hook_instance.trigger_dataset_refresh.assert_awaited_once_with(
             dataset_id=DATASET_ID,
             group_id=GROUP_ID,
             request_body=REQUEST_BODY,
@@ -270,7 +270,7 @@ class TestPowerBIDatasetRefreshOperator:
     def test_execute_fire_and_forget_mode_failure(self, mock_connection, mock_hook_class):
         """Test fire-and-forget mode raises exception when trigger fails"""
         mock_hook_instance = mock_hook_class.return_value
-        mock_hook_instance.trigger_dataset_refresh.return_value = None
+        mock_hook_instance.trigger_dataset_refresh = AsyncMock(return_value=None)
 
         operator = PowerBIDatasetRefreshOperator(
             **CONFIG,
