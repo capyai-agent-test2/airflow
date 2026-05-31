@@ -1978,6 +1978,13 @@ def test_external_task_marker_downstream_clear_includes_child_dag(dag_bag_ext, s
     ]
 
 
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Test for 3.0+")
+def test_external_task_marker_constant_logical_date_template_with_null_source_date():
+    from airflow.serialization.definitions.dag import _render_external_task_marker_logical_date
+
+    assert _render_external_task_marker_logical_date("2015-01-01", None) == coerce_datetime(DEFAULT_DATE)
+
+
 @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Different test for 3.0+")
 @provide_session
 def test_external_task_marker_clear_activate(dag_bag_parent_child, session):

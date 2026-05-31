@@ -3358,6 +3358,42 @@ class TestPostClearTaskInstances(TestTaskInstanceEndpoint):
         assert resp.json()["total_entries"] == 1
         assert resp.json()["task_instances"][0]["logical_date"] == "2020-01-02T00:00:00Z"  # T1
 
+    @mock.patch("airflow.serialization.definitions.dag.SerializedDAG.clear", autospec=True, return_value=[])
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [
+            ({"include_downstream": True}, False),
+            ({"include_downstream": True, "task_ids": ["print_the_context"]}, True),
+        ],
+    )
+    def test_include_dependent_dags_requires_task_ids(
+        self, mock_clear, test_client, session, payload, expected
+    ):
+        dag_id = "example_python_operator"
+        self.create_task_instances(session, dag_id=dag_id, update_extras=False)
+
+        response = test_client.post(f"/dags/{dag_id}/clearTaskInstances", json=payload)
+
+        assert response.status_code == 200
+        assert mock_clear.call_args.kwargs["include_dependent_dags"] is expected
+
+    @mock.patch(
+        "airflow.serialization.definitions.dag.SerializedDAG.clear",
+        autospec=True,
+        side_effect=ValueError("Maximum recursion depth reached"),
+    )
+    def test_clear_task_instances_translates_clear_value_error(self, mock_clear, test_client, session):
+        dag_id = "example_python_operator"
+        self.create_task_instances(session, dag_id=dag_id, update_extras=False)
+
+        response = test_client.post(
+            f"/dags/{dag_id}/clearTaskInstances",
+            json={"include_downstream": True, "task_ids": ["print_the_context"]},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Maximum recursion depth reached"
+
     def test_should_respond_401(self, unauthenticated_test_client):
         response = unauthenticated_test_client.post(
             "/dags/dag_id/clearTaskInstances",

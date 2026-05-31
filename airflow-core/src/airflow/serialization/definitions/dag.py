@@ -78,8 +78,6 @@ def _render_external_task_marker_logical_date(
 ) -> datetime.datetime | None:
     if not isinstance(template, str):
         return coerce_datetime(template)
-    if logical_date is None:
-        return None
 
     from airflow.sdk.definitions._internal.templater import create_template_env
     from airflow.sdk.execution_time.context import MacrosAccessor
@@ -89,10 +87,10 @@ def _render_external_task_marker_logical_date(
         .from_string(template)
         .render(
             {
-                "ds": logical_date.strftime("%Y-%m-%d"),
+                "ds": logical_date.strftime("%Y-%m-%d") if logical_date else None,
                 "logical_date": logical_date,
                 "macros": MacrosAccessor(),
-                "ts": logical_date.isoformat(),
+                "ts": logical_date.isoformat() if logical_date else None,
             }
         )
     )
