@@ -33,7 +33,7 @@ import { ChakraCustomProvider } from "src/context/ChakraCustomProvider";
 import { ColorModeProvider } from "src/context/colorMode";
 import { TimezoneProvider } from "src/context/timezone";
 import { router } from "src/router";
-import { getNextHref, getRedirectPath } from "src/utils/links.ts";
+import { redirectToLogin } from "src/utils/authRedirect.ts";
 
 import i18n from "./i18n/config";
 import { client } from "./queryClient";
@@ -72,12 +72,7 @@ axios.interceptors.response.use(
       error.response?.status === 401 ||
       (error.response?.status === 403 && error.response.data.detail === "Invalid JWT token")
     ) {
-      const params = new URLSearchParams();
-
-      params.set("next", getNextHref(globalThis.location));
-      const loginPath = getRedirectPath("api/v2/auth/login");
-
-      globalThis.location.replace(`${loginPath}?${params.toString()}`);
+      return redirectToLogin();
     }
 
     // Track permission-based 403 URLs so future polling requests are blocked at the request interceptor.
