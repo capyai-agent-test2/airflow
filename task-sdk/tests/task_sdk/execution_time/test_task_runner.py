@@ -4989,6 +4989,41 @@ class TestTriggerDagRunOperator:
         ]
         mock_supervisor_comms.assert_has_calls(expected_calls)
 
+    @time_machine.travel("2025-01-01 00:00:00", tick=False)
+    def test_handle_trigger_dag_run_wait_for_completion_retries_failed_dag_run(
+        self, create_runtime_ti, mock_supervisor_comms
+    ):
+        from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
+
+        task = TriggerDagRunOperator(
+            task_id="test_task",
+            trigger_dag_id="test_dag",
+            trigger_run_id="test_run_id",
+            poke_interval=5,
+            wait_for_completion=True,
+            retries=1,
+        )
+        ti = create_runtime_ti(
+            dag_id="test_handle_trigger_dag_run_wait_for_completion_retries_failed_dag_run",
+            run_id="test_run",
+            task=task,
+        )
+
+        log = mock.MagicMock()
+        mock_supervisor_comms.send.side_effect = [
+            None,
+            OKResponse(ok=True),
+            None,
+            DagRunStateResult(state=DagRunState.RUNNING),
+            DagRunStateResult(state=DagRunState.FAILED),
+            None,
+        ]
+        with mock.patch("time.sleep", return_value=None):
+            state, msg, _ = run(ti, ti.get_template_context(), log)
+
+        assert state == TaskInstanceState.UP_FOR_RETRY
+        assert msg.state == TaskInstanceState.UP_FOR_RETRY
+
     @pytest.mark.parametrize(
         ("allowed_states", "failed_states", "intermediate_state"),
         [

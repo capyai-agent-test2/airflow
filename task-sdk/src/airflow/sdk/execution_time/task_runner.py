@@ -1736,13 +1736,12 @@ def _handle_trigger_dag_run(
                 log.error(
                     "DagRun finished with failed state.", dag_id=drte.trigger_dag_id, state=comms_msg.state
                 )
-                msg = TaskState(
-                    state=TaskInstanceState.FAILED,
-                    end_date=datetime.now(tz=timezone.utc),
-                    rendered_map_index=ti.rendered_map_index,
+                return _apply_retry_policy_or_default(
+                    ti,
+                    AirflowException(f"{drte.trigger_dag_id} failed with failed states {drte.failed_states}"),
+                    log,
+                    context,
                 )
-                state = TaskInstanceState.FAILED
-                return msg, state
             if comms_msg.state in drte.allowed_states:
                 log.info(
                     "DagRun finished with allowed state.", dag_id=drte.trigger_dag_id, state=comms_msg.state
