@@ -379,7 +379,7 @@ def test_precent_fmt_exc(structlog_config, get_logger, monkeypatch):
 )
 def test_dev_traceback_respects_color_config(structlog_config, monkeypatch, colors, expected_ansi):
     monkeypatch.setenv("DEV", "1")
-    with structlog_config(colors=colors) as sio:
+    with structlog_config(colors=colors, log_format="%(message)s") as sio:
         try:
             1 / 0
         except ZeroDivisionError:
