@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import logging
+import socket
 import sys
 import time
 from contextlib import contextmanager, suppress
@@ -369,6 +370,24 @@ def _check_if_active_celery_worker(hostname: str):
         raise SystemExit("Error: No active Celery workers found!")
     if hostname not in active_workers:
         raise SystemExit(f"Error: {hostname} is unknown!")
+
+
+@cli_utils.action_cli(check_db=False)
+@_providers_configuration_loaded
+def worker_health(args):
+    """Check that a Celery worker is consuming from at least one queue."""
+    # This needs to be imported locally to not trigger Providers Manager initialization
+    from airflow.providers.celery.executors.celery_executor import app as celery_app
+
+    hostname = args.celery_hostname or f"celery@{socket.gethostname()}"
+    inspect = celery_app.control.inspect()
+    active_workers = inspect.active_queues()
+
+    if not active_workers or hostname not in active_workers:
+        raise SystemExit(f"Error: Celery worker {hostname} is not consuming from any queues!")
+
+    if not active_workers[hostname]:
+        raise SystemExit(f"Error: Celery worker {hostname} has no active queues!")
 
 
 @cli_utils.action_cli(check_db=False)

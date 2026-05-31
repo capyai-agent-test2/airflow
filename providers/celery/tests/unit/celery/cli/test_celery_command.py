@@ -583,6 +583,28 @@ class TestRemoteCeleryControlCommands:
             assert key in celery_workers[0]
         assert any("celery@host_1" in h["worker_name"] for h in celery_workers)
 
+    @pytest.mark.parametrize(
+        "active_queues", [None, {}, {"celery@host_1": []}, {"celery@host_2": [{"name": "queue"}]}]
+    )
+    @mock.patch("airflow.providers.celery.executors.celery_executor.app.control.inspect")
+    def test_worker_health_exits_when_worker_has_no_active_queues(self, mock_inspect, active_queues):
+        args = self.parser.parse_args(["celery", "worker-health", "-H", "celery@host_1"])
+        mock_instance = MagicMock()
+        mock_instance.active_queues.return_value = active_queues
+        mock_inspect.return_value = mock_instance
+
+        with pytest.raises(SystemExit):
+            celery_command.worker_health(args)
+
+    @mock.patch("airflow.providers.celery.executors.celery_executor.app.control.inspect")
+    def test_worker_health_succeeds_when_worker_has_active_queues(self, mock_inspect):
+        args = self.parser.parse_args(["celery", "worker-health", "-H", "celery@host_1"])
+        mock_instance = MagicMock()
+        mock_instance.active_queues.return_value = {"celery@host_1": [{"name": "queue"}]}
+        mock_inspect.return_value = mock_instance
+
+        celery_command.worker_health(args)
+
     @mock.patch("airflow.providers.celery.executors.celery_executor.app.control.shutdown")
     def test_shutdown_worker(self, mock_shutdown):
         args = self.parser.parse_args(["celery", "shutdown-worker", "-H", "celery@host_1"])
