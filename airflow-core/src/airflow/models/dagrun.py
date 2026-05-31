@@ -247,7 +247,9 @@ class DagRun(Base, LoggingMixin):
     __table_args__ = (
         Index("dag_id_state", dag_id, _state),
         UniqueConstraint("dag_id", "run_id", name="dag_run_dag_id_run_id_key"),
-        UniqueConstraint("dag_id", "logical_date", name="dag_run_dag_id_logical_date_key"),
+        UniqueConstraint(
+            "dag_id", "run_type", "logical_date", name="dag_run_dag_id_run_type_logical_date_key"
+        ),
         Index("idx_dag_run_dag_id", dag_id),
         Index("idx_dag_run_run_after", run_after),
         Index(

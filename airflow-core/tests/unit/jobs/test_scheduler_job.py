@@ -5790,6 +5790,49 @@ class TestSchedulerJob:
         assert dag_model.next_dagrun == DEFAULT_DATE + timedelta(days=1)
         session.rollback()
 
+    def test_scheduler_create_dag_runs_when_manual_run_has_same_logical_date(self, dag_maker, session):
+        with dag_maker(
+            dag_id="test_scheduler_create_dag_runs_when_manual_run_has_same_logical_date",
+            schedule=timedelta(days=1),
+            catchup=True,
+            max_active_runs=5,
+        ) as dag:
+            EmptyOperator(task_id="dummy")
+
+        dag_model = dag_maker.dag_model
+        assert dag_model.next_dagrun == DEFAULT_DATE
+
+        manual_interval_start = DEFAULT_DATE - timedelta(days=1)
+        manual_run = dag_maker.create_dagrun(
+            run_id="manual_run_same_logical_date",
+            run_type=DagRunType.MANUAL,
+            logical_date=dag_model.next_dagrun,
+            data_interval=(manual_interval_start, DEFAULT_DATE),
+            state=State.RUNNING,
+            session=session,
+            start_date=timezone.utcnow(),
+        )
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[self.null_exec])
+
+        self.job_runner._create_dag_runs([dag_model], session)
+        session.flush()
+
+        scheduled_run = session.scalar(
+            select(DagRun).where(
+                DagRun.dag_id == dag.dag_id,
+                DagRun.run_type == DagRunType.SCHEDULED,
+                DagRun.logical_date == DEFAULT_DATE,
+            )
+        )
+        assert scheduled_run is not None
+        assert scheduled_run.run_id != manual_run.run_id
+        assert scheduled_run.data_interval_start == DEFAULT_DATE
+        assert scheduled_run.data_interval_end == DEFAULT_DATE + timedelta(days=1)
+        assert dag_model.next_dagrun == DEFAULT_DATE + timedelta(days=1)
+        session.rollback()
+
     @conf_vars({("scheduler", "use_job_schedule"): "false"})
     def test_do_schedule_max_active_runs_dag_timed_out(self, dag_maker, session):
         """Test that tasks are set to a finished state when their DAG times out"""
