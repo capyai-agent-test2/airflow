@@ -5019,10 +5019,11 @@ class TestTriggerDagRunOperator:
             None,
         ]
         with mock.patch("time.sleep", return_value=None):
-            state, msg, _ = run(ti, ti.get_template_context(), log)
+            state, msg, error = run(ti, ti.get_template_context(), log)
 
         assert state == TaskInstanceState.UP_FOR_RETRY
         assert msg.state == TaskInstanceState.UP_FOR_RETRY
+        assert str(error) == "test_dag failed with failed states [<DagRunState.FAILED: 'failed'>]"
 
     @pytest.mark.parametrize(
         ("allowed_states", "failed_states", "intermediate_state"),
