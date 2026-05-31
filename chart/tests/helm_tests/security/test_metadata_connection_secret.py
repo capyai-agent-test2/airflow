@@ -41,16 +41,24 @@ class TestMetadataConnectionSecret:
 
         assert len(docs) == 0
 
-    def _get_connection(self, values: dict) -> str:
+    def _get_connection(self, values: dict, secret_key: str = "connection") -> str:
         docs = render_chart(
             values=values,
             show_only=["templates/secrets/metadata-connection-secret.yaml"],
         )
-        encoded_connection = jmespath.search("data.connection", docs[0])
+        encoded_connection = docs[0]["data"][secret_key]
         return base64.b64decode(encoded_connection).decode()
 
     def test_default_connection(self):
         connection = self._get_connection({})
+
+        assert (
+            connection
+            == "postgresql://postgres:postgres@release-name-postgresql.default:5432/postgres?sslmode=disable"
+        )
+
+    def test_should_use_configured_secret_key(self):
+        connection = self._get_connection({"data": {"metadataSecretKey": "uri"}}, secret_key="uri")
 
         assert (
             connection

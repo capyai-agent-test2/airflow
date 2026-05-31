@@ -89,14 +89,14 @@ class TestResultBackendConnectionSecret:
         assert "annotations" in jmespath.search("metadata", docs)
         assert jmespath.search("metadata.annotations", docs)["test_annotation"] == "test_annotation_value"
 
-    def _get_connection(self, values: dict) -> str | None:
+    def _get_connection(self, values: dict, secret_key: str = "connection") -> str | None:
         docs = render_chart(
             values=values,
             show_only=["templates/secrets/result-backend-connection-secret.yaml"],
         )
         if len(docs) == 0:
             return None
-        encoded_connection = jmespath.search("data.connection", docs[0])
+        encoded_connection = docs[0]["data"][secret_key]
         return base64.b64decode(encoded_connection).decode()
 
     def test_default_connection_old_version(self):
@@ -141,6 +141,17 @@ class TestResultBackendConnectionSecret:
     def test_should_correctly_use_non_chart_database(self):
         values = {"data": {"resultBackendConnection": {**self.non_chart_database_values}}}
         connection = self._get_connection(values)
+
+        assert connection == "db+postgresql://someuser:somepass@somehost:7777/somedb?sslmode=allow"
+
+    def test_should_use_configured_secret_key(self):
+        values = {
+            "data": {
+                "resultBackendSecretKey": "result-uri",
+                "resultBackendConnection": {**self.non_chart_database_values},
+            }
+        }
+        connection = self._get_connection(values, secret_key="result-uri")
 
         assert connection == "db+postgresql://someuser:somepass@somehost:7777/somedb?sslmode=allow"
 
