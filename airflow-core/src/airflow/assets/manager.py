@@ -19,10 +19,11 @@ from __future__ import annotations
 
 from collections.abc import Collection, Iterable
 from contextlib import contextmanager
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import structlog
-from sqlalchemy import exc, or_, select
+from sqlalchemy import exc, or_, select, update
 from sqlalchemy.orm import joinedload
 
 from airflow._shared.observability.metrics import stats
@@ -460,17 +461,17 @@ class AssetManager(LoggingMixin):
         if not non_partitioned_dags or partition_key is not None:
             return None
 
-        # Possible race condition: if multiple dags or multiple (usually
-        # mapped) tasks update the same asset, this can fail with a unique
-        # constraint violation.
-        #
-        # If we support it, use ON CONFLICT to do nothing, otherwise
-        # "fallback" to running this in a nested transaction. This is needed
-        # so that the adding of these rows happens in the same transaction
-        # where `ti.state` is changed.
+        # Possible race condition: if multiple dags or multiple (usually mapped) tasks update the same
+        # asset, this can fail with a unique constraint violation. If we support it, use ON CONFLICT,
+        # otherwise "fallback" to running this in a nested transaction. This is needed so that the
+        # adding of these rows happens in the same transaction where `ti.state` is changed.
         if get_dialect_name(session) == "postgresql":
-            return cls._queue_dagruns_nonpartitioned_postgres(asset_id, non_partitioned_dags, session)
-        return cls._queue_dagruns_nonpartitioned_slow_path(asset_id, non_partitioned_dags, session)
+            return cls._queue_dagruns_nonpartitioned_postgres(
+                asset_id, non_partitioned_dags, event.timestamp, session
+            )
+        return cls._queue_dagruns_nonpartitioned_slow_path(
+            asset_id, non_partitioned_dags, event.timestamp, session
+        )
 
     @classmethod
     def _queue_partitioned_dags(
@@ -635,10 +636,10 @@ class AssetManager(LoggingMixin):
 
     @classmethod
     def _queue_dagruns_nonpartitioned_slow_path(
-        cls, asset_id: int, dags_to_queue: set[DagModel], session: Session
+        cls, asset_id: int, dags_to_queue: set[DagModel], created_at: datetime, session: Session
     ) -> None:
         def _queue_dagrun_if_needed(dag: DagModel) -> str | None:
-            item = AssetDagRunQueue(target_dag_id=dag.dag_id, asset_id=asset_id)
+            item = AssetDagRunQueue(target_dag_id=dag.dag_id, asset_id=asset_id, created_at=created_at)
             # Don't error whole transaction when a single RunQueue item conflicts.
             # https://docs.sqlalchemy.org/en/14/orm/session_transaction.html#using-savepoint
             try:
@@ -646,6 +647,14 @@ class AssetManager(LoggingMixin):
                     session.merge(item)
             except exc.IntegrityError:
                 cls.logger().debug("Skipping record %s", item, exc_info=True)
+                session.execute(
+                    update(AssetDagRunQueue)
+                    .where(
+                        AssetDagRunQueue.asset_id == asset_id,
+                        AssetDagRunQueue.target_dag_id == dag.dag_id,
+                    )
+                    .values(created_at=created_at)
+                )
             return dag.dag_id
 
         queued_results = (_queue_dagrun_if_needed(dag) for dag in dags_to_queue)
@@ -654,12 +663,16 @@ class AssetManager(LoggingMixin):
 
     @classmethod
     def _queue_dagruns_nonpartitioned_postgres(
-        cls, asset_id: int, dags_to_queue: set[DagModel], session: Session
+        cls, asset_id: int, dags_to_queue: set[DagModel], created_at: datetime, session: Session
     ) -> None:
         from sqlalchemy.dialects.postgresql import insert
 
-        values = [{"target_dag_id": dag.dag_id} for dag in dags_to_queue]
-        stmt = insert(AssetDagRunQueue).values(asset_id=asset_id).on_conflict_do_nothing()
+        values = [{"target_dag_id": dag.dag_id, "created_at": created_at} for dag in dags_to_queue]
+        stmt = insert(AssetDagRunQueue).values(asset_id=asset_id)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[AssetDagRunQueue.asset_id, AssetDagRunQueue.target_dag_id],
+            set_={"created_at": stmt.excluded.created_at},
+        )
         session.execute(stmt, values)
 
 
