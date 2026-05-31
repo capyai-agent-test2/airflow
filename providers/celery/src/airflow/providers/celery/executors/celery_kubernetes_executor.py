@@ -89,6 +89,7 @@ class CeleryKubernetesExecutor(BaseExecutor):
         self.celery_executor = celery_executor
         self.kubernetes_executor = kubernetes_executor
         self.kubernetes_executor.kubernetes_queue = self.kubernetes_queue
+        self._is_kubernetes_executor_started = False
 
     @property
     def _task_event_logs(self):
@@ -138,7 +139,13 @@ class CeleryKubernetesExecutor(BaseExecutor):
     def start(self) -> None:
         """Start celery and kubernetes executor."""
         self.celery_executor.start()
-        self.kubernetes_executor.start()
+        if self.job_id is not None:
+            self._start_kubernetes_executor()
+
+    def _start_kubernetes_executor(self) -> None:
+        if not self._is_kubernetes_executor_started:
+            self.kubernetes_executor.start()
+            self._is_kubernetes_executor_started = True
 
     @property
     def slots_available(self) -> int:
@@ -159,6 +166,8 @@ class CeleryKubernetesExecutor(BaseExecutor):
     ) -> None:
         """Queues command via celery or kubernetes executor."""
         executor = self._router(task_instance)
+        if executor is self.kubernetes_executor:
+            self._start_kubernetes_executor()
         self.log.debug("Using executor: %s for %s", executor.__class__.__name__, task_instance.key)
         executor.queue_command(task_instance, command, priority, queue)  # type: ignore[union-attr]
 
@@ -179,6 +188,8 @@ class CeleryKubernetesExecutor(BaseExecutor):
         from airflow.models.taskinstance import SimpleTaskInstance  # type: ignore[attr-defined]
 
         executor = self._router(SimpleTaskInstance.from_ti(task_instance))
+        if executor is self.kubernetes_executor:
+            self._start_kubernetes_executor()
         self.log.debug(
             "Using executor: %s to queue_task_instance for %s", executor.__class__.__name__, task_instance.key
         )
@@ -220,7 +231,8 @@ class CeleryKubernetesExecutor(BaseExecutor):
     def heartbeat(self) -> None:
         """Heartbeat sent to trigger new jobs in celery and kubernetes executor."""
         self.celery_executor.heartbeat()
-        self.kubernetes_executor.heartbeat()
+        if self._is_kubernetes_executor_started:
+            self.kubernetes_executor.heartbeat()
 
     def get_event_buffer(  # type: ignore[override]
         self, dag_ids: list[str] | None = None
@@ -287,12 +299,14 @@ class CeleryKubernetesExecutor(BaseExecutor):
     def end(self) -> None:
         """End celery and kubernetes executor."""
         self.celery_executor.end()
-        self.kubernetes_executor.end()
+        if self._is_kubernetes_executor_started:
+            self.kubernetes_executor.end()
 
     def terminate(self) -> None:
         """Terminate celery and kubernetes executor."""
         self.celery_executor.terminate()
-        self.kubernetes_executor.terminate()
+        if self._is_kubernetes_executor_started:
+            self.kubernetes_executor.terminate()
 
     def _router(self, simple_task_instance: SimpleTaskInstance) -> CeleryExecutor | KubernetesExecutor:
         """
