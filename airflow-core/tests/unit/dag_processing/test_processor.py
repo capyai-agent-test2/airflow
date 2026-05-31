@@ -32,7 +32,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import structlog
 from pydantic import TypeAdapter
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from structlog.typing import FilteringBoundLogger
 
 from airflow._shared.timezones import timezone
@@ -332,6 +332,51 @@ class TestDagFileProcessor:
 
         while not proc.is_ready:
             proc._service_subprocess(0.1)
+
+        result = proc.parsing_result
+        assert result is not None
+        assert result.import_errors == {}
+        assert result.serialized_dags[0].dag_id == "test_my_conn"
+
+    def test_top_level_team_connection_access(self, tmp_path: pathlib.Path, inprocess_client, session):
+        from airflow.models.connection import Connection as ConnectionORM
+        from airflow.models.dagbundle import DagBundleModel
+        from airflow.models.team import Team
+
+        logger = MagicMock(spec=FilteringBoundLogger)
+        logger_filehandle = MagicMock(spec=BinaryIO)
+
+        def dag_in_a_fn():
+            from airflow.sdk import DAG, BaseHook
+
+            with DAG(f"test_{BaseHook.get_connection(conn_id='my_conn').conn_id}"):
+                ...
+
+        path = write_dag_in_a_fn_to_file(dag_in_a_fn, tmp_path)
+        team = session.get(Team, "testing_team") or Team(name="testing_team")
+        bundle = session.get(DagBundleModel, "dags-folder") or DagBundleModel(name="dags-folder")
+        bundle.teams = [team]
+        session.execute(delete(ConnectionORM).where(ConnectionORM.conn_id == "my_conn"))
+        session.add_all([team, bundle])
+        session.flush()
+        session.add(ConnectionORM(conn_id="my_conn", conn_type="aws", team_name=team.name))
+        session.commit()
+
+        with conf_vars({("core", "multi_team"): "true"}):
+            proc = DagFileProcessorProcess.start(
+                id=1,
+                path=path,
+                bundle_path=tmp_path,
+                bundle_name=bundle.name,
+                dag_file_rel_path=str(path.relative_to(tmp_path)),
+                callbacks=[],
+                logger=logger,
+                logger_filehandle=logger_filehandle,
+                client=inprocess_client,
+            )
+
+            while not proc.is_ready:
+                proc._service_subprocess(0.1)
 
         result = proc.parsing_result
         assert result is not None

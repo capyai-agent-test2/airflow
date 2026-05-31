@@ -90,6 +90,7 @@ from airflow.sdk.log import mask_secret
 from airflow.serialization.serialized_objects import DagSerialization, LazyDeserializedDAG
 from airflow.utils.dag_version_inflation_checker import check_dag_file_stability
 from airflow.utils.file import iter_airflow_imports
+from airflow.utils.session import NEW_SESSION, provide_session
 from airflow.utils.state import TaskInstanceState
 
 if TYPE_CHECKING:
@@ -285,6 +286,24 @@ def _serialize_dags(
                 limit=-dagbag_import_error_traceback_depth
             )
     return serialized_dags, serialization_import_errors
+
+
+@provide_session
+def _get_team_name_for_bundle(bundle_name: str, *, session=NEW_SESSION) -> str | None:
+    if not conf.getboolean("core", "multi_team"):
+        return None
+
+    from sqlalchemy import select
+
+    from airflow.models.dagbundle import DagBundleModel
+    from airflow.models.team import Team
+
+    return session.scalar(
+        select(Team.name)
+        .select_from(DagBundleModel)
+        .join(DagBundleModel.teams)
+        .where(DagBundleModel.name == bundle_name)
+    )
 
 
 def _get_dag_with_task(
@@ -634,7 +653,9 @@ class DagFileProcessorProcess(WatchedSubprocess):
         if isinstance(msg, DagFileParsingResult):
             self.parsing_result = msg
         elif isinstance(msg, GetConnection):
-            conn = self.client.connections.get(msg.conn_id)
+            conn = self.client.connections.get(
+                msg.conn_id, team_name=_get_team_name_for_bundle(self.bundle_name)
+            )
             if isinstance(conn, ConnectionResponse):
                 if conn.password:
                     mask_secret(conn.password)
