@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Annotated, cast
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.engine import CursorResult
-from sqlalchemy.orm import joinedload, subqueryload
+from sqlalchemy.orm import joinedload, subqueryload, with_loader_criteria
 
 from airflow._shared.timezones import timezone
 from airflow.api_fastapi.app import get_auth_manager
@@ -82,6 +82,8 @@ from airflow.models.asset import (
     AssetWatcherModel,
     TaskOutletAssetReference,
 )
+from airflow.models.dag import DagModel
+from airflow.models.dagrun import DagRun
 from airflow.typing_compat import Unpack
 from airflow.utils.state import DagRunState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
@@ -126,6 +128,13 @@ class OnlyActiveFilter(BaseParam[bool]):
         return cls().set_value(only_active)
 
 
+def _filter_stale_dag_asset_events(statement: Select) -> Select:
+    stale_source_dag_exists = (
+        select(DagModel.dag_id).where(DagModel.dag_id == AssetEvent.source_dag_id, DagModel.is_stale).exists()
+    )
+    return statement.where(~stale_source_dag_exists)
+
+
 @assets_router.get(
     "/assets",
     responses=create_openapi_http_exception_doc([status.HTTP_404_NOT_FOUND]),
@@ -152,7 +161,9 @@ def get_assets(
     """Get assets."""
     # Build a query that will be used to retrieve the ID and timestamp of the latest AssetEvent
     last_asset_events = (
-        select(AssetEvent.asset_id, func.max(AssetEvent.timestamp).label("last_timestamp"))
+        _filter_stale_dag_asset_events(
+            select(AssetEvent.asset_id, func.max(AssetEvent.timestamp).label("last_timestamp"))
+        )
         .group_by(AssetEvent.asset_id)
         .subquery()
     )
@@ -160,10 +171,12 @@ def get_assets(
     # First, we're pulling the Asset ID, AssetEvent ID, and AssetEvent timestamp for the latest (last)
     # AssetEvent. We'll eventually OUTER JOIN this to the AssetModel
     asset_event_query = (
-        select(
-            AssetEvent.asset_id,  # The ID of the Asset, which we'll need to JOIN to the AssetModel
-            func.max(AssetEvent.id).label("last_asset_event_id"),  # The ID of the last AssetEvent
-            func.max(AssetEvent.timestamp).label("last_asset_event_timestamp"),
+        _filter_stale_dag_asset_events(
+            select(
+                AssetEvent.asset_id,  # The ID of the Asset, which we'll need to JOIN to the AssetModel
+                func.max(AssetEvent.id).label("last_asset_event_id"),  # The ID of the last AssetEvent
+                func.max(AssetEvent.timestamp).label("last_asset_event_timestamp"),
+            )
         )
         .join(
             last_asset_events,
@@ -325,7 +338,7 @@ def get_asset_events(
     session: SessionDep,
 ) -> AssetEventCollectionResponse:
     """Get asset events."""
-    base_statement = select(AssetEvent)
+    base_statement = _filter_stale_dag_asset_events(select(AssetEvent))
     if name_pattern.value or name_prefix_pattern.value:
         base_statement = base_statement.join(AssetModel, AssetEvent.asset_id == AssetModel.id)
 
@@ -348,7 +361,9 @@ def get_asset_events(
     )
 
     assets_event_select = assets_event_select.options(
-        subqueryload(AssetEvent.created_dagruns), joinedload(AssetEvent.asset)
+        subqueryload(AssetEvent.created_dagruns),
+        joinedload(AssetEvent.asset),
+        with_loader_criteria(DagRun, ~DagRun.dag_model.has(DagModel.is_stale), include_aliases=True),
     )
     assets_events = session.scalars(assets_event_select)
 
@@ -514,13 +529,18 @@ def get_asset(
     """Get an asset."""
     # Build a subquery to be used to retrieve the latest AssetEvent by matching timestamp
     last_asset_event = (
-        select(func.max(AssetEvent.timestamp)).where(AssetEvent.asset_id == asset_id).scalar_subquery()
+        _filter_stale_dag_asset_events(select(func.max(AssetEvent.timestamp)))
+        .where(AssetEvent.asset_id == asset_id)
+        .scalar_subquery()
     )
 
     # Now, find the latest AssetEvent details using the subquery from above
     asset_event_rows = session.execute(
-        select(AssetEvent.asset_id, AssetEvent.id, AssetEvent.timestamp).where(
-            AssetEvent.asset_id == asset_id, AssetEvent.timestamp == last_asset_event
+        _filter_stale_dag_asset_events(
+            select(AssetEvent.asset_id, AssetEvent.id, AssetEvent.timestamp)
+        ).where(
+            AssetEvent.asset_id == asset_id,
+            AssetEvent.timestamp == last_asset_event,
         )
     ).one_or_none()
 
