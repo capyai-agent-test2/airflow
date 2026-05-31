@@ -3920,6 +3920,7 @@ postgresql:
 config:
   core:
     dags_folder: '{{ include "airflow_dags" . }}'
+    plugins_folder: '{{ include "airflow_plugins" . }}'
     # This is ignored when used with the official Docker image
     load_examples: 'False'
     executor: '{{ .Values.executor }}'

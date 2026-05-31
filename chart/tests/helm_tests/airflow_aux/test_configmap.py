@@ -173,6 +173,36 @@ metadata:
         assert expected_folder_config in cfg.splitlines()
 
     @pytest.mark.parametrize(
+        ("dag_values", "expected_default_plugins_folder"),
+        [
+            (
+                {"gitSync": {"enabled": True}},
+                "/opt/airflow/dags/repo/plugins",
+            ),
+            (
+                {"persistence": {"enabled": True}},
+                "/opt/airflow/plugins",
+            ),
+            (
+                {"mountPath": "/opt/airflow/dags/custom", "gitSync": {"enabled": True}},
+                "/opt/airflow/dags/custom/repo/plugins",
+            ),
+            (
+                {"mountPath": "/opt/airflow/dags/custom", "persistence": {"enabled": True}},
+                "/opt/airflow/plugins",
+            ),
+        ],
+    )
+    def test_expected_default_plugins_folder(self, dag_values, expected_default_plugins_folder):
+        docs = render_chart(
+            values={"dags": dag_values},
+            show_only=["templates/configmaps/configmap.yaml"],
+        )
+        cfg = jmespath.search('data."airflow.cfg"', docs[0])
+        expected_folder_config = f"plugins_folder = {expected_default_plugins_folder}"
+        assert expected_folder_config in cfg.splitlines()
+
+    @pytest.mark.parametrize(
         ("base_url", "execution_api_server_url", "expected_execution_url"),
         [
             (
