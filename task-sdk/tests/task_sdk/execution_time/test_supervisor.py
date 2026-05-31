@@ -3067,6 +3067,41 @@ class TestHandleRequest:
             + "\n\nPlease add test cases to REQUEST_TEST_CASES."
         )
 
+    def test_set_xcom_sends_heartbeats_while_waiting(self, watched_subprocess, monkeypatch, mocker):
+        watched_subprocess, read_socket = watched_subprocess
+        monkeypatch.setattr(supervisor, "MIN_HEARTBEAT_INTERVAL", 0.01)
+
+        watched_subprocess.client.xcoms.set.side_effect = lambda *args, **kwargs: sleep(0.04)
+        watched_subprocess.client.task_instances.heartbeat.return_value = None
+
+        message = SetXCom(
+            dag_id="test_dag",
+            run_id="test_run",
+            task_id="test_task",
+            key="test_key",
+            value="test_value",
+        )
+
+        watched_subprocess._handle_request(message, mocker.Mock(), req_id=1)
+
+        watched_subprocess.client.xcoms.set.assert_called_once_with(
+            "test_dag",
+            "test_run",
+            "test_task",
+            "test_key",
+            "test_value",
+            None,
+            dag_result=False,
+            mapped_length=None,
+        )
+        watched_subprocess.client.task_instances.heartbeat.assert_called_with(TI_ID, pid=mocker.ANY)
+
+        read_socket.settimeout(0.1)
+        frame_len = int.from_bytes(read_socket.recv(4), "big")
+        frame = msgspec.msgpack.Decoder(_ResponseFrame).decode(read_socket.recv(frame_len))
+        assert frame.id == 1
+        assert frame.body is None
+
     def test_handle_requests_api_server_error(self, watched_subprocess, mocker):
         """Test that API server errors are properly handled and sent back to the task."""
 
@@ -4081,6 +4116,41 @@ def test_ipc_trace_context_propagation(mocker):
 
     assert captured == [expected_span_id]
     # Context is detached after dispatch — no leak.
+    assert get_current_span().get_span_context().span_id != expected_span_id
+
+
+def test_set_xcom_thread_preserves_trace_context(mocker):
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(InMemorySpanExporter()))
+    tracer = provider.get_tracer("test")
+
+    with tracer.start_as_current_span("task_span") as span:
+        frame = CommsDecoder(socket=None)._make_frame(  # type: ignore[arg-type]
+            SetXCom(dag_id="test_dag", run_id="test_run", task_id="test_task", key="test_key", value="v")
+        )
+        expected_span_id = span.get_span_context().span_id
+
+    _, write_end = socket.socketpair()
+    proc = ActivitySubprocess(
+        process_log=mocker.MagicMock(),
+        id=TI_ID,
+        pid=12345,
+        stdin=write_end,
+        client=mocker.Mock(),
+        process=mocker.Mock(),
+    )
+    captured: list[int] = []
+
+    def capture_on_set(*args, **kwargs):
+        captured.append(get_current_span().get_span_context().span_id)
+
+    proc.client.xcoms.set.side_effect = capture_on_set
+
+    generator = proc.handle_requests(log=mocker.Mock())
+    next(generator)
+    generator.send(frame)
+
+    assert captured == [expected_span_id]
     assert get_current_span().get_span_context().span_id != expected_span_id
 
 
