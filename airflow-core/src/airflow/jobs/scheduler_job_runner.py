@@ -1977,6 +1977,14 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     and_(DagRun.backfill_id == Backfill.id, DagRun.state.in_(unfinished_states))
                 )
             ),
+            ~exists(
+                select(TaskInstance.id)
+                .join(
+                    DagRun,
+                    and_(TaskInstance.dag_id == DagRun.dag_id, TaskInstance.run_id == DagRun.run_id),
+                )
+                .where(DagRun.backfill_id == Backfill.id, TaskInstance.state == TaskInstanceState.RUNNING)
+            ),
         )
         backfills = list(session.scalars(query))
         if not backfills:
