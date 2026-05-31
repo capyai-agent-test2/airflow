@@ -236,6 +236,8 @@ class TriggererJobRunner(BaseJobRunner, LoggingMixin):
             factory=stats_utils.get_stats_factory(),
             export_legacy_names=conf.getboolean("metrics", "legacy_names_on"),
         )
+        old_process_context = os.environ.get("_AIRFLOW_PROCESS_CONTEXT")
+        os.environ["_AIRFLOW_PROCESS_CONTEXT"] = "server"
         try:
             # Kick off runner sub-process without DB access
             self.trigger_runner = TriggerRunnerSupervisor.start(
@@ -257,7 +259,12 @@ class TriggererJobRunner(BaseJobRunner, LoggingMixin):
             # Tell the subtproc to stop and then wait for it.
             # If the user interrupts/terms again, _graceful_exit will allow them
             # to force-kill here.
-            self.trigger_runner.kill(escalation_delay=10, force=True)
+            if trigger_runner := getattr(self, "trigger_runner", None):
+                trigger_runner.kill(escalation_delay=10, force=True)
+            if old_process_context is None:
+                os.environ.pop("_AIRFLOW_PROCESS_CONTEXT", None)
+            else:
+                os.environ["_AIRFLOW_PROCESS_CONTEXT"] = old_process_context
             self.log.info("Exited trigger loop")
         return None
 

@@ -1850,6 +1850,33 @@ def test_update_triggers_skips_when_ti_has_no_dag_version(session, supervisor_bu
 class TestTriggererJobRunner:
     @patch("airflow.jobs.triggerer_job_runner.stats.initialize")
     @patch.object(TriggerRunnerSupervisor, "start")
+    def test_execute_sets_server_process_context(
+        self, mock_supervisor_start, stats_init_mock, session, monkeypatch
+    ):
+        monkeypatch.delenv("_AIRFLOW_PROCESS_CONTEXT", raising=False)
+        mock_supervisor = MagicMock()
+        mock_supervisor._exit_code = 0
+        mock_supervisor_start.return_value = mock_supervisor
+
+        def run_supervisor():
+            assert os.environ["_AIRFLOW_PROCESS_CONTEXT"] == "server"
+
+        mock_supervisor.run.side_effect = run_supervisor
+
+        job = Job()
+        session.add(job)
+        session.flush()
+
+        job_runner = TriggererJobRunner(job)
+
+        with patch.object(job_runner, "register_signals"):
+            assert job_runner._execute() == 0
+
+        assert "_AIRFLOW_PROCESS_CONTEXT" not in os.environ
+        stats_init_mock.assert_called_once()
+
+    @patch("airflow.jobs.triggerer_job_runner.stats.initialize")
+    @patch.object(TriggerRunnerSupervisor, "start")
     def test_stats_initialize_called_on_execute(self, mock_supervisor_start, stats_init_mock, session):
         """Test that stats.initialize() is called when TriggererJobRunner._execute() is executed."""
         # Setup mock supervisor to immediately stop
