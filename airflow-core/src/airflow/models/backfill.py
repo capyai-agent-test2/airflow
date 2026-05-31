@@ -145,6 +145,23 @@ class ReprocessBehavior(str, Enum):
     COMPLETED = "completed"
     NONE = "none"
 
+    @classmethod
+    def _missing_(cls, value):
+        if not isinstance(value, str):
+            return None
+
+        normalized_value = " ".join(value.lower().split()).replace(" + ", "+").replace(" ", "-")
+        aliases = {
+            "missing": cls.NONE,
+            "missing-runs": cls.NONE,
+            "missing+errored": cls.FAILED,
+            "missing-and-errored": cls.FAILED,
+            "missing-and-errored-runs": cls.FAILED,
+            "all": cls.COMPLETED,
+            "all-runs": cls.COMPLETED,
+        }
+        return aliases.get(normalized_value)
+
 
 class Backfill(Base):
     """Model representing a backfill job."""

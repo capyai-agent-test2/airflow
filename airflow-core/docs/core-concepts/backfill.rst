@@ -29,9 +29,10 @@ Control over data reprocessing
 
 There are three options for reprocessing behavior:
 
-* **none** - if there's already a run for this logical date, do not create another, no matter the state
-* **failed** - if a run exists, if the state is failed, create a new run for this date
-* **completed** - if a run exists, if the state is completed or failed, create a new run for this date
+* **Missing Runs** - if there's already a run for this logical date, do not create another,
+  no matter the state
+* **Missing and Errored Runs** - if a run exists, if the state is failed, create a new run for this date
+* **All Runs** - if a run exists, if the state is completed or failed, create a new run for this date
 
 If the latest run is still running or is queued, we do not create another run, no matter the chosen reprocessing behavior.
 
@@ -67,7 +68,7 @@ For CLI, below is an example command:
     airflow backfill create --dag-id tutorial \
         --from-date 2015-06-01 \
         --to-date 2015-06-07 \
-        --reprocess-behavior failed \
+        --reprocess-behavior missing+errored \
         --max-active-runs 3 \
         --run-backwards \
         --dag-run-conf '{"my": "param"}'

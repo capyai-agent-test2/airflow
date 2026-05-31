@@ -185,7 +185,7 @@ For CLI usage, run the command below:
     airflow backfill create --dag-id DAG_ID \
         --from-date START_DATE \
         --to-date END_DATE \
-        --reprocess-behavior failed \
+        --reprocess-behavior missing+errored \
         --max-active-runs 3 \
         --run-backwards \
         --dag-run-conf '{"my": "param"}'

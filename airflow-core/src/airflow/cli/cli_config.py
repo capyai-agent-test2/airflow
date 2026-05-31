@@ -34,6 +34,7 @@ from airflow._shared.timezones.timezone import parse as parsedate
 from airflow.cli.commands.legacy_commands import check_legacy_command
 from airflow.configuration import conf
 from airflow.jobs.job import JobState
+from airflow.models.backfill import ReprocessBehavior
 from airflow.utils.cli import ColorMode
 from airflow.utils.state import DagRunState
 
@@ -127,6 +128,15 @@ def positive_int(*, allow_zero):
         raise argparse.ArgumentTypeError(f"invalid positive int value: '{value}'")
 
     return _check
+
+
+def convert_backfill_reprocess_behavior(value: str) -> str:
+    """Convert user-facing backfill reprocess behavior aliases to stored values."""
+    try:
+        return ReprocessBehavior(value).value
+    except ValueError:
+        msg = f"invalid choice: {value!r} (choose from 'missing', 'missing+errored', 'all')"
+        raise argparse.ArgumentTypeError(msg)
 
 
 def string_list_type(val):
@@ -398,9 +408,10 @@ ARG_BACKFILL_REPROCESS_BEHAVIOR = Arg(
     ("--reprocess-behavior",),
     help=(
         "When a run exists for the logical date, controls whether new runs will be "
-        "created for the date. Default is none."
+        "created for the date. Options are missing, missing+errored, or all. Default is missing."
     ),
-    choices=("none", "completed", "failed"),
+    metavar="{missing,missing+errored,all}",
+    type=convert_backfill_reprocess_behavior,
 )
 ARG_BACKFILL_RUN_ON_LATEST_VERSION = Arg(
     ("--run-on-latest-version",),
