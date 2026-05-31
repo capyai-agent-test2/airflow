@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import PurePosixPath
+from types import SimpleNamespace
 from uuid import uuid4
 
 import jwt
@@ -87,6 +88,70 @@ def test_generate_token_produces_workload_scope(monkeypatch):
 def test_generate_token_without_generator():
     """generate_token should return empty string when no generator is provided."""
     assert BaseWorkloadSchema.generate_token("ti-123", None) == ""
+
+
+def test_execute_task_uses_task_instance_dag_version_bundle():
+    latest_dag_version_id = uuid4()
+    ti = SimpleNamespace(
+        id=uuid4(),
+        dag_version_id=latest_dag_version_id,
+        task_id="test_task",
+        dag_id="test_dag",
+        run_id="test_run",
+        try_number=1,
+        map_index=-1,
+        pool_slots=1,
+        queue="default",
+        priority_weight=1,
+        executor_config=None,
+        parent_context_carrier=None,
+        context_carrier=None,
+        dag_model=SimpleNamespace(
+            bundle_name="test-bundle",
+            relative_fileloc="test_dag.py",
+        ),
+        dag_run=SimpleNamespace(bundle_version="old-version"),
+        dag_version=SimpleNamespace(
+            bundle_name="test-bundle",
+            bundle_version="latest-version",
+        ),
+    )
+
+    workload = ExecuteTask.make(ti)
+
+    assert workload.ti.dag_version_id == latest_dag_version_id
+    assert workload.bundle_info == BundleInfo(name="test-bundle", version="latest-version")
+
+
+def test_execute_task_keeps_unpinned_bundle_version():
+    ti = SimpleNamespace(
+        id=uuid4(),
+        dag_version_id=uuid4(),
+        task_id="test_task",
+        dag_id="test_dag",
+        run_id="test_run",
+        try_number=1,
+        map_index=-1,
+        pool_slots=1,
+        queue="default",
+        priority_weight=1,
+        executor_config=None,
+        parent_context_carrier=None,
+        context_carrier=None,
+        dag_model=SimpleNamespace(
+            bundle_name="test-bundle",
+            relative_fileloc="test_dag.py",
+        ),
+        dag_run=SimpleNamespace(bundle_version=None),
+        dag_version=SimpleNamespace(
+            bundle_name="test-bundle",
+            bundle_version="latest-version",
+        ),
+    )
+
+    workload = ExecuteTask.make(ti)
+
+    assert workload.bundle_info == BundleInfo(name="test-bundle", version=None)
 
 
 def test_callback_key_is_frozen_and_hashable():

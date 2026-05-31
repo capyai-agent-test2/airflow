@@ -23,6 +23,7 @@ import random
 import pytest
 from sqlalchemy import func, select
 
+from airflow.executors.workloads.task import ExecuteTask
 from airflow.models.dag_version import DagVersion
 from airflow.models.dagrun import DagRun
 from airflow.models.taskinstance import TaskInstance, TaskInstance as TI, clear_task_instances
@@ -786,6 +787,55 @@ class TestClearTasks:
         assert tis["0"].dag_version_id == new_dag_version.id
         assert tis["1"].dag_version_id == old_dag_version.id
         assert dr_after.created_dag_version_id == new_dag_version.id
+
+    def test_clear_task_run_on_latest_without_reset_uses_latest_workload_bundle(self, dag_maker, session):
+        with dag_maker(
+            "test_clear_latest_without_reset",
+            start_date=DEFAULT_DATE,
+            end_date=DEFAULT_DATE + datetime.timedelta(days=10),
+            catchup=True,
+            bundle_version="v1",
+        ):
+            task = EmptyOperator(task_id="task")
+        dr = dag_maker.create_dagrun(
+            state=State.RUNNING,
+            run_type=DagRunType.SCHEDULED,
+        )
+
+        old_dag_version = DagVersion.get_latest_version(dr.dag_id)
+        ti = dr.task_instances[0]
+        ti.refresh_from_task(task)
+        ti.state = State.FAILED
+        dr.state = DagRunState.SUCCESS
+        session.merge(dr)
+        session.flush()
+
+        with dag_maker(
+            "test_clear_latest_without_reset",
+            start_date=DEFAULT_DATE,
+            end_date=DEFAULT_DATE + datetime.timedelta(days=10),
+            catchup=True,
+            bundle_version="v2",
+        ):
+            EmptyOperator(task_id="task")
+        new_dag_version = DagVersion.get_latest_version(dr.dag_id)
+        assert old_dag_version.id != new_dag_version.id
+
+        clear_task_instances([ti], session, dag_run_state=False, run_on_latest_version=True)
+        session.flush()
+        ti = session.scalar(
+            select(TI).where(
+                TI.dag_id == dr.dag_id,
+                TI.run_id == dr.run_id,
+                TI.task_id == "task",
+                TI.map_index == -1,
+            )
+        )
+        assert ti is not None
+
+        assert ti.dag_run.bundle_version == old_dag_version.bundle_version
+        assert ti.dag_version_id == new_dag_version.id
+        assert ExecuteTask.make(ti).bundle_info.version == new_dag_version.bundle_version
 
     def test_clear_only_new_tasks(self, dag_maker, session):
         """Test that only_new queues only newly added tasks without clearing existing ones."""

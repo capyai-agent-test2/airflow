@@ -118,9 +118,14 @@ class ExecuteTask(BaseDagBundleWorkload):
 
         ser_ti = TaskInstanceDTO.model_validate(ti, from_attributes=True)
         if not bundle_info:
+            bundle_version = (
+                ti.dag_version.bundle_version
+                if ti.dag_version and ti.dag_run.bundle_version is not None
+                else ti.dag_run.bundle_version
+            )
             bundle_info = BundleInfo(
-                name=ti.dag_model.bundle_name,
-                version=ti.dag_run.bundle_version,
+                name=ti.dag_version.bundle_name if ti.dag_version else ti.dag_model.bundle_name,
+                version=bundle_version,
             )
         fname = log_filename_template_renderer()(ti=ti)
 
