@@ -47,6 +47,19 @@ const renderWithTimezone = (selectedTimezone: string) => {
   return { input: screen.getByTestId<HTMLInputElement>("datetime-input"), onChange };
 };
 
+const renderWithTimezoneAndValue = (selectedTimezone: string, value: string) => {
+  const onChange: Mock<ChangeHandler> = vi.fn();
+
+  render(
+    <TimezoneContext.Provider value={{ selectedTimezone, setSelectedTimezone: vi.fn() }}>
+      <DateTimeInput onChange={onChange} value={value} />
+    </TimezoneContext.Provider>,
+    { wrapper: Wrapper },
+  );
+
+  return { input: screen.getByTestId<HTMLInputElement>("datetime-input"), onChange };
+};
+
 const paste = (input: HTMLInputElement, text: string) =>
   fireEvent.paste(input, { clipboardData: { getData: () => text } });
 
@@ -54,6 +67,27 @@ const lastEmittedValue = (onChange: Mock<ChangeHandler>): string | undefined =>
   onChange.mock.calls.at(-1)?.[0].target.value;
 
 describe("DateTimeInput onPaste timezone handling", () => {
+  it("renders the initial UTC instant in the selected timezone", () => {
+    const { input } = renderWithTimezoneAndValue("Europe/Amsterdam", "2026-01-14T23:30:00.000Z");
+
+    expect(input.value).toBe("2026-01-15T00:30");
+  });
+
+  it("keeps typed values in datetime-local format after parsing", () => {
+    vi.useFakeTimers();
+    try {
+      const { input, onChange } = renderWithTimezone("Europe/Amsterdam");
+
+      fireEvent.change(input, { target: { value: "2026-01-15T00:30" } });
+      vi.advanceTimersByTime(2000);
+
+      expect(input.value).toBe("2026-01-15T00:30");
+      expect(lastEmittedValue(onChange)).toBe("2026-01-14T23:30:00.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders pasted UTC instant in the selected UTC timezone", () => {
     const { input, onChange } = renderWithTimezone("UTC");
 
