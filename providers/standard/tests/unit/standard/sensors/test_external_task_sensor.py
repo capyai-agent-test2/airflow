@@ -1926,6 +1926,82 @@ def test_external_task_marker_transitive(dag_bag_ext):
     assert_ti_state_equal(ti_b_3, State.NONE)
 
 
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Test for 3.0+")
+@provide_session
+def test_external_task_marker_downstream_clear_includes_child_dag(dag_bag_ext, session):
+    """
+    Test clearing a task with downstream tasks also follows ExternalTaskMarker references.
+    """
+    from airflow.models.dagbag import DBDagBag
+
+    scheduler_dags = sync_dags_to_db(list(dag_bag_ext.dags.values()), session=session)
+    data_interval = DataInterval(coerce_datetime(DEFAULT_DATE), coerce_datetime(DEFAULT_DATE))
+    for dag in scheduler_dags:
+        dag.create_dagrun(
+            run_id=dag.timetable.generate_run_id(
+                run_type=DagRunType.MANUAL,
+                run_after=DEFAULT_DATE,
+                data_interval=data_interval,
+            ),
+            logical_date=DEFAULT_DATE,
+            data_interval=data_interval,
+            run_after=DEFAULT_DATE,
+            run_type=DagRunType.MANUAL,
+            triggered_by=DagRunTriggeredByType.TEST,
+            state=DagRunState.RUNNING,
+            start_date=DEFAULT_DATE,
+            session=session,
+        )
+
+    db_dag_bag = DBDagBag(load_op_links=False)
+    dag_0 = db_dag_bag.get_latest_version_of_dag("dag_0", session=session)
+    partial = dag_0.partial_subset(task_ids=["task_a_0"], include_downstream=True, include_upstream=False)
+
+    tis = partial.clear(
+        start_date=DEFAULT_DATE,
+        end_date=DEFAULT_DATE,
+        dag_bag=db_dag_bag,
+        dry_run=True,
+        include_dependent_dags=True,
+        session=session,
+    )
+
+    assert sorted((ti.dag_id, ti.task_id) for ti in tis) == [
+        ("dag_0", "task_a_0"),
+        ("dag_0", "task_b_0"),
+        ("dag_1", "task_a_1"),
+        ("dag_1", "task_b_1"),
+        ("dag_2", "task_a_2"),
+        ("dag_2", "task_b_2"),
+        ("dag_3", "task_a_3"),
+        ("dag_3", "task_b_3"),
+    ]
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Test for 3.0+")
+@pytest.mark.parametrize(
+    ("template", "expected"),
+    [
+        ("2015-01-01", coerce_datetime(DEFAULT_DATE)),
+        ("{{ logical_date.isoformat() }}", None),
+    ],
+)
+def test_external_task_marker_logical_date_template_with_null_source_date(template, expected):
+    from airflow.serialization.definitions.dag import _render_external_task_marker_logical_date
+
+    assert _render_external_task_marker_logical_date(template, None) == expected
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Test for 3.0+")
+def test_external_task_marker_unrelated_template_error_with_null_source_date():
+    from jinja2 import UndefinedError
+
+    from airflow.serialization.definitions.dag import _render_external_task_marker_logical_date
+
+    with pytest.raises(UndefinedError, match="'missing' is undefined"):
+        _render_external_task_marker_logical_date("{{ missing.isoformat() }}", None)
+
+
 @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Different test for 3.0+")
 @provide_session
 def test_external_task_marker_clear_activate(dag_bag_parent_child, session):

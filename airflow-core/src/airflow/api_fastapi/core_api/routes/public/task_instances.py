@@ -913,30 +913,38 @@ def post_clear_task_instances(
             *((t, m) for t, m in mapped_tasks_tuples if t not in normal_task_ids),
         ]
 
+    include_dependent_dags = downstream and task_markers_to_clear is not None
     task_instances: Sequence[TI]
-    if dag_run_id is not None and not (past or future):
-        # Use run_id-based clearing when we have a specific dag_run_id and not using past/future
-        task_instances = dag.clear(
-            dry_run=True,
-            task_ids=task_markers_to_clear,
-            run_id=dag_run_id,
-            session=session,
-            run_on_latest_version=resolved_run_on_latest,
-            only_failed=body.only_failed,
-            only_running=body.only_running,
-        )
-    else:
-        # Use date-based clearing when no dag_run_id or when past/future is specified
-        task_instances = dag.clear(
-            dry_run=True,
-            task_ids=task_markers_to_clear,
-            start_date=body.start_date,
-            end_date=body.end_date,
-            session=session,
-            run_on_latest_version=resolved_run_on_latest,
-            only_failed=body.only_failed,
-            only_running=body.only_running,
-        )
+    try:
+        if dag_run_id is not None and not (past or future):
+            # Use run_id-based clearing when we have a specific dag_run_id and not using past/future
+            task_instances = dag.clear(
+                dry_run=True,
+                task_ids=task_markers_to_clear,
+                run_id=dag_run_id,
+                session=session,
+                run_on_latest_version=resolved_run_on_latest,
+                only_failed=body.only_failed,
+                only_running=body.only_running,
+                include_dependent_dags=include_dependent_dags,
+                dag_bag=dag_bag,
+            )
+        else:
+            # Use date-based clearing when no dag_run_id or when past/future is specified
+            task_instances = dag.clear(
+                dry_run=True,
+                task_ids=task_markers_to_clear,
+                start_date=body.start_date,
+                end_date=body.end_date,
+                session=session,
+                run_on_latest_version=resolved_run_on_latest,
+                only_failed=body.only_failed,
+                only_running=body.only_running,
+                include_dependent_dags=include_dependent_dags,
+                dag_bag=dag_bag,
+            )
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
 
     if not dry_run:
         try:
