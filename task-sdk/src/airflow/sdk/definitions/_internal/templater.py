@@ -20,6 +20,8 @@ from __future__ import annotations
 import datetime
 import logging
 import os
+import posixpath
+import zipfile
 from collections.abc import Collection, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -27,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 import jinja2
 import jinja2.nativetypes
 import jinja2.sandbox
+from jinja2.loaders import split_template_path
 
 from airflow.sdk import ObjectStoragePath
 from airflow.sdk.definitions._internal.mixins import ResolveMixin
@@ -374,6 +377,56 @@ FILTERS = {
 }
 
 
+class ZipFileTemplateLoader(jinja2.BaseLoader):
+    """Load templates from a zip archive."""
+
+    def __init__(self, archive_path: str, prefix: str = "") -> None:
+        self.archive_path = archive_path
+        self.prefix = prefix.replace(os.sep, "/").strip("/")
+
+    def get_source(self, environment: jinja2.Environment, template: str):
+        pieces = split_template_path(template)
+        template_path = posixpath.join(self.prefix, *pieces) if self.prefix else posixpath.join(*pieces)
+
+        try:
+            mtime = os.path.getmtime(self.archive_path)
+            with zipfile.ZipFile(self.archive_path) as archive:
+                source = archive.read(template_path).decode("utf-8")
+        except (KeyError, OSError, UnicodeDecodeError):
+            raise jinja2.TemplateNotFound(template)
+
+        return source, template_path, lambda: os.path.getmtime(self.archive_path) == mtime
+
+
+def _get_zip_loader(searchpath: str) -> ZipFileTemplateLoader | None:
+    zip_marker = f".zip{os.sep}"
+    if searchpath.endswith(".zip"):
+        archive_path, prefix = searchpath, ""
+    elif zip_marker in searchpath:
+        archive_path, prefix = searchpath.split(zip_marker, maxsplit=1)
+        archive_path += ".zip"
+    else:
+        return None
+
+    if not zipfile.is_zipfile(archive_path):
+        return None
+    try:
+        split_template_path(prefix.replace(os.sep, "/"))
+    except jinja2.TemplateNotFound:
+        return None
+    return ZipFileTemplateLoader(archive_path, prefix)
+
+
+def _build_template_loader(searchpath: list[str]) -> jinja2.BaseLoader:
+    loaders: list[jinja2.BaseLoader] = []
+    for path in searchpath:
+        if zip_loader := _get_zip_loader(path):
+            loaders.append(zip_loader)
+        else:
+            loaders.append(jinja2.FileSystemLoader(path))
+    return loaders[0] if len(loaders) == 1 else jinja2.ChoiceLoader(loaders)
+
+
 def create_template_env(
     *,
     native: bool = False,
@@ -391,7 +444,7 @@ def create_template_env(
         "cache_size": 0,
     }
     if searchpath:
-        jinja_env_options["loader"] = jinja2.FileSystemLoader(searchpath)
+        jinja_env_options["loader"] = _build_template_loader(searchpath)
     if jinja_environment_kwargs:
         jinja_env_options.update(jinja_environment_kwargs)
 
