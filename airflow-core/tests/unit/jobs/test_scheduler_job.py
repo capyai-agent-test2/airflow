@@ -2488,7 +2488,7 @@ class TestSchedulerJob:
         self, dag_maker, session
     ):
         """
-        Deferred TIs should NOT count toward max_active_tasks.
+        Deferred TIs should not count toward max_active_tasks by default.
 
         max_active_tasks is about worker-level parallelism, while deferred tasks
         don't consume worker slots. With max_active_tasks=2 and 1 deferred TI,
@@ -2517,6 +2517,40 @@ class TestSchedulerJob:
         res = self.job_runner._executable_task_instances_to_queued(max_tis=32, session=session)
         # Deferred doesn't count toward max_active_tasks=2, so both scheduled can run
         assert len(res) == 2
+        session.rollback()
+
+    def test_find_executable_task_instances_deferred_affects_max_active_tasks_when_configured(
+        self, dag_maker, session
+    ):
+        """
+        Deferred TIs should count toward max_active_tasks when configured.
+
+        With max_active_tasks=2 and 1 deferred TI, only 1 more SCHEDULED TI
+        should be allowed when deferred tasks are included in the limit.
+        """
+        dag_id = "SchedulerJobTest.test_deferred_affects_max_active_tasks_when_configured"
+        with dag_maker(dag_id=dag_id, max_active_tasks=2, session=session):
+            EmptyOperator(task_id="task_1")
+            EmptyOperator(task_id="task_2")
+            EmptyOperator(task_id="task_3")
+
+        dr = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED, session=session)
+        t1, t2, t3 = sorted(dr.get_task_instances(session=session), key=lambda t: t.task_id)
+
+        t1.state = TaskInstanceState.DEFERRED
+        t2.state = State.SCHEDULED
+        t3.state = State.SCHEDULED
+        session.merge(t1)
+        session.merge(t2)
+        session.merge(t3)
+        session.flush()
+
+        with conf_vars({("core", "max_active_tasks_include_deferred"): "True"}):
+            scheduler_job = Job()
+            self.job_runner = SchedulerJobRunner(job=scheduler_job)
+            res = self.job_runner._executable_task_instances_to_queued(max_tis=32, session=session)
+
+        assert len(res) == 1
         session.rollback()
 
     def test_change_state_for_executable_task_instances_no_tis_with_state(self, dag_maker):
