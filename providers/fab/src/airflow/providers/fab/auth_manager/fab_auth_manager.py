@@ -162,6 +162,20 @@ _MAP_MENU_ITEM_TO_FAB_RESOURCE_TYPE = {
 
 CACHE_TTL = conf.getint("fab", "cache_ttl", fallback=30)
 
+
+def _get_dag_details_cache_key(details: DagDetails | None) -> tuple[str | None, str | None] | None:
+    if details is None:
+        return None
+    return (details.id, details.team_name)
+
+
+def _get_user_cache_key(user: User) -> str | int:
+    user_id = user.get_id()
+    if user_id is not None:
+        return user_id
+    return id(user)
+
+
 if AIRFLOW_V_3_1_PLUS:
     from airflow.providers.fab.www.security.permissions import RESOURCE_HITL_DETAIL
 
@@ -405,6 +419,16 @@ class FabAuthManager(BaseAuthManager[User]):
     ) -> bool:
         return self._is_authorized(method=method, resource_type=RESOURCE_CONNECTION, user=user)
 
+    @cachedmethod(
+        lambda self: self.cache,
+        key=lambda self, *, method, user, access_entity=None, details=None: (
+            "is_authorized_dag",
+            method,
+            _get_user_cache_key(user),
+            access_entity,
+            _get_dag_details_cache_key(details),
+        ),
+    )
     def is_authorized_dag(
         self,
         *,

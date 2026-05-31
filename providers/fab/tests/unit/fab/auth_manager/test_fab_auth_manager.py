@@ -676,6 +676,30 @@ class TestFabAuthManager:
         )
         assert result == expected_result
 
+    def test_is_authorized_dag_uses_cache(self, auth_manager_with_appbuilder):
+        auth_manager_with_appbuilder.cache.clear()
+        user = Mock(spec=["get_id", "perms"])
+        user.get_id.return_value = "test-user"
+        user.perms = [(ACTION_CAN_READ, RESOURCE_DAG), (ACTION_CAN_READ, RESOURCE_DAG_RUN)]
+        dag_details = DagDetails(id="test_dag_id")
+
+        with mock.patch.object(
+            auth_manager_with_appbuilder,
+            "_get_user_permissions",
+            wraps=auth_manager_with_appbuilder._get_user_permissions,
+        ) as mock_get_user_permissions:
+            assert auth_manager_with_appbuilder.is_authorized_dag(
+                method="GET", access_entity=DagAccessEntity.RUN, details=dag_details, user=user
+            )
+            assert auth_manager_with_appbuilder.is_authorized_dag(
+                method="GET",
+                access_entity=DagAccessEntity.RUN,
+                details=DagDetails(id="test_dag_id"),
+                user=user,
+            )
+
+        assert mock_get_user_permissions.call_args_list == [mock.call(user), mock.call(user), mock.call(user)]
+
     @pytest.mark.skipif(
         AIRFLOW_V_3_1_PLUS is not True, reason="HITL test will be skipped if Airflow version < 3.1.0"
     )
