@@ -273,6 +273,47 @@ class TestDBCleanup:
             for row in res:
                 assert row[0] == expected_to_delete
 
+    def test__build_query_keeps_dag_version_referenced_by_retained_task_instance(self):
+        base_date = pendulum.DateTime(2022, 1, 1, tzinfo=pendulum.timezone("UTC"))
+        dag_id = f"test-dag_{uuid4()}"
+        bundle_name = "testing"
+
+        with create_session() as session:
+            session.add(DagBundleModel(name=bundle_name))
+            session.flush()
+            session.add(DagModel(dag_id=dag_id, bundle_name=bundle_name))
+            old_dag_version = DagVersion.write_dag(dag_id=dag_id, bundle_name=bundle_name, session=session)
+            old_dag_version.created_at = base_date
+            session.flush()
+            latest_dag_version = DagVersion.write_dag(dag_id=dag_id, bundle_name=bundle_name, session=session)
+            latest_dag_version.created_at = base_date.add(days=1)
+            session.flush()
+
+            dag_run = DagRun(
+                dag_id,
+                run_id="recent_run",
+                run_type=DagRunType.MANUAL,
+                start_date=base_date.add(days=10),
+            )
+            ti = create_task_instance(
+                PythonOperator(task_id="dummy-task", python_callable=print),
+                run_id=dag_run.run_id,
+                dag_version_id=old_dag_version.id,
+            )
+            ti.dag_id = dag_id
+            ti.start_date = base_date.add(days=10)
+            session.add(dag_run)
+            session.add(ti)
+            session.commit()
+
+            query = _build_query(
+                **config_dict["dag_version"].__dict__,
+                clean_before_timestamp=base_date.add(days=2),
+                session=session,
+            )
+
+            assert session.scalar(select(func.count()).select_from(query.subquery())) == 0
+
     @pytest.mark.parametrize(
         ("table_name", "date_add_kwargs", "expected_to_delete", "run_type"),
         [
