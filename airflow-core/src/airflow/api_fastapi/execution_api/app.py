@@ -320,7 +320,7 @@ class InProcessExecutionAPI:
             from airflow.api_fastapi.execution_api.routes.connections import has_connection_access
             from airflow.api_fastapi.execution_api.routes.variables import has_variable_access
             from airflow.api_fastapi.execution_api.routes.xcoms import has_xcom_access
-            from airflow.api_fastapi.execution_api.security import _jwt_bearer
+            from airflow.api_fastapi.execution_api.security import _jwt_bearer, get_team_name_dep
 
             self._app = create_task_execution_api_app()
 
@@ -336,7 +336,11 @@ class InProcessExecutionAPI:
                 claims = TIClaims(scope="execution")
                 return TIToken(id=ti_id, claims=claims)
 
+            async def get_dag_bundle_team_name(request: Request):
+                return request.headers.get("airflow-dag-bundle-team")
+
             self._app.dependency_overrides[_jwt_bearer] = always_allow
+            self._app.dependency_overrides[get_team_name_dep] = get_dag_bundle_team_name
             self._app.dependency_overrides[has_connection_access] = always_allow
             self._app.dependency_overrides[has_variable_access] = always_allow
             self._app.dependency_overrides[has_xcom_access] = always_allow

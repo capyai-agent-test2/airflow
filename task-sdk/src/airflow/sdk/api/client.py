@@ -447,10 +447,11 @@ class ConnectionOperations:
     def __init__(self, client: Client):
         self.client = client
 
-    def get(self, conn_id: str) -> ConnectionResponse | ErrorResponse:
+    def get(self, conn_id: str, team_name: str | None = None) -> ConnectionResponse | ErrorResponse:
         """Get a connection from the API server."""
         try:
-            resp = self.client.get(f"connections/{conn_id}")
+            headers = {"airflow-dag-bundle-team": team_name} if team_name else None
+            resp = self.client.get(f"connections/{conn_id}", headers=headers)
         except ServerResponseError as e:
             if e.response.status_code == HTTPStatus.NOT_FOUND:
                 log.debug(
