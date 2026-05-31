@@ -1117,6 +1117,7 @@ def patch_task_instance_dry_run(
                 downstream=body.include_downstream,
                 future=body.include_future,
                 past=body.include_past,
+                clear_downstream=body.clear_downstream,
                 commit=False,
                 session=session,
             )
@@ -1217,6 +1218,7 @@ def patch_task_instance(
                 include_downstream=body.include_downstream,
                 include_future=body.include_future,
                 include_past=body.include_past,
+                clear_downstream=body.clear_downstream,
             )
 
             _patch_task_instance_state(

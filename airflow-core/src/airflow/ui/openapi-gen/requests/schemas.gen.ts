@@ -4974,6 +4974,11 @@ export const $PatchTaskInstanceBody = {
             type: 'boolean',
             title: 'Include Past',
             default: false
+        },
+        clear_downstream: {
+            type: 'boolean',
+            title: 'Clear Downstream',
+            default: true
         }
     },
     additionalProperties: false,

@@ -63,6 +63,7 @@ export const useBulkMarkAsDryRun = (
           dagRunId: ti.dag_run_id,
           mapIndex: ti.map_index,
           requestBody: {
+            clear_downstream: options.includeDownstream,
             include_downstream: options.includeDownstream,
             include_future: options.includeFuture,
             include_past: options.includePast,
@@ -78,6 +79,7 @@ export const useBulkMarkAsDryRun = (
         ti.task_id,
         ti.map_index,
         {
+          clear_downstream: options.includeDownstream,
           include_downstream: options.includeDownstream,
           include_future: options.includeFuture,
           include_past: options.includePast,

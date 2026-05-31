@@ -686,6 +686,7 @@ class SerializedDAG:
         downstream: bool = False,
         future: bool = False,
         past: bool = False,
+        clear_downstream: bool = True,
         commit: bool = True,
         session=NEW_SESSION,
     ) -> list[TaskInstance]:
@@ -702,6 +703,7 @@ class SerializedDAG:
         :param future: Include all future TaskInstances of the given task_id
         :param commit: Commit changes
         :param past: Include all past TaskInstances of the given task_id
+        :param clear_downstream: Clear downstream tasks in failed or upstream_failed state
         """
         from airflow.api.common.mark_tasks import set_state
 
@@ -726,7 +728,7 @@ class SerializedDAG:
             session=session,
         )
 
-        if not commit:
+        if not commit or not clear_downstream:
             return altered
 
         # Clear downstream tasks that are in failed/upstream_failed state to resume them.

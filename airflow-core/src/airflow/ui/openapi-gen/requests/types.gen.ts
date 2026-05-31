@@ -1288,6 +1288,7 @@ export type PatchTaskInstanceBody = {
     include_downstream?: boolean;
     include_future?: boolean;
     include_past?: boolean;
+    clear_downstream?: boolean;
 };
 
 /**

@@ -4571,6 +4571,7 @@ class TestPatchTaskInstance(TestTaskInstanceEndpoint):
             future=False,
             map_indexes=None,
             past=False,
+            clear_downstream=True,
             run_id=self.RUN_ID,
             session=mock.ANY,
             state=self.NEW_STATE,
@@ -4591,6 +4592,41 @@ class TestPatchTaskInstance(TestTaskInstanceEndpoint):
         response2 = test_client.get(self.ENDPOINT_URL)
         assert response2.status_code == 200
         assert response2.json()["state"] == self.NEW_STATE
+
+    @mock.patch("airflow.serialization.definitions.dag.SerializedDAG.set_task_instance_state")
+    def test_should_not_clear_downstream_when_requested(self, mock_set_ti_state, test_client, session):
+        self.create_task_instances(session)
+        mock_set_ti_state.return_value = session.scalars(
+            select(TaskInstance).where(
+                TaskInstance.dag_id == self.DAG_ID,
+                TaskInstance.task_id == self.TASK_ID,
+                TaskInstance.run_id == self.RUN_ID,
+                TaskInstance.map_index == -1,
+            )
+        ).all()
+
+        response = test_client.patch(
+            self.ENDPOINT_URL,
+            json={
+                "clear_downstream": False,
+                "new_state": self.NEW_STATE,
+            },
+        )
+
+        assert response.status_code == 200
+        mock_set_ti_state.assert_called_once_with(
+            commit=True,
+            downstream=False,
+            upstream=False,
+            future=False,
+            map_indexes=None,
+            past=False,
+            clear_downstream=False,
+            run_id=self.RUN_ID,
+            session=mock.ANY,
+            state=self.NEW_STATE,
+            task_id=self.TASK_ID,
+        )
 
     def test_should_update_mapped_task_instance_state(self, test_client, session):
         map_index = 1
@@ -5399,6 +5435,7 @@ class TestPatchTaskInstanceDryRun(TestTaskInstanceEndpoint):
             future=False,
             map_indexes=None,
             past=False,
+            clear_downstream=True,
             run_id=self.RUN_ID,
             session=mock.ANY,
             state=self.NEW_STATE,

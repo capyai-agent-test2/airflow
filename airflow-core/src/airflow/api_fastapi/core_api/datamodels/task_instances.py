@@ -256,6 +256,7 @@ class PatchTaskInstanceBody(StrictBaseModel):
     include_downstream: bool = False
     include_future: bool = False
     include_past: bool = False
+    clear_downstream: bool = True
 
     @field_validator("new_state", mode="before")
     @classmethod
