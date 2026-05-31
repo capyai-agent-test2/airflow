@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from airflow_breeze.global_constants import REGULAR_DOC_PACKAGES
+from airflow_breeze.utils import packages as packages_module
 from airflow_breeze.utils.packages import (
     PipRequirements,
     apply_version_suffix_to_non_provider_pyproject_tomls,
@@ -35,6 +36,7 @@ from airflow_breeze.utils.packages import (
     get_dist_package_name_prefix,
     get_long_package_name,
     get_min_airflow_version,
+    get_optional_cross_provider_dependent_packages,
     get_pip_package_name,
     get_provider_details,
     get_provider_info_dict,
@@ -276,6 +278,25 @@ def test_convert_cross_package_dependencies_to_table():
         convert_cross_package_dependencies_to_table(get_cross_provider_dependent_packages("trino")).strip()
         == EXPECTED.strip()
     )
+
+
+def test_get_optional_cross_provider_dependent_packages(monkeypatch):
+    monkeypatch.setattr(
+        packages_module,
+        "get_cross_provider_dependent_packages",
+        lambda provider_id: ["common.sql", "openlineage", "google", "apache.beam"],
+    )
+    monkeypatch.setattr(
+        packages_module,
+        "get_provider_requirements",
+        lambda provider_id: [
+            "apache-airflow-providers-common-sql>=1.0.0",
+            "apache-airflow-providers-openlineage[sqlalchemy]>=1.0.0",
+        ],
+    )
+    monkeypatch.setattr(packages_module, "get_suspended_provider_ids", lambda: ["apache.beam"])
+
+    assert get_optional_cross_provider_dependent_packages("example") == ["google"]
 
 
 def test_get_provider_info_dict():
