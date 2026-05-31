@@ -2169,7 +2169,25 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 )
                 continue
 
-            triggered_date: DateTime = timezone.coerce_datetime(queued_adrqs[0].created_at)
+            latest_asset_event_timestamp = session.scalar(
+                select(func.max(AssetEvent.timestamp)).where(
+                    or_(
+                        AssetEvent.asset_id.in_(
+                            select(DagScheduleAssetReference.asset_id).where(
+                                DagScheduleAssetReference.dag_id == dag.dag_id
+                            )
+                        ),
+                        AssetEvent.source_aliases.any(
+                            AssetAliasModel.scheduled_dags.any(
+                                DagScheduleAssetAliasReference.dag_id == dag.dag_id
+                            )
+                        ),
+                    )
+                )
+            )
+            triggered_date: DateTime = timezone.coerce_datetime(
+                latest_asset_event_timestamp or queued_adrqs[0].created_at
+            )
             self.log.debug(
                 "Creating asset-triggered DagRun for '%s': %d queued assets, triggered_date=%s",
                 dag.dag_id,
