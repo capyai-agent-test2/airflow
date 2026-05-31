@@ -58,6 +58,7 @@ This quick start guide helps you bootstrap an Airflow standalone instance on you
    .. code-block:: bash
 
       uv venv
+      source .venv/bin/activate
       uv pip install apache-airflow
 
    To install optional features, include extras in the package name. For example:
