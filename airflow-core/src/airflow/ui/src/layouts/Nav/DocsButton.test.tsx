@@ -65,7 +65,7 @@ describe("DocsButton", () => {
     );
   });
 
-  it.each(["3.3.0", "3.3.0.dev0"])(
+  it.each(["999.0.0", "3.3.0.dev0"])(
     "falls back to stable docs for unpublished version %s",
     async (version) => {
       render(<DocsButton externalViews={[]} showAPI version={version} />, { wrapper: Wrapper });

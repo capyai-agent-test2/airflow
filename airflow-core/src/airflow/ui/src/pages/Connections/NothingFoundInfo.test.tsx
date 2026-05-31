@@ -25,7 +25,7 @@ import { Wrapper } from "src/utils/Wrapper";
 import { NothingFoundInfo } from "./NothingFoundInfo";
 
 vi.mock("openapi/queries", () => ({
-  useVersionServiceGetVersion: vi.fn(() => ({ data: { version: "3.3.0" } })),
+  useVersionServiceGetVersion: vi.fn(() => ({ data: { version: "999.0.0" } })),
 }));
 
 describe("NothingFoundInfo", () => {
