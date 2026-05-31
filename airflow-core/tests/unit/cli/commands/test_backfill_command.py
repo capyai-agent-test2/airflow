@@ -70,6 +70,9 @@ class TestCliBackfill:
             ("none", ReprocessBehavior.NONE),
             ("completed", ReprocessBehavior.COMPLETED),
             ("failed", ReprocessBehavior.FAILED),
+            ("missing", ReprocessBehavior.NONE),
+            ("missing+errored", ReprocessBehavior.FAILED),
+            ("all", ReprocessBehavior.COMPLETED),
         ],
     )
     def test_backfill(self, mock_create, repro, expected_repro):
