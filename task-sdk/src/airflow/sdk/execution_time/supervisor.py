@@ -1466,6 +1466,31 @@ class ActivitySubprocess(WatchedSubprocess):
             self._terminal_state = TaskInstanceState.UP_FOR_RESCHEDULE
         self._pending_terminal_state_msg = None
 
+    def _run_with_heartbeats(self, func: Callable[[], Any]) -> Any:
+        result = None
+        error: BaseException | None = None
+        done = threading.Event()
+
+        def run() -> None:
+            nonlocal result, error
+            try:
+                result = func()
+            except BaseException as e:
+                error = e
+            finally:
+                done.set()
+
+        thread = threading.Thread(target=run, name="airflow-supervisor-api-call")
+        thread.start()
+
+        while not done.wait(timeout=max(MIN_HEARTBEAT_INTERVAL, 0.01)):
+            self._send_heartbeat_if_needed()
+
+        thread.join()
+        if error is not None:
+            raise error
+        return result
+
     def _replay_pending_terminal_state_msg(self) -> None:
         """
         Re-issue the dedicated API call for an unsynced terminal-state msg.
@@ -1691,7 +1716,7 @@ class ActivitySubprocess(WatchedSubprocess):
         elif isinstance(msg, SkipDownstreamTasks):
             self.client.task_instances.skip_downstream_tasks(self.id, msg)
         elif isinstance(msg, SetXCom):
-            resp, dump_opts = handle_set_xcom(self.client, msg)
+            resp, dump_opts = self._run_with_heartbeats(lambda: handle_set_xcom(self.client, msg))
         elif isinstance(msg, DeleteXCom):
             resp, dump_opts = handle_delete_xcom(self.client, msg)
         elif isinstance(msg, PutVariable):

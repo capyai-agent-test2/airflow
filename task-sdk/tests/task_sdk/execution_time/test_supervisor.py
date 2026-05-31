@@ -3067,6 +3067,41 @@ class TestHandleRequest:
             + "\n\nPlease add test cases to REQUEST_TEST_CASES."
         )
 
+    def test_set_xcom_sends_heartbeats_while_waiting(self, watched_subprocess, monkeypatch, mocker):
+        watched_subprocess, read_socket = watched_subprocess
+        monkeypatch.setattr(supervisor, "MIN_HEARTBEAT_INTERVAL", 0.01)
+
+        watched_subprocess.client.xcoms.set.side_effect = lambda *args, **kwargs: sleep(0.04)
+        watched_subprocess.client.task_instances.heartbeat.return_value = None
+
+        message = SetXCom(
+            dag_id="test_dag",
+            run_id="test_run",
+            task_id="test_task",
+            key="test_key",
+            value="test_value",
+        )
+
+        watched_subprocess._handle_request(message, mocker.Mock(), req_id=1)
+
+        watched_subprocess.client.xcoms.set.assert_called_once_with(
+            "test_dag",
+            "test_run",
+            "test_task",
+            "test_key",
+            "test_value",
+            None,
+            dag_result=False,
+            mapped_length=None,
+        )
+        watched_subprocess.client.task_instances.heartbeat.assert_called_with(TI_ID, pid=mocker.ANY)
+
+        read_socket.settimeout(0.1)
+        frame_len = int.from_bytes(read_socket.recv(4), "big")
+        frame = msgspec.msgpack.Decoder(_ResponseFrame).decode(read_socket.recv(frame_len))
+        assert frame.id == 1
+        assert frame.body is None
+
     def test_handle_requests_api_server_error(self, watched_subprocess, mocker):
         """Test that API server errors are properly handled and sent back to the task."""
 
