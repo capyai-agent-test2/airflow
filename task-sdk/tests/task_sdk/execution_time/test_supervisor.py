@@ -3788,6 +3788,20 @@ def test_process_log_messages_from_subprocess(monkeypatch, caplog):
     ]
 
 
+def test_process_log_messages_from_subprocess_ignores_closed_logger(monkeypatch):
+    class ClosedLogger:
+        def log(self, level, msg, **event):
+            raise ValueError("write to closed file")
+
+    output_log = ClosedLogger()
+    monkeypatch.setattr(supervisor, "reconfigure_logger", lambda *args, **kwargs: output_log)
+
+    gen = process_log_messages_from_subprocess(loggers=(output_log,))
+    next(gen)
+
+    gen.send(b'{"level": "info", "event": "A late log"}\n')
+
+
 def test_reinit_supervisor_comms(monkeypatch, client_with_ti_start, caplog):
     def subprocess_main():
         # This is run in the subprocess!
