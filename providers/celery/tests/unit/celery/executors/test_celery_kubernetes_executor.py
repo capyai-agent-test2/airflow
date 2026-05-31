@@ -17,11 +17,13 @@
 # under the License.
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
 
 from airflow.callbacks.callback_requests import CallbackRequest, DagCallbackRequest
+from airflow.providers.celery.executors import celery_kubernetes_executor as celery_kubernetes_executor_module
 from airflow.providers.celery.executors.celery_executor import CeleryExecutor
 from airflow.providers.celery.executors.celery_kubernetes_executor import CeleryKubernetesExecutor
 from airflow.providers.cncf.kubernetes.executors.kubernetes_executor import KubernetesExecutor
@@ -30,6 +32,81 @@ from airflow.providers.common.compat.sdk import conf
 from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS
 
 KUBERNETES_QUEUE = "kubernetes"
+
+
+def _mock_celery_executor():
+    return mock.MagicMock(
+        spec=[
+            "end",
+            "heartbeat",
+            "job_id",
+            "queue_command",
+            "start",
+        ]
+    )
+
+
+def _mock_kubernetes_executor():
+    return mock.MagicMock(
+        spec=[
+            "end",
+            "heartbeat",
+            "job_id",
+            "kubernetes_queue",
+            "queue_command",
+            "start",
+        ]
+    )
+
+
+class TestCeleryKubernetesExecutorStartup:
+    def test_start_without_job_id_defers_kubernetes_executor_start(self, monkeypatch):
+        monkeypatch.setattr(celery_kubernetes_executor_module, "AIRFLOW_V_3_0_PLUS", False)
+        celery_executor_mock = _mock_celery_executor()
+        k8s_executor_mock = _mock_kubernetes_executor()
+        cke = CeleryKubernetesExecutor(celery_executor_mock, k8s_executor_mock)
+
+        cke.start()
+        cke.heartbeat()
+        cke.end()
+
+        celery_executor_mock.start.assert_called_once()
+        celery_executor_mock.heartbeat.assert_called_once()
+        celery_executor_mock.end.assert_called_once()
+        k8s_executor_mock.start.assert_not_called()
+        k8s_executor_mock.heartbeat.assert_not_called()
+        k8s_executor_mock.end.assert_not_called()
+
+    def test_start_with_job_id_starts_kubernetes_executor(self, monkeypatch):
+        monkeypatch.setattr(celery_kubernetes_executor_module, "AIRFLOW_V_3_0_PLUS", False)
+        celery_executor_mock = _mock_celery_executor()
+        k8s_executor_mock = _mock_kubernetes_executor()
+        cke = CeleryKubernetesExecutor(celery_executor_mock, k8s_executor_mock)
+        cke.job_id = 1
+
+        cke.start()
+        cke.heartbeat()
+        cke.end()
+
+        celery_executor_mock.start.assert_called_once()
+        celery_executor_mock.heartbeat.assert_called_once()
+        celery_executor_mock.end.assert_called_once()
+        k8s_executor_mock.start.assert_called_once()
+        k8s_executor_mock.heartbeat.assert_called_once()
+        k8s_executor_mock.end.assert_called_once()
+
+    def test_queue_command_starts_kubernetes_executor_only_for_kubernetes_queue(self, monkeypatch):
+        monkeypatch.setattr(celery_kubernetes_executor_module, "AIRFLOW_V_3_0_PLUS", False)
+        celery_executor_mock = _mock_celery_executor()
+        k8s_executor_mock = _mock_kubernetes_executor()
+        cke = CeleryKubernetesExecutor(celery_executor_mock, k8s_executor_mock)
+        task_instance = SimpleNamespace(queue=KUBERNETES_QUEUE, key="task-key")
+
+        cke.start()
+        cke.queue_command(task_instance, command=["airflow", "tasks", "run"])
+
+        celery_executor_mock.start.assert_called_once()
+        k8s_executor_mock.start.assert_called_once()
 
 
 @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Airflow 3 does not support this executor anymore")
@@ -83,11 +160,57 @@ class TestCeleryKubernetesExecutor:
         celery_executor_mock = mock.MagicMock()
         k8s_executor_mock = mock.MagicMock()
         cke = CeleryKubernetesExecutor(celery_executor_mock, k8s_executor_mock)
+        cke.job_id = 1
 
         cke.start()
 
         celery_executor_mock.start.assert_called()
         k8s_executor_mock.start.assert_called()
+
+    def test_start_without_job_id_defers_kubernetes_executor_start(self):
+        celery_executor_mock = mock.MagicMock()
+        k8s_executor_mock = mock.MagicMock()
+        cke = CeleryKubernetesExecutor(celery_executor_mock, k8s_executor_mock)
+
+        cke.start()
+
+        celery_executor_mock.start.assert_called_once()
+        k8s_executor_mock.start.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("test_queue", "starts_kubernetes_executor"),
+        [
+            ("any-other-queue", False),
+            (KUBERNETES_QUEUE, True),
+        ],
+    )
+    def test_queue_task_instance_starts_kubernetes_executor_only_for_kubernetes_queue(
+        self, test_queue, starts_kubernetes_executor
+    ):
+        celery_executor_mock = mock.MagicMock()
+        k8s_executor_mock = mock.MagicMock()
+        cke = CeleryKubernetesExecutor(celery_executor_mock, k8s_executor_mock)
+        ti = mock.MagicMock()
+        simple_ti = mock.MagicMock()
+        simple_ti.queue = test_queue
+
+        cke.start()
+        with mock.patch("airflow.models.taskinstance.SimpleTaskInstance.from_ti", return_value=simple_ti):
+            cke.queue_task_instance(task_instance=ti, pickle_id=None)
+        cke.heartbeat()
+        cke.end()
+
+        celery_executor_mock.start.assert_called_once()
+        celery_executor_mock.heartbeat.assert_called_once()
+        celery_executor_mock.end.assert_called_once()
+        if starts_kubernetes_executor:
+            k8s_executor_mock.start.assert_called_once()
+            k8s_executor_mock.heartbeat.assert_called_once()
+            k8s_executor_mock.end.assert_called_once()
+        else:
+            k8s_executor_mock.start.assert_not_called()
+            k8s_executor_mock.heartbeat.assert_not_called()
+            k8s_executor_mock.end.assert_not_called()
 
     @pytest.mark.parametrize("test_queue", ["any-other-queue", KUBERNETES_QUEUE])
     @mock.patch.object(CeleryExecutor, "queue_command")
@@ -222,6 +345,10 @@ class TestCeleryKubernetesExecutor:
         celery_executor_mock = mock.MagicMock()
         k8s_executor_mock = mock.MagicMock()
         cke = CeleryKubernetesExecutor(celery_executor_mock, k8s_executor_mock)
+        cke.job_id = 1
+        cke.start()
+        celery_executor_mock.reset_mock()
+        k8s_executor_mock.reset_mock()
 
         cke.end()
 
@@ -232,6 +359,10 @@ class TestCeleryKubernetesExecutor:
         celery_executor_mock = mock.MagicMock()
         k8s_executor_mock = mock.MagicMock()
         cke = CeleryKubernetesExecutor(celery_executor_mock, k8s_executor_mock)
+        cke.job_id = 1
+        cke.start()
+        celery_executor_mock.reset_mock()
+        k8s_executor_mock.reset_mock()
 
         cke.terminate()
 
