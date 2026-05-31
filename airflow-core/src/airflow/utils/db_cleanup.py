@@ -167,6 +167,7 @@ config_list: list[_TableConfig] = [
     _TableConfig(
         table_name="dag_version",
         recency_column_name="created_at",
+        extra_columns=["id"],
         dependent_tables=["task_instance", "dag_run"],
         dag_id_column_name="dag_id",
         keep_last=True,
@@ -314,6 +315,18 @@ def _subquery_keep_last(
     return subquery.subquery(name="latest")
 
 
+def _get_unreferenced_dag_version_conditions(dag_version_id_column):
+    task_instance_table = table("task_instance", column("dag_version_id"))
+
+    return [
+        dag_version_id_column.not_in(
+            select(task_instance_table.c.dag_version_id).where(
+                task_instance_table.c.dag_version_id.is_not(None)
+            )
+        )
+    ]
+
+
 class CreateTableAs(Executable, ClauseElement):
     """Custom sqlalchemy clause element for CTAS operations."""
 
@@ -356,6 +369,9 @@ def _build_query(
             conditions.append(base_table_dag_id_col.in_(dag_ids))
         if exclude_dag_ids:
             conditions.append(base_table_dag_id_col.not_in(exclude_dag_ids))
+
+    if orm_model.name == "dag_version":
+        conditions.extend(_get_unreferenced_dag_version_conditions(base_table.c.id))
 
     if keep_last:
         max_date_col_name = "max_date_per_group"
