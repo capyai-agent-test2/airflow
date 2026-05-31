@@ -404,7 +404,7 @@ class Trigger(Base):
         from airflow.jobs.job import Job  # To avoid circular import
 
         count = session.scalar(
-            select(func.count(cls.id))
+            select(func.count(func.distinct(cls.id)))
             .join(TaskInstance, cls.id == TaskInstance.trigger_id, isouter=True)
             .join(DagModel, TaskInstance.dag_id == DagModel.dag_id, isouter=True)
             .where(

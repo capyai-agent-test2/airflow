@@ -20,7 +20,7 @@ import datetime
 import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import pendulum
 import pytest
@@ -295,6 +295,49 @@ def test_ids_for_triggerer_excludes_inactive_dag_task_triggers(
     session.commit()
 
     assert Trigger.ids_for_triggerer(job.id, session=session) == []
+
+
+def test_assign_unassigned_counts_shared_task_trigger_once(session, create_task_instance, mocker):
+    time_now = timezone.utcnow()
+    job = Job(heartrate=10, state=State.RUNNING, latest_heartbeat=time_now)
+    assigned_trigger = Trigger(classpath="airflow.triggers.testing.SuccessTrigger", kwargs={})
+    session.add_all([job, assigned_trigger])
+    session.flush()
+    assigned_trigger.triggerer_id = job.id
+
+    first_task_instance = create_task_instance(
+        session=session,
+        dag_id="shared_trigger_dag",
+        task_id="first_task",
+        run_id="first_run",
+        logical_date=time_now,
+        state=State.DEFERRED,
+    )
+    first_task_instance.trigger_id = assigned_trigger.id
+    second_task_instance = create_task_instance(
+        session=session,
+        dag_id="shared_trigger_dag",
+        task_id="second_task",
+        run_id="second_run",
+        logical_date=time_now + datetime.timedelta(hours=1),
+        state=State.DEFERRED,
+    )
+    second_task_instance.trigger_id = assigned_trigger.id
+    dag_model = session.get(DagModel, "shared_trigger_dag")
+    dag_model.is_paused = False
+    dag_model.is_stale = False
+    session.commit()
+    get_sorted_triggers = mocker.patch.object(Trigger, "get_sorted_triggers", return_value=[])
+
+    Trigger.assign_unassigned(job.id, capacity=2, health_check_threshold=3600, session=session)
+
+    get_sorted_triggers.assert_called_once_with(
+        capacity=1,
+        alive_triggerer_ids=ANY,
+        queues=None,
+        team_name=None,
+        session=session,
+    )
 
 
 def test_submit_failure(session, create_task_instance):
