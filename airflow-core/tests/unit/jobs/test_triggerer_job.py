@@ -1877,6 +1877,29 @@ class TestTriggererJobRunner:
 
     @patch("airflow.jobs.triggerer_job_runner.stats.initialize")
     @patch.object(TriggerRunnerSupervisor, "start")
+    def test_execute_restores_process_context_when_shutdown_fails(
+        self, mock_supervisor_start, stats_init_mock, session, monkeypatch
+    ):
+        monkeypatch.setenv("_AIRFLOW_PROCESS_CONTEXT", "previous")
+        mock_supervisor = MagicMock()
+        mock_supervisor.kill.side_effect = RuntimeError("shutdown failed")
+        mock_supervisor_start.return_value = mock_supervisor
+
+        job = Job()
+        session.add(job)
+        session.flush()
+
+        job_runner = TriggererJobRunner(job)
+
+        with patch.object(job_runner, "register_signals"):
+            with pytest.raises(RuntimeError, match="shutdown failed"):
+                job_runner._execute()
+
+        assert os.environ["_AIRFLOW_PROCESS_CONTEXT"] == "previous"
+        stats_init_mock.assert_called_once()
+
+    @patch("airflow.jobs.triggerer_job_runner.stats.initialize")
+    @patch.object(TriggerRunnerSupervisor, "start")
     def test_stats_initialize_called_on_execute(self, mock_supervisor_start, stats_init_mock, session):
         """Test that stats.initialize() is called when TriggererJobRunner._execute() is executed."""
         # Setup mock supervisor to immediately stop

@@ -259,12 +259,14 @@ class TriggererJobRunner(BaseJobRunner, LoggingMixin):
             # Tell the subtproc to stop and then wait for it.
             # If the user interrupts/terms again, _graceful_exit will allow them
             # to force-kill here.
-            if trigger_runner := getattr(self, "trigger_runner", None):
-                trigger_runner.kill(escalation_delay=10, force=True)
-            if old_process_context is None:
-                os.environ.pop("_AIRFLOW_PROCESS_CONTEXT", None)
-            else:
-                os.environ["_AIRFLOW_PROCESS_CONTEXT"] = old_process_context
+            try:
+                if trigger_runner := getattr(self, "trigger_runner", None):
+                    trigger_runner.kill(escalation_delay=10, force=True)
+            finally:
+                if old_process_context is None:
+                    os.environ.pop("_AIRFLOW_PROCESS_CONTEXT", None)
+                else:
+                    os.environ["_AIRFLOW_PROCESS_CONTEXT"] = old_process_context
             self.log.info("Exited trigger loop")
         return None
 
