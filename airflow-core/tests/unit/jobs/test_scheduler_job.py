@@ -5790,6 +5790,56 @@ class TestSchedulerJob:
         assert dag_model.next_dagrun == DEFAULT_DATE + timedelta(days=1)
         session.rollback()
 
+    def test_scheduler_create_dag_runs_continues_after_db_error(self, dag_maker, session):
+        with dag_maker(
+            dag_id="test_scheduler_create_dag_runs_db_error",
+            schedule=timedelta(days=1),
+            catchup=True,
+        ) as bad_dag:
+            EmptyOperator(task_id="dummy")
+
+        bad_dag_model = dag_maker.dag_model
+        next_info = bad_dag.timetable.next_run_info_from_dag_model(dag_model=bad_dag_model)
+        assert next_info is not None
+        bad_run_id = bad_dag.timetable.generate_run_id(
+            run_type=DagRunType.SCHEDULED,
+            run_after=next_info.run_after,
+            data_interval=next_info.data_interval,
+        )
+        bad_dag.create_dagrun(
+            run_id=bad_run_id,
+            run_type=DagRunType.SCHEDULED,
+            logical_date=DEFAULT_DATE + timedelta(days=10),
+            state=State.SUCCESS,
+            session=session,
+            data_interval=next_info.data_interval,
+            run_after=next_info.run_after,
+            triggered_by=DagRunTriggeredByType.TEST,
+        )
+
+        with dag_maker(
+            dag_id="test_scheduler_create_dag_runs_after_db_error",
+            schedule=timedelta(days=1),
+            catchup=True,
+        ):
+            EmptyOperator(task_id="dummy")
+
+        good_dag_model = dag_maker.dag_model
+        session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[self.null_exec])
+
+        self.job_runner._create_dag_runs([bad_dag_model, good_dag_model], session)
+
+        good_dagrun = session.scalar(
+            select(DagRun).where(
+                DagRun.dag_id == good_dag_model.dag_id,
+                DagRun.logical_date == DEFAULT_DATE,
+            )
+        )
+        assert good_dagrun is not None
+
     @conf_vars({("scheduler", "use_job_schedule"): "false"})
     def test_do_schedule_max_active_runs_dag_timed_out(self, dag_maker, session):
         """Test that tasks are set to a finished state when their DAG times out"""
