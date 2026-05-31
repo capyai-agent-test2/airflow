@@ -919,6 +919,78 @@ class TestGetAssetEvents(TestAssets):
         assert response.status_code == 200
         assert response.json()["total_entries"] == total_entries
 
+    def test_should_not_return_events_from_stale_dags(self, test_client, session, testing_dag_bundle):
+        self.create_assets(session)
+        session.add_all(
+            [
+                DagModel(dag_id="active_dag", is_stale=False, bundle_name="testing"),
+                DagModel(dag_id="stale_dag", is_stale=True, bundle_name="testing"),
+                AssetEvent(
+                    id=1,
+                    asset_id=1,
+                    extra={},
+                    source_task_id="task",
+                    source_dag_id="active_dag",
+                    source_run_id="active_run",
+                    timestamp=DEFAULT_DATE,
+                ),
+                AssetEvent(
+                    id=2,
+                    asset_id=2,
+                    extra={},
+                    source_task_id="task",
+                    source_dag_id="stale_dag",
+                    source_run_id="stale_run",
+                    timestamp=DEFAULT_DATE,
+                ),
+            ]
+        )
+        session.commit()
+
+        response = test_client.get("/assets/events")
+
+        assert response.status_code == 200
+        assert response.json()["total_entries"] == 1
+        assert response.json()["asset_events"][0]["source_dag_id"] == "active_dag"
+
+    def test_should_not_return_created_dagruns_for_stale_dags(self, test_client, session, testing_dag_bundle):
+        self.create_assets(session, num=1)
+        asset_event = AssetEvent(
+            id=1,
+            asset_id=1,
+            extra={},
+            source_task_id="task",
+            source_dag_id="active_dag",
+            source_run_id="active_run",
+            timestamp=DEFAULT_DATE,
+        )
+        dag_run = DagRun(
+            dag_id="stale_dag",
+            run_id="stale_run",
+            run_type=DagRunType.ASSET_TRIGGERED,
+            logical_date=DEFAULT_DATE,
+            start_date=DEFAULT_DATE,
+            data_interval=(DEFAULT_DATE, DEFAULT_DATE),
+            state=DagRunState.SUCCESS,
+        )
+        dag_run.end_date = DEFAULT_DATE
+        dag_run.consumed_asset_events.append(asset_event)
+        session.add_all(
+            [
+                DagModel(dag_id="active_dag", is_stale=False, bundle_name="testing"),
+                DagModel(dag_id="stale_dag", is_stale=True, bundle_name="testing"),
+                asset_event,
+                dag_run,
+            ]
+        )
+        session.commit()
+
+        response = test_client.get("/assets/events")
+
+        assert response.status_code == 200
+        assert response.json()["total_entries"] == 1
+        assert response.json()["asset_events"][0]["created_dagruns"] == []
+
     @pytest.mark.parametrize(
         ("params", "expected_ids"),
         [
@@ -1144,6 +1216,41 @@ class TestGetAssetEndpoint(TestAssets):
         response = test_client.get("/assets/1")
         assert response.status_code == 404
         assert response.json()["detail"] == "The Asset with ID: `1` was not found"
+
+    def test_should_ignore_stale_dag_events_for_last_asset_event(
+        self, test_client, session, testing_dag_bundle
+    ):
+        self.create_assets(session, num=1)
+        session.add_all(
+            [
+                DagModel(dag_id="active_dag", is_stale=False, bundle_name="testing"),
+                DagModel(dag_id="stale_dag", is_stale=True, bundle_name="testing"),
+                AssetEvent(
+                    id=1,
+                    asset_id=1,
+                    extra={},
+                    source_task_id="task",
+                    source_dag_id="active_dag",
+                    source_run_id="active_run",
+                    timestamp=DEFAULT_DATE,
+                ),
+                AssetEvent(
+                    id=2,
+                    asset_id=1,
+                    extra={},
+                    source_task_id="task",
+                    source_dag_id="stale_dag",
+                    source_run_id="stale_run",
+                    timestamp=DEFAULT_DATE + timedelta(days=1),
+                ),
+            ]
+        )
+        session.commit()
+
+        response = test_client.get("/assets/1")
+
+        assert response.status_code == 200
+        assert response.json()["last_asset_event"]["id"] == 1
 
     @pytest.mark.usefixtures("time_freezer")
     @pytest.mark.enable_redact
