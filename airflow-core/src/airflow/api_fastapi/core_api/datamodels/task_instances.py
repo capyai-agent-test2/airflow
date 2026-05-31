@@ -224,6 +224,10 @@ class ClearTaskInstancesBody(StrictBaseModel):
         "then the ``[core] rerun_with_latest_version`` config option, "
         "and finally ``False`` (the historical default for clear/rerun).",
     )
+    dag_version_id: UUID | None = Field(
+        default=None,
+        description="Dag version to run the cleared task instances against.",
+    )
     prevent_running_task: bool = False
     note: Annotated[str, StringConstraints(max_length=1000)] | None = None
 
@@ -242,6 +246,8 @@ class ClearTaskInstancesBody(StrictBaseModel):
             raise ValidationError("Exactly one of dag_run_id or start_date must be provided")
         if data.get("end_date") and data.get("dag_run_id"):
             raise ValidationError("Exactly one of dag_run_id or end_date must be provided")
+        if data.get("run_on_latest_version") is not None and data.get("dag_version_id") is not None:
+            raise ValidationError("Exactly one of run_on_latest_version or dag_version_id must be provided")
         if isinstance(data.get("task_ids"), list) and len(data.get("task_ids")) < 1:
             raise ValidationError("task_ids list should have at least 1 element.")
         return data

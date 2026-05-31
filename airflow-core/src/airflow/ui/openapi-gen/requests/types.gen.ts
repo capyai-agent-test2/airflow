@@ -513,6 +513,10 @@ export type ClearTaskInstancesBody = {
      * (Experimental) Run on the latest bundle version of the dag after clearing the task instances. If not specified, falls back to the DAG-level ``rerun_with_latest_version`` parameter, then the ``[core] rerun_with_latest_version`` config option, and finally ``False`` (the historical default for clear/rerun).
      */
     run_on_latest_version?: boolean | null;
+    /**
+     * Dag version to run the cleared task instances against.
+     */
+    dag_version_id?: string | null;
     prevent_running_task?: boolean;
     note?: string | null;
 };

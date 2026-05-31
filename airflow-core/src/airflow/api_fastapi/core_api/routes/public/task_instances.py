@@ -110,6 +110,7 @@ from airflow.api_fastapi.core_api.services.public.task_instances import (
 from airflow.api_fastapi.logging.decorators import action_logging
 from airflow.exceptions import AirflowClearRunningTaskException, TaskNotFound
 from airflow.models import Base, DagRun
+from airflow.models.dag_version import DagVersion
 from airflow.models.taskinstance import TaskInstance as TI, clear_task_instances
 from airflow.models.taskinstancehistory import TaskInstanceHistory as TIH
 from airflow.ti_deps.dep_context import DepContext
@@ -835,7 +836,20 @@ def post_clear_task_instances(
     """Clear task instances."""
     dag = get_latest_version_of_dag(dag_bag, dag_id, session)
 
-    resolved_run_on_latest = resolve_run_on_latest_version(body.run_on_latest_version, dag_id, session)
+    selected_dag_version_id = body.dag_version_id
+    if selected_dag_version_id is not None:
+        dag_version = session.get(DagVersion, selected_dag_version_id)
+        if dag_version is None or dag_version.dag_id != dag_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Dag version {selected_dag_version_id} not found")
+        selected_dag = dag_bag.get_dag(selected_dag_version_id, session=session)
+        if selected_dag is None:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, f"Serialized Dag {selected_dag_version_id} not found"
+            )
+        dag = selected_dag
+        resolved_run_on_latest = False
+    else:
+        resolved_run_on_latest = resolve_run_on_latest_version(body.run_on_latest_version, dag_id, session)
 
     reset_dag_runs = body.reset_dag_runs
     dry_run = body.dry_run
@@ -853,8 +867,9 @@ def post_clear_task_instances(
         if dag_run is None:
             error_message = f"Dag Run id {dag_run_id} not found in dag {dag_id}"
             raise HTTPException(status.HTTP_404_NOT_FOUND, error_message)
-        # Get the specific dag version:
-        dag = get_dag_for_run(dag_bag, dag_run, session)
+        if selected_dag_version_id is None:
+            # Get the specific dag version:
+            dag = get_dag_for_run(dag_bag, dag_run, session)
         if (past or future) and dag_run.logical_date is None:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -945,6 +960,7 @@ def post_clear_task_instances(
                 session,
                 DagRunState.QUEUED if reset_dag_runs else False,
                 run_on_latest_version=resolved_run_on_latest,
+                dag_version_id=selected_dag_version_id,
                 prevent_running_task=body.prevent_running_task,
             )
         except AirflowClearRunningTaskException as e:

@@ -336,6 +336,7 @@ def clear_task_instances(
     session: Session,
     dag_run_state: DagRunState | Literal[False] = DagRunState.QUEUED,
     run_on_latest_version: bool = False,
+    dag_version_id: UUID | None = None,
     prevent_running_task: bool | None = None,
 ) -> None:
     """
@@ -352,6 +353,7 @@ def clear_task_instances(
     :param dag_run_state: state to set finished DagRuns to.
         If set to False, DagRuns state will not be changed.
     :param run_on_latest_version: whether to run on latest serialized DAG and Bundle version
+    :param dag_version_id: Dag version to run cleared task instances against
 
     :meta private:
     """
@@ -359,6 +361,13 @@ def clear_task_instances(
     from airflow.models.dagbag import DBDagBag
 
     scheduler_dagbag = DBDagBag(load_op_links=False)
+    selected_dag_version = session.get(DagVersion, dag_version_id) if dag_version_id is not None else None
+    if dag_version_id is not None:
+        if selected_dag_version is None:
+            raise ValueError(f"Dag version {dag_version_id} not found")
+        if any(ti.dag_id != selected_dag_version.dag_id for ti in tis):
+            raise ValueError(f"Dag version {dag_version_id} does not match all task instances")
+
     for ti in tis:
         ti.prepare_db_for_next_try(session)
 
@@ -375,7 +384,9 @@ def clear_task_instances(
         # the task is terminated and becomes eligible for retry.
         else:
             dr = ti.dag_run
-            if run_on_latest_version:
+            if dag_version_id is not None:
+                ti_dag = scheduler_dagbag.get_dag(dag_version_id, session=session)
+            elif run_on_latest_version:
                 ti_dag = scheduler_dagbag.get_latest_version_of_dag(ti.dag_id, session=session)
             else:
                 ti_dag = scheduler_dagbag.get_dag_for_run(dag_run=dr, session=session)
@@ -397,8 +408,10 @@ def clear_task_instances(
             ti.state = None
             ti.external_executor_id = None
             ti.clear_next_method_args()
+            if dag_version_id is not None:
+                ti.dag_version_id = dag_version_id
             # Match DagVersion to latest serialized DAG when run_on_latest_version.
-            if run_on_latest_version:
+            elif run_on_latest_version:
                 latest_dag_version = DagVersion.get_latest_version(ti.dag_id, session=session)
                 if latest_dag_version is not None:
                     ti.dag_version_id = latest_dag_version.id
@@ -423,6 +436,8 @@ def clear_task_instances(
         ).all()
         dag_run_state = DagRunState(dag_run_state)  # Validate the state value.
         for dr in drs:
+            dag_version = None
+            dr_dag = None
             # Always update clear_number and queued_at when clearing tasks, regardless of state
             dr.clear_number += 1
             dr.queued_at = timezone.utcnow()
@@ -435,7 +450,14 @@ def clear_task_instances(
             if dr.state in State.finished_dr_states:
                 dr.state = dag_run_state
                 dr.start_date = timezone.utcnow()
-                if run_on_latest_version:
+                if dag_version_id is not None:
+                    dr_dag = scheduler_dagbag.get_dag(dag_version_id, session=session)
+                    dag_version = selected_dag_version
+                    if dag_version and dr_dag:
+                        dr.created_dag_version_id = dag_version.id
+                        dr.dag = dr_dag
+                        dr.verify_integrity(session=session, dag_version_id=dag_version.id)
+                elif run_on_latest_version:
                     dr_dag = scheduler_dagbag.get_latest_version_of_dag(dr.dag_id, session=session)
                     dag_version = DagVersion.get_latest_version(dr.dag_id, session=session)
                     if dag_version:
@@ -449,13 +471,32 @@ def clear_task_instances(
                     dr_dag = scheduler_dagbag.get_dag_for_run(dag_run=dr, session=session)
                 if not dr_dag:
                     log.warning("No serialized dag found for dag '%s'", dr.dag_id)
-                if dr_dag and not dr_dag.disable_bundle_versioning and run_on_latest_version:
-                    bundle_version = dr.dag_model.bundle_version
-                    if bundle_version is not None and run_on_latest_version:
+                if (
+                    dr_dag
+                    and not dr_dag.disable_bundle_versioning
+                    and (run_on_latest_version or dag_version_id)
+                ):
+                    bundle_version = (
+                        dag_version.bundle_version if dag_version else dr.dag_model.bundle_version
+                    )
+                    if bundle_version is not None:
                         dr.bundle_version = bundle_version
                 if dag_run_state == DagRunState.QUEUED:
                     dr.last_scheduling_decision = None
                     dr.start_date = None
+            elif dag_version_id is not None:
+                dag_version = selected_dag_version
+                if dag_version and dr.created_dag_version_id != dag_version.id:
+                    dr_dag = scheduler_dagbag.get_dag(dag_version_id, session=session)
+                    if not dr_dag:
+                        log.warning("No serialized dag found for dag '%s'", dr.dag_id)
+                    else:
+                        dr.created_dag_version_id = dag_version.id
+                        dr.dag = dr_dag
+                        if not dr_dag.disable_bundle_versioning:
+                            bundle_version = dag_version.bundle_version
+                            if bundle_version is not None:
+                                dr.bundle_version = bundle_version
             elif run_on_latest_version:
                 # Queued/running DagRun: update DR to latest version/bundle for workloads that use it.
                 dag_version = DagVersion.get_latest_version(dr.dag_id, session=session)
