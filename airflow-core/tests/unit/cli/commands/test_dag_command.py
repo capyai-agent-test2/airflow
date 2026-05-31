@@ -329,16 +329,19 @@ class TestCliDags:
         dag_version = DagVersion.write_dag(dag_id=dag_id, bundle_name="testing", session=session)
         serialized_dag = SerializedDagModel(LazyDeserializedDAG.from_dag(updated_dag))
         serialized_dag.dag_version = dag_version
+        serialized_dag.created_at = timezone.utcnow() + timedelta(seconds=1)
         session.add(serialized_dag)
         session.flush()
 
-        args = self.parser.parse_args(["dags", "list", "--output", "json"])
-        with stdout_capture as temp_stdout:
-            dag_command.dag_list_dags(args)
-            out = temp_stdout.getvalue()
+        args = self.parser.parse_args(["dags", "list", "--output", "json", "--columns", "dag_id,tags"])
+        with mock.patch("airflow.models.DagModel.get_dagmodel", return_value=None):
+            with stdout_capture as temp_stdout:
+                dag_command.dag_list_dags(args)
+                out = temp_stdout.getvalue()
 
         dag_list = json.loads(out)
         assert [dag["dag_id"] for dag in dag_list].count(dag_id) == 1
+        assert next(dag for dag in dag_list if dag["dag_id"] == dag_id)["tags"] == "{'new'}"
 
     @conf_vars({("core", "load_examples"): "true"})
     def test_cli_list_local_dags(self, stdout_capture):
