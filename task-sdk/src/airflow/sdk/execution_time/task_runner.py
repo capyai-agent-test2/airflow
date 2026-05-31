@@ -1420,7 +1420,7 @@ def run(
         msg, state = _handle_current_task_success(context, ti)
     except DagRunTriggerException as drte:
         log.info("::group::Post Execute")
-        msg, state = _handle_trigger_dag_run(drte, context, ti, log)
+        msg, state, error = _handle_trigger_dag_run(drte, context, ti, log)
     except TaskDeferred as defer:
         log.info("::group::Post Execute")
         msg, state = _defer_task(defer, ti, log)
@@ -1655,7 +1655,7 @@ def _handle_current_task_failed(
 
 def _handle_trigger_dag_run(
     drte: DagRunTriggerException, context: Context, ti: RuntimeTaskInstance, log: Logger
-) -> tuple[ToSupervisor, TaskInstanceState]:
+) -> tuple[ToSupervisor, TaskInstanceState, BaseException | None]:
     """Handle exception from TriggerDagRunOperator."""
     log.info("Triggering Dag Run.", trigger_dag_id=drte.trigger_dag_id)
     comms_msg = SUPERVISOR_COMMS.send(
@@ -1691,7 +1691,7 @@ def _handle_trigger_dag_run(
             )
             state = TaskInstanceState.FAILED
 
-        return msg, state
+        return msg, state, None
 
     log.info("Dag Run triggered successfully.", trigger_dag_id=drte.trigger_dag_id)
 
@@ -1717,7 +1717,8 @@ def _handle_trigger_dag_run(
                 ),
                 method_name="execute_complete",
             )
-            return _defer_task(defer, ti, log)
+            msg, state = _defer_task(defer, ti, log)
+            return msg, state, None
         while True:
             log.info(
                 "Waiting for dag run to complete execution in allowed state.",
@@ -1736,13 +1737,11 @@ def _handle_trigger_dag_run(
                 log.error(
                     "DagRun finished with failed state.", dag_id=drte.trigger_dag_id, state=comms_msg.state
                 )
-                msg = TaskState(
-                    state=TaskInstanceState.FAILED,
-                    end_date=datetime.now(tz=timezone.utc),
-                    rendered_map_index=ti.rendered_map_index,
+                error = AirflowException(
+                    f"{drte.trigger_dag_id} failed with failed states {drte.failed_states}"
                 )
-                state = TaskInstanceState.FAILED
-                return msg, state
+                msg, state = _apply_retry_policy_or_default(ti, error, log, context)
+                return msg, state, error
             if comms_msg.state in drte.allowed_states:
                 log.info(
                     "DagRun finished with allowed state.", dag_id=drte.trigger_dag_id, state=comms_msg.state
@@ -1762,7 +1761,8 @@ def _handle_trigger_dag_run(
                 trigger_dag_id=drte.trigger_dag_id,
             )
 
-    return _handle_current_task_success(context, ti)
+    msg, state = _handle_current_task_success(context, ti)
+    return msg, state, None
 
 
 def _run_task_state_change_callbacks(
