@@ -31,7 +31,7 @@ import traceback
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 
 import structlog
-from sqlalchemy import delete, func, insert, select, tuple_, update
+from sqlalchemy import delete, insert, select, tuple_, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import joinedload, load_only
 
@@ -106,8 +106,8 @@ def _create_orm_dags(
 
 def _get_latest_runs_stmt(dag_id: str) -> Select:
     """Build a select statement to retrieve the last automated run for each dag."""
-    max_logical_date = (
-        select(func.max(DagRun.logical_date).label("max_logical_date"))
+    latest_run_id = (
+        select(DagRun.id)
         .where(
             DagRun.dag_id == dag_id,
             DagRun.run_type.in_(
@@ -117,14 +117,13 @@ def _get_latest_runs_stmt(dag_id: str) -> Select:
                 )
             ),
         )
+        .order_by(DagRun.logical_date.desc(), DagRun.run_after.desc())
+        .limit(1)
         .scalar_subquery()
     )
     return (
         select(DagRun)
-        .where(
-            DagRun.dag_id == dag_id,
-            DagRun.logical_date == max_logical_date,
-        )
+        .where(DagRun.id == latest_run_id)
         .options(
             load_only(
                 DagRun.dag_id,

@@ -92,12 +92,41 @@ def test_statement_latest_runs_one_dag():
             "SELECT dag_run.id, dag_run.dag_id, dag_run.logical_date, "
             "dag_run.data_interval_start, dag_run.data_interval_end",
             "FROM dag_run",
-            "WHERE dag_run.dag_id = :dag_id_1 AND dag_run.logical_date = ("
-            "SELECT max(dag_run.logical_date) AS max_logical_date",
+            "WHERE dag_run.id = (SELECT dag_run.id",
             "FROM dag_run",
-            "WHERE dag_run.dag_id = :dag_id_2 AND dag_run.run_type IN (__[POSTCOMPILE_run_type_1]))",
+            "WHERE dag_run.dag_id = :dag_id_1 AND dag_run.run_type IN (__[POSTCOMPILE_run_type_1]) "
+            "ORDER BY dag_run.logical_date DESC, dag_run.run_after DESC",
+            "LIMIT :param_1)",
         ]
         assert actual == expected, compiled_stmt
+
+
+@pytest.mark.db_test
+def test_statement_latest_runs_ignores_manual_run_with_same_logical_date(dag_maker, session):
+    with dag_maker("fake-dag", schedule=None):
+        pass
+    dag_maker.sync_dagbag_to_db()
+
+    logical_date = tz.datetime(2025, 1, 1)
+    scheduled_run = dag_maker.create_dagrun(
+        run_id="scheduled_run",
+        logical_date=logical_date,
+        data_interval=(logical_date, logical_date + timedelta(days=1)),
+        run_type=DagRunType.SCHEDULED,
+        run_after=logical_date + timedelta(days=1),
+        session=session,
+    )
+    dag_maker.create_dagrun(
+        run_id="manual_run",
+        logical_date=logical_date,
+        data_interval=(logical_date - timedelta(days=1), logical_date),
+        run_type=DagRunType.MANUAL,
+        run_after=logical_date,
+        session=session,
+    )
+
+    latest = session.scalar(_get_latest_runs_stmt("fake-dag"))
+    assert latest == scheduled_run
 
 
 @pytest.mark.db_test
