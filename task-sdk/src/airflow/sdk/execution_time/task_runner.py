@@ -1322,6 +1322,11 @@ def _defer_task(
     return msg, state
 
 
+def _try_log(log_method: Callable[..., Any], event: str, **kwargs: Any) -> None:
+    with suppress(Exception):
+        log_method(event, **kwargs)
+
+
 @Sentry.enrich_errors
 @detail_span("run")
 def run(
@@ -1359,7 +1364,7 @@ def run(
     signal.signal(signal.SIGTERM, _on_term)
 
     msg: ToSupervisor | None = None
-    state: TaskInstanceState
+    state = TaskInstanceState.FAILED
     error: BaseException | None = None
 
     stats_tags = {"dag_id": ti.dag_id, "task_id": ti.task_id}
@@ -1444,8 +1449,8 @@ def run(
     except (AirflowFailException, AirflowSensorTimeout) as e:
         # If AirflowFailException is raised, task should not retry.
         # If a sensor in reschedule mode reaches timeout, task should not retry.
-        log.exception("Task failed with exception")
-        log.info("::group::Post Execute")
+        _try_log(log.exception, "Task failed with exception")
+        _try_log(log.info, "::group::Post Execute")
         ti.end_date = datetime.now(tz=timezone.utc)
         msg = TaskState(
             state=TaskInstanceState.FAILED,
@@ -1456,16 +1461,16 @@ def run(
         error = e
     except (AirflowTaskTimeout, AirflowException, AirflowRuntimeError) as e:
         # We should allow retries if the task has defined it.
-        log.exception("Task failed with exception")
-        log.info("::group::Post Execute")
+        _try_log(log.exception, "Task failed with exception")
+        _try_log(log.info, "::group::Post Execute")
         msg, state = _apply_retry_policy_or_default(ti, e, log, context)
         error = e
     except AirflowTaskTerminated as e:
         # External state updates are already handled with `ti_heartbeat` and will be
         # updated already be another UI API. So, these exceptions should ideally never be thrown.
         # If these are thrown, we should mark the TI state as failed.
-        log.exception("Task failed with exception")
-        log.info("::group::Post Execute")
+        _try_log(log.exception, "Task failed with exception")
+        _try_log(log.info, "::group::Post Execute")
         ti.end_date = datetime.now(tz=timezone.utc)
         msg = TaskState(
             state=TaskInstanceState.FAILED,
@@ -1476,13 +1481,13 @@ def run(
         error = e
     except SystemExit as e:
         # SystemExit needs to be retried if they are eligible.
-        log.error("Task exited", exit_code=e.code)
-        log.info("::group::Post Execute")
+        _try_log(log.error, "Task exited", exit_code=e.code)
+        _try_log(log.info, "::group::Post Execute")
         msg, state = _apply_retry_policy_or_default(ti, e, log, context)
         error = e
     except BaseException as e:
-        log.exception("Task failed with exception")
-        log.info("::group::Post Execute")
+        _try_log(log.exception, "Task failed with exception")
+        _try_log(log.info, "::group::Post Execute")
         msg, state = _apply_retry_policy_or_default(ti, e, log, context)
         error = e
     finally:
