@@ -86,6 +86,21 @@ class TestPluginsManager:
 
         assert [r for r in caplog.record_tuples if not r[0].startswith("opentelemetry.")] == []
 
+    def test_log_when_no_plugins_to_load(self, caplog):
+        from airflow import plugins_manager
+
+        with (
+            caplog.at_level(logging.DEBUG, logger="airflow.plugins_manager"),
+            mock.patch("airflow.plugins_manager._load_plugins_from_plugin_directory", return_value=([], {})),
+            mock.patch("airflow.plugins_manager._load_entrypoint_plugins", return_value=([], {})),
+            mock.patch("airflow.plugins_manager._load_providers_plugins", return_value=([], {})),
+        ):
+            plugins, import_errors = plugins_manager._get_plugins()
+
+        assert plugins == []
+        assert import_errors == {}
+        assert ("airflow.plugins_manager", logging.DEBUG, "No plugins to load") in caplog.record_tuples
+
     def test_loads_filesystem_plugins(self, caplog):
         from airflow import plugins_manager
 
