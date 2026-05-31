@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -127,10 +128,12 @@ class PowerBIDatasetRefreshOperator(BaseOperator):
                 conn_id=self.conn_id, proxies=self.proxies, api_version=self.api_version, timeout=self.timeout
             )
 
-            dataset_refresh_id = hook.trigger_dataset_refresh(
-                dataset_id=self.dataset_id,
-                group_id=self.group_id,
-                request_body=self.request_body,
+            dataset_refresh_id = asyncio.run(
+                hook.trigger_dataset_refresh(
+                    dataset_id=self.dataset_id,
+                    group_id=self.group_id,
+                    request_body=self.request_body,
+                )
             )
 
             if dataset_refresh_id:
