@@ -1571,7 +1571,7 @@ class ActivitySubprocess(WatchedSubprocess):
         self._last_resource_usage_metric = now
         try:
             cpu_usage, mem_usage = self._process.get_resource_usage()
-        except (self._process.ProcessNotFound, psutil.AccessDenied):
+        except (self._process.ProcessNotFound, psutil.AccessDenied, NotImplementedError):
             return
         tags = {"dag_id": ti.dag_id, "task_id": ti.task_id}
         stats.gauge("task.cpu_usage", cpu_usage, tags=tags)

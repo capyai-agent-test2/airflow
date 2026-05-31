@@ -758,6 +758,7 @@ class TestWatchedSubprocess:
         )
         proc._process.get_resource_usage.return_value = (12.5, 34.5)
         gauge = mocker.patch("airflow.sdk.execution_time.supervisor.stats.gauge", autospec=True)
+        mocker.patch("airflow.sdk.execution_time.supervisor.time.monotonic", return_value=10.0)
 
         proc._emit_task_usage_metrics()
 
