@@ -2951,6 +2951,7 @@ class TestPostClearTaskInstances(TestTaskInstanceEndpoint):
             with TaskGroup(group_id="group"):
                 for index in range(task_count):
                     EmptyOperator(task_id=f"task_{index:03d}")
+            EmptyOperator(task_id="outside_group")
 
         dag_maker.create_dagrun(run_id="run_1", state=DagRunState.RUNNING)
         session.execute(
@@ -2973,6 +2974,9 @@ class TestPostClearTaskInstances(TestTaskInstanceEndpoint):
 
         assert response.status_code == 200, response.json()
         assert response.json()["total_entries"] == task_count
+        assert {ti["task_id"] for ti in response.json()["task_instances"]} == {
+            f"group.task_{index:03d}" for index in range(task_count)
+        }
 
     @pytest.mark.parametrize(
         ("main_dag", "task_instances", "request_dag", "payload", "expected_ti"),
