@@ -4100,6 +4100,11 @@ dags:
     # Git-Sync liveness service HTTP bind port
     httpPort: 1234
 
+    # Configure ports for the git-sync containers.
+    ports: []
+    # - name: git-sync-metrics
+    #   containerPort: 1234
+
     # Setting this to true, will remove readinessProbe usage and configure livenessProbe to
     # use a dedicated Git-Sync liveness service. In future, behaviour with value true will be
     # default one and old one will be removed

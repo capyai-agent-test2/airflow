@@ -61,6 +61,23 @@ class TestGitSyncWorker:
 
         assert jmespath.search("spec.template.spec.containers[1].name", docs[0]) == "git-sync"
 
+    def test_should_add_ports_to_git_sync_container(self):
+        docs = render_chart(
+            values={
+                "dags": {
+                    "gitSync": {
+                        "enabled": True,
+                        "ports": [{"name": "git-sync-metrics", "containerPort": 1234}],
+                    },
+                },
+            },
+            show_only=["templates/workers/worker-deployment.yaml"],
+        )
+
+        assert jmespath.search("spec.template.spec.containers[1].ports", docs[0]) == [
+            {"name": "git-sync-metrics", "containerPort": 1234}
+        ]
+
     def test_should_not_add_sync_container_to_worker_if_git_sync_and_persistence_are_enabled(self):
         docs = render_chart(
             values={
