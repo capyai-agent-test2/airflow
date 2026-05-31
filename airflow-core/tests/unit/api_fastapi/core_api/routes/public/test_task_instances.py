@@ -7179,6 +7179,7 @@ class TestPatchTaskGroup(TestTaskInstanceEndpoint):
                 "include_downstream": True,
                 "include_future": True,
                 "include_past": True,
+                "clear_downstream": False,
             },
         )
         assert response.status_code == 200
@@ -7189,6 +7190,7 @@ class TestPatchTaskGroup(TestTaskInstanceEndpoint):
         assert call_kwargs["downstream"] is True
         assert call_kwargs["future"] is True
         assert call_kwargs["past"] is True
+        assert call_kwargs["clear_downstream"] is False
 
     def test_patch_task_group_note_only(self, test_client, session):
         """Test that patching only the note updates notes for all TIs in the group without changing state."""
@@ -7291,6 +7293,7 @@ class TestPatchTaskGroupDryRun(TestTaskInstanceEndpoint):
         # Verify commit=False was passed for dry run
         call_kwargs = mock_set_tg_state.call_args.kwargs
         assert call_kwargs["commit"] is False
+        assert call_kwargs["clear_downstream"] is True
 
     def test_dry_run_query_count_does_not_scale(self, test_client, session):
         """Test that dry_run query count does not grow excessively with task group size."""

@@ -1060,6 +1060,7 @@ def patch_task_group_instances_dry_run(
                 downstream=body.include_downstream,
                 future=body.include_future,
                 past=body.include_past,
+                clear_downstream=body.clear_downstream,
                 commit=False,
                 session=session,
             )
