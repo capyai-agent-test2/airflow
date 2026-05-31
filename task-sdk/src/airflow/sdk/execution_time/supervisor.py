@@ -49,6 +49,7 @@ import structlog
 from pydantic import BaseModel, TypeAdapter
 
 from airflow.sdk._shared.logging.structlog import reconfigure_logger
+from airflow.sdk._shared.observability.metrics import stats
 from airflow.sdk.api.client import Client, ServerResponseError
 from airflow.sdk.api.datamodels._generated import (
     AssetResponse,
@@ -188,6 +189,7 @@ SOCKET_CLEANUP_TIMEOUT: float = conf.getfloat("workers", "socket_cleanup_timeout
 # Maximum possible time (in seconds) that task will have for execution of auxiliary processes
 # like listeners after task is complete.
 TASK_OVERTIME_THRESHOLD: float = conf.getfloat("core", "task_success_overtime")
+TASK_RESOURCE_USAGE_METRIC_INTERVAL = 5.0
 
 SERVER_TERMINATED = "SERVER_TERMINATED"
 
@@ -570,6 +572,9 @@ class ProcessTracker:
     def wait(self, timeout: float | None) -> int:
         raise NotImplementedError
 
+    def get_resource_usage(self) -> tuple[float, float]:
+        raise NotImplementedError
+
 
 class PsutilTracker(ProcessTracker):
     """
@@ -593,6 +598,10 @@ class PsutilTracker(ProcessTracker):
 
     def wait(self, timeout: float | None) -> int:
         return self._impl.wait(timeout)
+
+    def get_resource_usage(self) -> tuple[float, float]:
+        with self._impl.oneshot():
+            return self._impl.cpu_percent(), self._impl.memory_percent()
 
 
 def _validate_schema_version(instance, _, value) -> str | None:
@@ -1295,6 +1304,7 @@ class ActivitySubprocess(WatchedSubprocess):
 
     _last_successful_heartbeat: float = attrs.field(default=0, init=False)
     _last_heartbeat_attempt: float = attrs.field(default=0, init=False)
+    _last_resource_usage_metric: float = attrs.field(default=0, init=False)
 
     _should_retry: bool = attrs.field(default=False, init=False)
     """Whether the task should retry or not as decided by the API server."""
@@ -1545,9 +1555,27 @@ class ActivitySubprocess(WatchedSubprocess):
             if alive:
                 # We don't need to heartbeat if the process has shutdown, as we are just finishing of reading the
                 # logs
+                self._emit_task_usage_metrics()
                 self._send_heartbeat_if_needed()
 
                 self._handle_process_overtime_if_needed()
+
+    def _emit_task_usage_metrics(self):
+        """Emit current task subprocess resource usage metrics."""
+        ti = self.ti
+        if ti is None:
+            return
+        now = time.monotonic()
+        if now - self._last_resource_usage_metric < TASK_RESOURCE_USAGE_METRIC_INTERVAL:
+            return
+        self._last_resource_usage_metric = now
+        try:
+            cpu_usage, mem_usage = self._process.get_resource_usage()
+        except (self._process.ProcessNotFound, psutil.AccessDenied):
+            return
+        tags = {"dag_id": ti.dag_id, "task_id": ti.task_id}
+        stats.gauge("task.cpu_usage", cpu_usage, tags=tags)
+        stats.gauge("task.mem_usage", mem_usage, tags=tags)
 
     def _handle_process_overtime_if_needed(self):
         """Handle termination of auxiliary processes if the task exceeds the configured overtime."""

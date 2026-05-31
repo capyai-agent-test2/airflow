@@ -468,6 +468,18 @@ metrics:
     legacy_name: "ti.deferred.{queue}.{dag_id}.{task_id}"
     name_variables: ["queue", "dag_id", "task_id"]
 
+  - name: "task.cpu_usage"
+    description: "CPU usage percentage for a running task subprocess. Metric with dag_id and task_id tagging."
+    type: "gauge"
+    legacy_name: "task.cpu_usage.{dag_id}.{task_id}"
+    name_variables: ["dag_id", "task_id"]
+
+  - name: "task.mem_usage"
+    description: "Memory usage percentage for a running task subprocess. Metric with dag_id and task_id tagging."
+    type: "gauge"
+    legacy_name: "task.mem_usage.{dag_id}.{task_id}"
+    name_variables: ["dag_id", "task_id"]
+
   - name: "ol.event.size"
     description: "Size in bytes of an OpenLineage event by event type and operator."
     type: "gauge"
