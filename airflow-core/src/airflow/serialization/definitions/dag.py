@@ -79,21 +79,28 @@ def _render_external_task_marker_logical_date(
     if not isinstance(template, str):
         return coerce_datetime(template)
 
+    from jinja2 import UndefinedError
+
     from airflow.sdk.definitions._internal.templater import create_template_env
     from airflow.sdk.execution_time.context import MacrosAccessor
 
-    rendered = (
-        create_template_env()
-        .from_string(template)
-        .render(
-            {
-                "ds": logical_date.strftime("%Y-%m-%d") if logical_date else None,
-                "logical_date": logical_date,
-                "macros": MacrosAccessor(),
-                "ts": logical_date.isoformat() if logical_date else None,
-            }
+    try:
+        rendered = (
+            create_template_env()
+            .from_string(template)
+            .render(
+                {
+                    "ds": logical_date.strftime("%Y-%m-%d") if logical_date else None,
+                    "logical_date": logical_date,
+                    "macros": MacrosAccessor(),
+                    "ts": logical_date.isoformat() if logical_date else None,
+                }
+            )
         )
-    )
+    except UndefinedError:
+        if logical_date is None:
+            return None
+        raise
     return parse_datetime(rendered)
 
 

@@ -1979,10 +1979,17 @@ def test_external_task_marker_downstream_clear_includes_child_dag(dag_bag_ext, s
 
 
 @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Test for 3.0+")
-def test_external_task_marker_constant_logical_date_template_with_null_source_date():
+@pytest.mark.parametrize(
+    ("template", "expected"),
+    [
+        ("2015-01-01", coerce_datetime(DEFAULT_DATE)),
+        ("{{ logical_date.isoformat() }}", None),
+    ],
+)
+def test_external_task_marker_logical_date_template_with_null_source_date(template, expected):
     from airflow.serialization.definitions.dag import _render_external_task_marker_logical_date
 
-    assert _render_external_task_marker_logical_date("2015-01-01", None) == coerce_datetime(DEFAULT_DATE)
+    assert _render_external_task_marker_logical_date(template, None) == expected
 
 
 @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Different test for 3.0+")
