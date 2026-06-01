@@ -312,7 +312,7 @@ def test_submit_event_task_end(mock_utcnow, session, create_task_instance, event
     assert actual_xcoms == expected_xcoms
 
 
-@patch("airflow.models.trigger.DatabaseCallbackSink")
+@patch("airflow.models.trigger.DatabaseCallbackSink", autospec=True)
 def test_submit_event_task_failed_retries_and_sends_retry_requests(
     mock_callback_sink, session, create_task_instance
 ):
@@ -350,7 +350,7 @@ def test_submit_event_task_failed_retries_and_sends_retry_requests(
     assert send_calls[1].kwargs["callback"].email_type == "retry"
 
 
-@patch("airflow.models.trigger.DatabaseCallbackSink")
+@patch("airflow.models.trigger.DatabaseCallbackSink", autospec=True)
 def test_submit_event_task_failed_without_retries_sends_failure_requests(
     mock_callback_sink, session, create_task_instance
 ):

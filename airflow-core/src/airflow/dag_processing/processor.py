@@ -390,7 +390,7 @@ def _execute_dag_callbacks(dagbag: DagBag, request: DagCallbackRequest, log: Fil
 
 
 def _execute_task_callbacks(dagbag: DagBag, request: TaskCallbackRequest, log: FilteringBoundLogger) -> None:
-    if request.task_callback_type not in {
+    if request.task_callback_type is not None and request.task_callback_type not in {
         TaskInstanceState.SUCCESS,
         TaskInstanceState.FAILED,
         TaskInstanceState.UP_FOR_RETRY,

@@ -602,7 +602,7 @@ def _(event: BaseTaskEndEvent, *, task_instance: TaskInstance, session: Session)
         )
         bundle_version = (
             task_instance.dag_version.bundle_version
-            if task_instance.dag_version
+            if task_instance.dag_version and task_instance.dag_run.bundle_version is not None
             else task_instance.dag_run.bundle_version
         )
         request = EmailRequest(
