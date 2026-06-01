@@ -919,6 +919,14 @@
                             ],
                             "default": null
                         },
+                        "digest": {
+                            "description": "The pod_template image digest. If set, it takes precedence over tag.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        },
                         "pullPolicy": {
                             "description": "The pod_template image pull policy.",
                             "type": "string",

@@ -95,6 +95,8 @@ images:
     # `config.kubernetes_executor.worker_container_tag` must be not set .
     repository: ~
     tag: ~
+    # Specifying digest takes precedence over tag.
+    digest: ~
     pullPolicy: IfNotPresent
   flower:
     repository: ~
