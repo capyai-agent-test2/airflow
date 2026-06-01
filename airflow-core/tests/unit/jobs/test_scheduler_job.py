@@ -5281,20 +5281,12 @@ class TestSchedulerJob:
         with create_session() as session:
             self.job_runner._create_dagruns_for_dags(session, session)
 
-        def dict_from_obj(obj):
-            """Get dict of column attrs from SqlAlchemy object."""
-            return {k.key: obj.__dict__.get(k) for k in obj.__mapper__.column_attrs}
-
         # dag3 should be triggered since it only depends on asset1, and it's been queued
         created_run = session.scalars(select(DagRun).where(DagRun.dag_id == dag3.dag_id)).one()
         assert created_run.state == State.QUEUED
         assert created_run.start_date is None
 
-        # we don't have __eq__ defined on AssetEvent because... given the fact that in the future
-        # we may register events from other systems, asset_id + timestamp might not be enough PK
-        assert list(map(dict_from_obj, created_run.consumed_asset_events)) == list(
-            map(dict_from_obj, [event1, event2])
-        )
+        assert created_run.consumed_asset_events == []
         assert created_run.data_interval_start is None
         assert created_run.data_interval_end is None
         # dag2 ADRQ record should still be there since the dag run was *not* triggered
@@ -5315,6 +5307,67 @@ class TestSchedulerJob:
         )
 
         assert created_run.creating_job_id == scheduler_job.id
+
+    @pytest.mark.need_serialized_dag
+    def test_create_dag_runs_assets_ignores_events_before_dag_parsed(self, session, dag_maker):
+        asset = Asset(uri="test://asset1", name="test_asset", group="test_group")
+        old_event_time = DEFAULT_DATE
+        dag_parsed_time = DEFAULT_DATE + timedelta(days=1)
+        new_event_time = DEFAULT_DATE + timedelta(days=1, hours=1)
+        queued_time = DEFAULT_DATE + timedelta(days=2)
+
+        with dag_maker(dag_id="assets-1", start_date=timezone.utcnow(), session=session):
+            BashOperator(task_id="task", bash_command="echo 1", outlets=[asset])
+        dr = dag_maker.create_dagrun(
+            run_id="run1",
+            logical_date=old_event_time,
+            data_interval=(old_event_time, old_event_time + timedelta(days=1)),
+        )
+
+        asset1_id = session.scalar(select(AssetModel.id).where(AssetModel.uri == asset.uri))
+        session.add(
+            AssetEvent(
+                asset_id=asset1_id,
+                source_task_id="task",
+                source_dag_id=dr.dag_id,
+                source_run_id=dr.run_id,
+                source_map_index=-1,
+                timestamp=old_event_time,
+            )
+        )
+
+        with time_machine.travel(dag_parsed_time, tick=False):
+            with dag_maker(dag_id="assets-consumer", schedule=[asset], catchup=False):
+                pass
+        consumer_dag = dag_maker.dag
+        dag_maker.dag_model.last_parsed_time = dag_parsed_time
+        new_run_id = "run2"
+        new_event = AssetEvent(
+            asset_id=asset1_id,
+            source_task_id="task",
+            source_dag_id=dr.dag_id,
+            source_run_id=new_run_id,
+            source_map_index=-1,
+            timestamp=new_event_time,
+        )
+        session.add_all(
+            [
+                new_event,
+                AssetDagRunQueue(
+                    asset_id=asset1_id, target_dag_id=consumer_dag.dag_id, created_at=queued_time
+                ),
+            ]
+        )
+        session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[self.null_exec])
+
+        with create_session() as session:
+            self.job_runner._create_dagruns_for_dags(session, session)
+
+        created_run = session.scalars(select(DagRun).where(DagRun.dag_id == consumer_dag.dag_id)).one()
+        assert [event.source_run_id for event in created_run.consumed_asset_events] == [new_run_id]
 
     @pytest.mark.need_serialized_dag
     def test_create_dag_runs_asset_alias_with_asset_event_attached(self, session, dag_maker):
