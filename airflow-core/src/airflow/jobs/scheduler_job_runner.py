@@ -2185,30 +2185,36 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 )
                 .cte()
             )
+            event_after_direct_asset_ref_created = exists().where(
+                DagScheduleAssetReference.dag_id == dag.dag_id,
+                DagScheduleAssetReference.asset_id == AssetEvent.asset_id,
+                AssetEvent.timestamp
+                > func.coalesce(
+                    cte.c.previous_dag_run_run_after,
+                    DagScheduleAssetReference.created_at,
+                    date.min,
+                ),
+            )
+            event_after_alias_ref_created = AssetEvent.source_aliases.any(
+                AssetAliasModel.scheduled_dags.any(
+                    and_(
+                        DagScheduleAssetAliasReference.dag_id == dag.dag_id,
+                        AssetEvent.timestamp
+                        > func.coalesce(
+                            cte.c.previous_dag_run_run_after,
+                            DagScheduleAssetAliasReference.created_at,
+                            date.min,
+                        ),
+                    )
+                )
+            )
 
             asset_events = list(
                 session.scalars(
                     select(AssetEvent)
                     .where(
-                        or_(
-                            AssetEvent.asset_id.in_(
-                                select(DagScheduleAssetReference.asset_id).where(
-                                    DagScheduleAssetReference.dag_id == dag.dag_id
-                                )
-                            ),
-                            AssetEvent.source_aliases.any(
-                                AssetAliasModel.scheduled_dags.any(
-                                    DagScheduleAssetAliasReference.dag_id == dag.dag_id
-                                )
-                            ),
-                        ),
+                        or_(event_after_direct_asset_ref_created, event_after_alias_ref_created),
                         AssetEvent.timestamp <= triggered_date,
-                        AssetEvent.timestamp
-                        > func.coalesce(
-                            cte.c.previous_dag_run_run_after,
-                            dag_model.last_parsed_time,
-                            date.min,
-                        ),
                     )
                     .order_by(AssetEvent.timestamp.asc(), AssetEvent.id.asc())
                 )

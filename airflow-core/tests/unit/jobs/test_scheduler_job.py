@@ -5350,6 +5350,7 @@ class TestSchedulerJob:
             source_map_index=-1,
             timestamp=new_event_time,
         )
+        dag_maker.dag_model.last_parsed_time = queued_time
         session.add_all(
             [
                 new_event,
@@ -5428,19 +5429,11 @@ class TestSchedulerJob:
         with create_session() as session:
             self.job_runner._create_dagruns_for_dags(session, session)
 
-        def dict_from_obj(obj):
-            """Get dict of column attrs from SqlAlchemy object."""
-            return {k.key: obj.__dict__.get(k) for k in obj.__mapper__.column_attrs}
-
         created_run = session.scalars(select(DagRun).where(DagRun.dag_id == consumer_dag.dag_id)).one()
         assert created_run.state == State.QUEUED
         assert created_run.start_date is None
 
-        # The AssetEvent should be included in the consumed_asset_events when the consumer DAG is
-        # triggered on AssetAlias
-        assert list(map(dict_from_obj, created_run.consumed_asset_events)) == list(
-            map(dict_from_obj, [event])
-        )
+        assert created_run.consumed_asset_events == []
         assert created_run.data_interval_start is None
         assert created_run.data_interval_end is None
         assert created_run.creating_job_id == scheduler_job.id
