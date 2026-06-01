@@ -668,8 +668,7 @@ class TestSerializedDagModel:
 
     def test_dynamic_dag_update_preserves_null_check(self, dag_maker, session):
         """
-        Test that dynamic DAG update gracefully handles case where SerializedDagModel doesn't exist.
-        This preserves the null-check fix from PR #56422 and tests the direct UPDATE path.
+        Test that dynamic Dag update recreates the SerializedDagModel if it is missing.
         """
         with dag_maker(dag_id="test_missing_serdag", serialized=True, session=session) as dag:
             EmptyOperator(task_id="task1")
@@ -693,11 +692,12 @@ class TestSerializedDagModel:
         # Manually delete SerializedDagModel (simulates edge case)
         session.execute(delete(SDM).where(SDM.dag_id == "test_missing_serdag"))
         session.commit()
+        session.expire_all()
 
         # Verify no SerializedDagModel exists
         assert SDM.get("test_missing_serdag", session=session) is None
 
-        # Try to update - should return False gracefully (not crash)
+        # Try to update - should recreate the missing SerializedDagModel row.
         result = SDM.write_dag(
             dag=lazy_dag,
             bundle_name="test_bundle",
@@ -706,7 +706,99 @@ class TestSerializedDagModel:
             session=session,
         )
 
-        assert result is False  # Should return False when SerializedDagModel is missing
+        assert result is True
+        session.flush()
+        serialized_dag = SDM.get("test_missing_serdag", session=session)
+        assert serialized_dag is not None
+        assert serialized_dag.dag_version_id == dag_version.id
+
+    def test_dynamic_dag_update_recreates_missing_dag_code(self, dag_maker, session):
+        """Test that dynamic Dag update recreates the DagCode row if it is missing."""
+        from airflow.models.dagcode import DagCode
+
+        with dag_maker(dag_id="test_missing_dag_code", serialized=True, session=session) as dag:
+            EmptyOperator(task_id="task1")
+
+        lazy_dag = LazyDeserializedDAG.from_dag(dag)
+        SDM.write_dag(
+            dag=lazy_dag,
+            bundle_name="test_bundle",
+            bundle_version=None,
+            session=session,
+        )
+        session.commit()
+
+        dag_version = session.scalar(
+            select(DagVersion).where(DagVersion.dag_id == "test_missing_dag_code").limit(1)
+        )
+        assert dag_version is not None
+
+        session.execute(delete(DagCode).where(DagCode.dag_id == "test_missing_dag_code"))
+        session.commit()
+        session.expire_all()
+
+        assert DagCode.get_latest_dagcode("test_missing_dag_code", session=session) is None
+
+        result = SDM.write_dag(
+            dag=lazy_dag,
+            bundle_name="test_bundle",
+            bundle_version=None,
+            min_update_interval=None,
+            session=session,
+        )
+
+        assert result is True
+        session.flush()
+        dag_code = DagCode.get_latest_dagcode("test_missing_dag_code", session=session)
+        assert dag_code is not None
+        assert dag_code.dag_version_id == dag_version.id
+
+    def test_dynamic_dag_update_recreates_missing_latest_serialized_dag(self, dag_maker, session):
+        """Test that dynamic Dag update recreates a missing latest SerializedDagModel row."""
+        dag_id = "test_missing_latest_serdag"
+        with dag_maker(dag_id=dag_id, session=session) as dag:
+            EmptyOperator(task_id="task1")
+
+        dag_maker.create_dagrun()
+        EmptyOperator(task_id="task2", dag=dag)
+        SDM.write_dag(
+            dag=LazyDeserializedDAG.from_dag(dag),
+            bundle_name="test_bundle",
+            bundle_version=None,
+            session=session,
+        )
+        session.commit()
+
+        latest_dag_version = session.scalar(
+            select(DagVersion)
+            .where(DagVersion.dag_id == dag_id)
+            .order_by(DagVersion.created_at.desc())
+            .limit(1)
+        )
+        assert latest_dag_version is not None
+        assert session.scalar(select(func.count()).select_from(SDM).where(SDM.dag_id == dag_id)) == 2
+
+        session.execute(delete(SDM).where(SDM.dag_version_id == latest_dag_version.id))
+        session.commit()
+        session.expire_all()
+
+        assert session.scalar(select(func.count()).select_from(SDM).where(SDM.dag_id == dag_id)) == 1
+        assert session.scalar(select(SDM).where(SDM.dag_version_id == latest_dag_version.id)) is None
+
+        EmptyOperator(task_id="task3", dag=dag)
+        result = SDM.write_dag(
+            dag=LazyDeserializedDAG.from_dag(dag),
+            bundle_name="test_bundle",
+            bundle_version=None,
+            min_update_interval=None,
+            session=session,
+        )
+
+        assert result is True
+        session.flush()
+        serialized_dag = session.scalar(select(SDM).where(SDM.dag_version_id == latest_dag_version.id))
+        assert serialized_dag is not None
+        assert len(serialized_dag.dag.task_dict) == 3
 
     def test_dynamic_dag_update_success(self, dag_maker, session):
         """

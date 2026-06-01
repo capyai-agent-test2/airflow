@@ -686,6 +686,14 @@ class SerializedDagModel(Base):
             and dag_version
             and dag_version.bundle_name == bundle_name
         ):
+            if (
+                session.scalar(select(literal(True)).where(DagCode.dag_version_id == dag_version.id).limit(1))
+                is None
+            ):
+                dag_code = DagCode(dag_version, dag.fileloc, DagCode.get_code_from_file(dag.fileloc))
+                dag_code.dag_version_id = dag_version.id
+                session.add(dag_code)
+                return True
             if name_updated:
                 # The serialized DAG itself is unchanged, but deadline alert name(s) were
                 # updated in the DB, so report True so callers know a write did occur.
@@ -712,30 +720,33 @@ class SerializedDagModel(Base):
             # the serialized dag, the dag_version and the dag_code instead of a new version
             # if the dag_version is not associated with any task instances
 
-            # Use direct UPDATE to avoid loading the full serialized DAG
-            result = session.execute(
-                update(cls)
-                .where(cls.dag_version_id == dag_version.id)
-                .values(
-                    {
-                        cls._data: new_serialized_dag._data,
-                        cls._data_compressed: new_serialized_dag._data_compressed,
-                        cls.dag_hash: new_serialized_dag.dag_hash,
-                    }
+            if (
+                session.scalar(select(literal(True)).where(cls.dag_version_id == dag_version.id).limit(1))
+                is None
+            ):
+                new_serialized_dag.dag_version_id = dag_version.id
+                session.add(new_serialized_dag)
+                cls._create_deadline_alert_records(new_serialized_dag, deadline_uuid_mapping)
+            else:
+                # Use direct UPDATE to avoid loading the full serialized DAG
+                session.execute(
+                    update(cls)
+                    .where(cls.dag_version_id == dag_version.id)
+                    .values(
+                        {
+                            cls._data: new_serialized_dag._data,
+                            cls._data_compressed: new_serialized_dag._data_compressed,
+                            cls.dag_hash: new_serialized_dag.dag_hash,
+                        }
+                    )
                 )
-            )
-
-            if getattr(result, "rowcount", 0) == 0:
-                # No rows updated - serialized DAG doesn't exist
-                return False
-
-            if deadline_uuid_mapping:
-                updated_serialized_dag = session.scalar(
-                    select(cls).where(cls.dag_version_id == dag_version.id)
-                )
-                if updated_serialized_dag:
-                    updated_serialized_dag.deadline_alerts.clear()
-                    cls._create_deadline_alert_records(updated_serialized_dag, deadline_uuid_mapping)
+                if deadline_uuid_mapping:
+                    updated_serialized_dag = session.scalar(
+                        select(cls).where(cls.dag_version_id == dag_version.id)
+                    )
+                    if updated_serialized_dag:
+                        updated_serialized_dag.deadline_alerts.clear()
+                        cls._create_deadline_alert_records(updated_serialized_dag, deadline_uuid_mapping)
 
             # The dag_version and dag_code may not have changed, still we should
             # do the below actions:
@@ -745,7 +756,15 @@ class SerializedDagModel(Base):
             dag_version.version_data = version_data
             session.merge(dag_version)
             # Update the latest DagCode
-            DagCode.update_source_code(dag_id=dag.dag_id, fileloc=dag.fileloc, session=session)
+            if (
+                session.scalar(select(literal(True)).where(DagCode.dag_version_id == dag_version.id).limit(1))
+                is not None
+            ):
+                DagCode.update_source_code(dag_id=dag.dag_id, fileloc=dag.fileloc, session=session)
+            else:
+                dag_code = DagCode(dag_version, dag.fileloc, DagCode.get_code_from_file(dag.fileloc))
+                dag_code.dag_version_id = dag_version.id
+                session.add(dag_code)
             return True
 
         dagv = DagVersion.write_dag(
