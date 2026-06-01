@@ -258,6 +258,26 @@ def _get_template_context(ti: TaskInstance, task: SdkOperator) -> Context:
     return runtime_ti.get_template_context()
 
 
+def _apply_task_params_to_mapped_task(sdk_task: SdkOperator, task_params: dict[str, object]) -> None:
+    from airflow.sdk.definitions._internal.expandinput import DictOfListsExpandInput
+    from airflow.sdk.definitions.mappedoperator import MappedOperator
+
+    if not isinstance(sdk_task, MappedOperator):
+        return
+
+    expand_input = sdk_task._get_specified_expand_input()
+    if not isinstance(expand_input, DictOfListsExpandInput):
+        return
+
+    mapped_params = {key: [task_params[key]] for key in expand_input.value.keys() & task_params.keys()}
+    if mapped_params:
+        setattr(
+            sdk_task,
+            sdk_task._expand_input_attr,
+            DictOfListsExpandInput({**expand_input.value, **mapped_params}),
+        )
+
+
 class TaskCommandMarker:
     """Marker for listener hooks, to properly detect from which component they are called."""
 
@@ -428,6 +448,7 @@ def task_test(args, dag: DAG | None = None) -> None:
     if args.task_params:
         passed_in_params = json.loads(args.task_params)
         sdk_task.params.update(passed_in_params)
+        _apply_task_params_to_mapped_task(sdk_task, passed_in_params)
 
     if sdk_task.params and isinstance(sdk_task.params, ParamsDict):
         sdk_task.params.validate()
