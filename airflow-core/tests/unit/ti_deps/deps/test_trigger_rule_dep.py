@@ -28,12 +28,15 @@ import pytest
 from airflow.models.dag_version import DagVersion
 from airflow.models.taskinstance import TaskInstance
 from airflow.providers.standard.operators.empty import EmptyOperator
+from airflow.providers.standard.operators.python import BranchPythonOperator
 from airflow.sdk import task, task_group
 from airflow.sdk.bases.operator import BaseOperator
 from airflow.task.trigger_rule import TriggerRule
 from airflow.ti_deps.dep_context import DepContext
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep, _UpstreamTIStates
 from airflow.utils.state import DagRunState, TaskInstanceState
+
+from tests_common.test_utils.taskinstance import run_task_instance
 
 pytestmark = pytest.mark.db_test
 
@@ -697,6 +700,39 @@ class TestTriggerRuleDep:
             expected_reason="all upstream tasks to have succeeded or been skipped, but found 1",
             expected_ti_state=expected_ti_state,
         )
+
+    @pytest.mark.parametrize("trigger_rule", [TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS, TriggerRule.ONE_DONE])
+    def test_branch_success_from_unselected_path_is_skipped(self, session, dag_maker, trigger_rule):
+        with dag_maker(
+            "test_branch_success_from_unselected_path_is_skipped",
+            schedule=None,
+            session=session,
+        ):
+            branch1 = BranchPythonOperator(task_id="branch1", python_callable=lambda: "branch2")
+            branch2 = BranchPythonOperator(task_id="branch2", python_callable=lambda: "deadend")
+            dummy = EmptyOperator(task_id="dummy")
+            deadend = EmptyOperator(task_id="deadend")
+            problematic = EmptyOperator(task_id="problematic", trigger_rule=trigger_rule)
+
+            branch1 >> [problematic, branch2]
+            branch2 >> [deadend, dummy]
+            dummy >> problematic
+
+        dr = dag_maker.create_dagrun(state=DagRunState.RUNNING)
+        tis = {ti.task_id: ti for ti in dr.task_instances}
+
+        run_task_instance(tis["branch1"], branch1)
+        run_task_instance(tis["branch2"], branch2)
+
+        tuple(
+            TriggerRuleDep().get_dep_statuses(
+                ti=tis["problematic"],
+                dep_context=DepContext(flag_upstream_failed=True),
+                session=session,
+            )
+        )
+
+        assert tis["problematic"].state == SKIPPED
 
     @pytest.mark.parametrize("flag_upstream_failed", [True, False])
     def test_all_failed_tr_success(self, session, get_task_instance, flag_upstream_failed):

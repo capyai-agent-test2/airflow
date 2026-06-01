@@ -30,6 +30,9 @@ XCOM_SKIPMIXIN_SKIPPED = "skipped"
 # The dictionary key used to denote task IDs that are followed
 XCOM_SKIPMIXIN_FOLLOWED = "followed"
 
+# The dictionary key used to denote task IDs explicitly returned by a branch
+XCOM_SKIPMIXIN_BRANCH_TASK_IDS = "branch_task_ids"
+
 
 class NotPreviouslySkippedDep(BaseTIDep):
     """

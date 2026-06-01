@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 XCOM_SKIPMIXIN_KEY = "skipmixin_key"
 XCOM_SKIPMIXIN_SKIPPED = "skipped"
 XCOM_SKIPMIXIN_FOLLOWED = "followed"
+XCOM_SKIPMIXIN_BRANCH_TASK_IDS = "branch_task_ids"
 
 
 def _ensure_tasks(nodes: Iterable[DAGNode]) -> Sequence[Operator]:
@@ -140,6 +141,8 @@ class SkipMixin(LoggingMixin):
         downstream_tasks = _ensure_tasks(task.downstream_list)
 
         if downstream_tasks:
+            original_branch_task_id_set = branch_task_id_set.copy()
+
             # For a branching workflow that looks like this, when "branch" does skip_all_except("task1"),
             # we intuitively expect both "task1" and "join" to execute even though strictly speaking,
             # "join" is also immediately downstream of "branch" and should have been skipped. Therefore,
@@ -161,8 +164,11 @@ class SkipMixin(LoggingMixin):
 
             follow_task_ids = [t.task_id for t in downstream_tasks if t.task_id in branch_task_id_set]
             log.info("Skipping tasks %s", skip_tasks)
+            xcom_value = {XCOM_SKIPMIXIN_FOLLOWED: follow_task_ids}
+            if original_branch_task_id_set != set(follow_task_ids):
+                xcom_value[XCOM_SKIPMIXIN_BRANCH_TASK_IDS] = sorted(original_branch_task_id_set)
             ti.xcom_push(
                 key=XCOM_SKIPMIXIN_KEY,
-                value={XCOM_SKIPMIXIN_FOLLOWED: follow_task_ids},
+                value=xcom_value,
             )
             self._set_state_to_skipped(skip_tasks, ti.map_index)  # type: ignore[arg-type]

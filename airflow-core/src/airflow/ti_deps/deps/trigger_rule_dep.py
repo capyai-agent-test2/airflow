@@ -28,6 +28,10 @@ from sqlalchemy import and_, func, or_, select
 from airflow.models.taskinstance import PAST_DEPENDS_MET
 from airflow.task.trigger_rule import TriggerRule as TR
 from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
+from airflow.ti_deps.deps.not_previously_skipped_dep import (
+    XCOM_SKIPMIXIN_BRANCH_TASK_IDS,
+    XCOM_SKIPMIXIN_KEY,
+)
 from airflow.utils.state import TaskInstanceState
 
 if TYPE_CHECKING:
@@ -280,7 +284,7 @@ class TriggerRuleDep(BaseTIDep):
                 for x in dep_context.ensure_finished_tis(ti.get_dagrun(session), session)
                 if _is_relevant_upstream(upstream=x, relevant_ids=indirect_setups.keys())
             )
-            upstream_states = _UpstreamTIStates.calculate(finished_upstream_tis)
+            upstream_states = _UpstreamTIStates.calculate(iter(finished_upstream_tis))
 
             # all of these counts reflect indirect setups which are relevant for this ti
             success = upstream_states.success
@@ -358,11 +362,11 @@ class TriggerRuleDep(BaseTIDep):
             trigger_rule = task.trigger_rule
             trigger_rule_str = getattr(trigger_rule, "value", trigger_rule)
 
-            finished_upstream_tis = (
+            finished_upstream_tis = [
                 finished_ti
                 for finished_ti in dep_context.ensure_finished_tis(ti.get_dagrun(session), session)
                 if _is_relevant_upstream(upstream=finished_ti, relevant_ids=task.upstream_task_ids)
-            )
+            ]
             upstream_states = _UpstreamTIStates.calculate(finished_upstream_tis)
 
             success = upstream_states.success
@@ -373,6 +377,34 @@ class TriggerRuleDep(BaseTIDep):
             done = upstream_states.done
             success_setup = upstream_states.success_setup
             skipped_setup = upstream_states.skipped_setup
+
+            if trigger_rule in (TR.NONE_FAILED_MIN_ONE_SUCCESS, TR.ONE_DONE):
+                ignored_branch_successes = 0
+                for finished_ti in finished_upstream_tis:
+                    upstream_task = upstream_tasks[finished_ti.task_id]
+                    if (
+                        finished_ti.state != TaskInstanceState.SUCCESS
+                        or not upstream_task.inherits_from_skipmixin
+                    ):
+                        continue
+
+                    xcom_map_index = ti.map_index if upstream_task.is_mapped else -1
+                    prev_result = ti.xcom_pull(
+                        task_ids=upstream_task.task_id,
+                        key=XCOM_SKIPMIXIN_KEY,
+                        session=session,
+                        map_indexes=xcom_map_index,
+                    )
+                    if (
+                        prev_result is not None
+                        and XCOM_SKIPMIXIN_BRANCH_TASK_IDS in prev_result
+                        and ti.task_id not in prev_result[XCOM_SKIPMIXIN_BRANCH_TASK_IDS]
+                    ):
+                        ignored_branch_successes += 1
+
+                if ignored_branch_successes:
+                    success -= ignored_branch_successes
+                    skipped += ignored_branch_successes
 
             # Optimization: Don't need to hit the database if all upstreams are
             # "simple" tasks (no task or task group mapping involved).
