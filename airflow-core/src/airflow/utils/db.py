@@ -1018,7 +1018,12 @@ def synchronize_log_template(*, session: Session = NEW_SESSION) -> None:
     from airflow.models.tasklog import LogTemplate
 
     metadata = reflect_tables([LogTemplate], session)
-    log_template_table: Table | None = metadata.tables.get(LogTemplate.__tablename__)
+    log_template_table: Table | None = metadata.tables.get(LogTemplate.__table__.key)
+    if log_template_table is None:
+        log_template_table = next(
+            (table for table in metadata.tables.values() if table.name == LogTemplate.__tablename__),
+            None,
+        )
 
     if log_template_table is None:
         log.info("Log template table does not exist (added in 2.3.0); skipping log template sync.")
@@ -1097,7 +1102,14 @@ def reflect_tables(tables: list[MappedClassProtocol | str] | None, session):
         for tbl in tables:
             try:
                 table_name = tbl if isinstance(tbl, str) else tbl.__tablename__
-                metadata.reflect(bind=bind, only=[table_name], extend_existing=True, resolve_fks=False)
+                table_schema = None if isinstance(tbl, str) else tbl.__table__.schema
+                metadata.reflect(
+                    bind=bind,
+                    schema=table_schema,
+                    only=[table_name],
+                    extend_existing=True,
+                    resolve_fks=False,
+                )
             except exc.InvalidRequestError:
                 continue
     return metadata
