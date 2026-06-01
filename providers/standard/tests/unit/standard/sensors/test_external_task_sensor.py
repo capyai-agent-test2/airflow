@@ -66,11 +66,13 @@ from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS, AIRFLOW_V
 
 if AIRFLOW_V_3_0_PLUS:
     from airflow.models.dag_version import DagVersion
+    from airflow.models.xcom import XComModel
     from airflow.sdk import BaseOperator, task as task_deco
     from airflow.utils.types import DagRunTriggeredByType
 else:
     from airflow.decorators import task as task_deco  # type: ignore[attr-defined,no-redef]
     from airflow.models import BaseOperator  # type: ignore[assignment,no-redef]
+    from airflow.models.xcom import XCom as XComModel  # type: ignore[attr-defined, no-redef]
 
 if AIRFLOW_V_3_1_PLUS:
     from airflow.sdk import TaskGroup
@@ -1680,6 +1682,89 @@ def test_external_task_sensor_extra_link(
     url = task.operator_extra_links[0].get_link(operator=task, ti_key=ti.key)
 
     assert f"/dags/{expected_external_dag_id}/runs" in url
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Needs Flask app context fixture for AF 2")
+def test_external_task_sensor_extra_link_uses_external_dates_filter(
+    create_task_instance_of_operator, session
+):
+    external_dag_id = "external_dag"
+    external_logical_date = DEFAULT_DATE - timedelta(minutes=5)
+    external_run_id = "external_run"
+    ti = create_task_instance_of_operator(
+        ExternalTaskSensor,
+        dag_id="external_task_sensor_extra_links_dag",
+        logical_date=DEFAULT_DATE,
+        task_id="external_task_sensor_extra_links_task",
+        external_dag_id=external_dag_id,
+        execution_date_fn=lambda logical_date: external_logical_date,
+    )
+    task = ti.render_templates()
+    task.external_dates_filter = external_logical_date.isoformat()
+    session.add(
+        DagRun(
+            dag_id=external_dag_id,
+            run_id=external_run_id,
+            logical_date=external_logical_date,
+            run_after=external_logical_date,
+            run_type=DagRunType.MANUAL,
+            state=DagRunState.SUCCESS,
+        )
+    )
+    session.flush()
+
+    url = task.operator_extra_links[0].get_link(operator=task, ti_key=ti.key)
+
+    assert f"/dags/{external_dag_id}/runs/{external_run_id}" in url
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Needs Flask app context fixture for AF 2")
+def test_external_task_sensor_extra_link_uses_stored_link(create_task_instance_of_operator, session):
+    stored_url = "/dags/external_dag/runs/external_run"
+    ti = create_task_instance_of_operator(
+        ExternalTaskSensor,
+        dag_id="external_task_sensor_extra_links_dag",
+        logical_date=DEFAULT_DATE,
+        task_id="external_task_sensor_extra_links_task",
+        external_dag_id="external_dag",
+        execution_date_fn=lambda logical_date: DEFAULT_DATE - timedelta(minutes=5),
+    )
+    task = ti.render_templates()
+    session.add(
+        XComModel(
+            dag_run_id=ti.dag_run.id,
+            dag_id=ti.dag_id,
+            task_id=ti.task_id,
+            run_id=ti.run_id,
+            map_index=ti.map_index,
+            key=task.operator_extra_links[0].xcom_key,
+            value=stored_url,
+        )
+    )
+    session.flush()
+
+    url = task.operator_extra_links[0].get_link(operator=task, ti_key=ti.key)
+
+    assert url == stored_url
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Needs Flask app context fixture for AF 2")
+def test_external_task_sensor_extra_link_skips_db_in_task_runtime(
+    create_task_instance_of_operator, monkeypatch
+):
+    ti = create_task_instance_of_operator(
+        ExternalTaskSensor,
+        dag_id="external_task_sensor_extra_links_dag",
+        logical_date=DEFAULT_DATE,
+        task_id="external_task_sensor_extra_links_task",
+        external_dag_id="external_dag",
+    )
+    task = ti.render_templates()
+    monkeypatch.setenv("__AIRFLOW_SUPERVISOR_FD", "1")
+
+    url = task.operator_extra_links[0].get_link(operator=task, ti_key=ti.key)
+
+    assert url == ""
 
 
 class TestExternalTaskMarker:

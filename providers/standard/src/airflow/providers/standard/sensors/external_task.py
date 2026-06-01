@@ -23,7 +23,10 @@ import warnings
 from collections.abc import Callable, Collection, Iterable, Sequence
 from typing import TYPE_CHECKING, ClassVar
 
+from sqlalchemy import select
+
 from airflow.models.dag import DagModel
+from airflow.models.dagrun import DagRun
 from airflow.providers.common.compat.sdk import (
     AirflowSkipException,
     BaseOperatorLink,
@@ -48,7 +51,14 @@ from airflow.providers.standard.version_compat import (
     AIRFLOW_V_3_2_PLUS,
     BaseOperator,
 )
+
+if AIRFLOW_V_3_0_PLUS:
+    from airflow.models.xcom import XComModel
+else:
+    from airflow.models.xcom import XCom as XComModel  # type: ignore[attr-defined, no-redef]
+
 from airflow.utils.file import correct_maybe_zipped
+from airflow.utils.session import create_session
 from airflow.utils.state import State, TaskInstanceState
 
 if not AIRFLOW_V_3_0_PLUS:
@@ -78,6 +88,12 @@ class ExternalDagLink(BaseOperatorLink):
         if TYPE_CHECKING:
             assert isinstance(operator, (ExternalTaskMarker, ExternalTaskSensor))
 
+        if self._is_task_runtime():
+            return ""
+
+        if stored_link := self._get_stored_link(ti_key):
+            return stored_link
+
         external_dag_id = operator.external_dag_id
 
         if not AIRFLOW_V_3_0_PLUS:
@@ -98,11 +114,71 @@ class ExternalDagLink(BaseOperatorLink):
         if AIRFLOW_V_3_0_PLUS:
             from airflow.utils.helpers import build_airflow_dagrun_url
 
-            return build_airflow_dagrun_url(dag_id=external_dag_id, run_id=ti_key.run_id)
+            run_id = self._get_external_dag_run_id(operator, external_dag_id, ti_key) or ti_key.run_id
+            return build_airflow_dagrun_url(dag_id=external_dag_id, run_id=run_id)
         from airflow.utils.helpers import build_airflow_url_with_query  # type:ignore[attr-defined]
 
-        query = {"dag_id": external_dag_id, "run_id": ti_key.run_id}
+        run_id = self._get_external_dag_run_id(operator, external_dag_id, ti_key) or ti_key.run_id
+        query = {"dag_id": external_dag_id, "run_id": run_id}
         return build_airflow_url_with_query(query)
+
+    def _get_stored_link(self, ti_key: TaskInstanceKey) -> str | None:
+        with create_session() as session:
+            return session.scalar(
+                select(XComModel.value).where(
+                    XComModel.dag_id == ti_key.dag_id,
+                    XComModel.task_id == ti_key.task_id,
+                    XComModel.run_id == ti_key.run_id,
+                    XComModel.map_index == ti_key.map_index,
+                    XComModel.key == self.xcom_key,
+                )
+            )
+
+    @staticmethod
+    def _is_task_runtime() -> bool:
+        return "__AIRFLOW_SUPERVISOR_FD" in os.environ or "_AIRFLOW__STARTUP_MSG" in os.environ
+
+    @staticmethod
+    def _get_external_dag_run_id(
+        operator: BaseOperator, external_dag_id: str, ti_key: TaskInstanceKey
+    ) -> str | None:
+        if not isinstance(operator, ExternalTaskSensor):
+            return None
+
+        target_logical_date = ExternalDagLink._get_target_logical_date(operator, ti_key)
+        if target_logical_date is None:
+            return None
+
+        with create_session() as session:
+            return session.scalar(
+                select(DagRun.run_id).where(
+                    DagRun.dag_id == external_dag_id,
+                    DagRun.logical_date == target_logical_date,
+                )
+            )
+
+    @staticmethod
+    def _get_target_logical_date(
+        operator: ExternalTaskSensor, ti_key: TaskInstanceKey
+    ) -> datetime.datetime | None:
+        if operator.external_dates_filter and "," not in operator.external_dates_filter:
+            return datetime.datetime.fromisoformat(operator.external_dates_filter)
+
+        if operator.execution_delta is None:
+            return None
+
+        with create_session() as session:
+            current_logical_date = session.scalar(
+                select(DagRun.logical_date).where(
+                    DagRun.dag_id == ti_key.dag_id,
+                    DagRun.run_id == ti_key.run_id,
+                )
+            )
+
+        if current_logical_date is None:
+            return None
+
+        return current_logical_date - operator.execution_delta
 
 
 class ExternalTaskSensor(BaseSensorOperator):
