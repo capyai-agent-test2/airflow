@@ -1772,6 +1772,15 @@ scheduler:
   # If the scheduler stops heartbeating for 5 minutes (5*60s) kill the
   # scheduler and let Kubernetes restart it
   livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    timeoutSeconds: 20
+    failureThreshold: 5
+    periodSeconds: 60
+    command: ~
+
+  readinessProbe:
+    enabled: false
     initialDelaySeconds: 10
     timeoutSeconds: 20
     failureThreshold: 5
@@ -1781,6 +1790,7 @@ scheduler:
   # Wait for at most 1 minute (6*10s) for the scheduler container to startup.
   # LivenessProbe kicks in after the first successful startupProbe
   startupProbe:
+    enabled: true
     initialDelaySeconds: 0
     failureThreshold: 6
     periodSeconds: 10

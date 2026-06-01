@@ -524,6 +524,25 @@ class TestScheduler:
             "wow such test",
         ]
 
+    @pytest.mark.parametrize("probe", ["livenessProbe", "readinessProbe", "startupProbe"])
+    def test_probe_can_be_disabled(self, probe):
+        docs = render_chart(
+            values={"scheduler": {probe: {"enabled": False}}},
+            show_only=["templates/scheduler/scheduler-deployment.yaml"],
+        )
+
+        assert jmespath.search(f"spec.template.spec.containers[0].{probe}", docs[0]) is None
+
+    @pytest.mark.parametrize("probe", ["livenessProbe", "readinessProbe", "startupProbe"])
+    def test_probe_can_use_tcp_socket(self, probe):
+        docs = render_chart(
+            values={"scheduler": {probe: {"enabled": True, "tcpSocket": {"port": 8793}}}},
+            show_only=["templates/scheduler/scheduler-deployment.yaml"],
+        )
+
+        assert jmespath.search(f"spec.template.spec.containers[0].{probe}.tcpSocket.port", docs[0]) == 8793
+        assert jmespath.search(f"spec.template.spec.containers[0].{probe}.exec", docs[0]) is None
+
     def test_livenessprobe_command(self):
         docs = render_chart(
             show_only=["templates/scheduler/scheduler-deployment.yaml"],

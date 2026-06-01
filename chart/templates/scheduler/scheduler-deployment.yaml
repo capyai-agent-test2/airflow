@@ -196,30 +196,57 @@ spec:
             {{- include "custom_airflow_environment" . | indent 10 }}
             {{- include "standard_airflow_environment" (merge (dict "IncludeJwtSecret" true) .) | indent 10 }}
             {{- include "container_extra_envs" (list . .Values.scheduler.env) | indent 10 }}
+          {{- if .Values.scheduler.livenessProbe.enabled }}
+          {{- $livenessProbe := omit .Values.scheduler.livenessProbe "enabled" "command" }}
+          {{- if or (hasKey $livenessProbe "exec") (hasKey $livenessProbe "grpc") (hasKey $livenessProbe "httpGet") (hasKey $livenessProbe "tcpSocket") }}
           livenessProbe:
-            initialDelaySeconds: {{ .Values.scheduler.livenessProbe.initialDelaySeconds }}
-            timeoutSeconds: {{ .Values.scheduler.livenessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.scheduler.livenessProbe.failureThreshold }}
-            periodSeconds: {{ .Values.scheduler.livenessProbe.periodSeconds }}
+            {{- tpl (toYaml $livenessProbe) . | nindent 12 }}
+          {{- else }}
+          livenessProbe:
+            {{- toYaml $livenessProbe | nindent 12 }}
             exec:
               command:
                 {{- if .Values.scheduler.livenessProbe.command }}
-                  {{- toYaml .Values.scheduler.livenessProbe.command  | nindent 16 }}
+                  {{- toYaml .Values.scheduler.livenessProbe.command | nindent 16 }}
                 {{- else }}
                   {{- include "scheduler_liveness_check_command" . | indent 14 }}
                 {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.scheduler.readinessProbe.enabled }}
+          {{- $readinessProbe := omit .Values.scheduler.readinessProbe "enabled" "command" }}
+          {{- if or (hasKey $readinessProbe "exec") (hasKey $readinessProbe "grpc") (hasKey $readinessProbe "httpGet") (hasKey $readinessProbe "tcpSocket") }}
+          readinessProbe:
+            {{- tpl (toYaml $readinessProbe) . | nindent 12 }}
+          {{- else }}
+          readinessProbe:
+            {{- toYaml $readinessProbe | nindent 12 }}
+            exec:
+              command:
+                {{- if .Values.scheduler.readinessProbe.command }}
+                  {{- toYaml .Values.scheduler.readinessProbe.command | nindent 16 }}
+                {{- else }}
+                  {{- include "scheduler_liveness_check_command" . | indent 14 }}
+                {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.scheduler.startupProbe.enabled }}
+          {{- $startupProbe := omit .Values.scheduler.startupProbe "enabled" "command" }}
+          {{- if or (hasKey $startupProbe "exec") (hasKey $startupProbe "grpc") (hasKey $startupProbe "httpGet") (hasKey $startupProbe "tcpSocket") }}
           startupProbe:
-            initialDelaySeconds: {{ .Values.scheduler.startupProbe.initialDelaySeconds }}
-            timeoutSeconds: {{ .Values.scheduler.startupProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.scheduler.startupProbe.failureThreshold }}
-            periodSeconds: {{ .Values.scheduler.startupProbe.periodSeconds }}
+            {{- tpl (toYaml $startupProbe) . | nindent 12 }}
+          {{- else }}
+          startupProbe:
+            {{- toYaml $startupProbe | nindent 12 }}
             exec:
               command:
                 {{- if .Values.scheduler.startupProbe.command }}
-                  {{- toYaml .Values.scheduler.startupProbe.command  | nindent 16 }}
+                  {{- toYaml .Values.scheduler.startupProbe.command | nindent 16 }}
                 {{- else }}
                   {{- include "scheduler_startup_check_command" . | indent 14 }}
                 {{- end }}
+          {{- end }}
+          {{- end }}
           {{- if and $local (not $remoteLogging) }}
           # Serve logs if we're in local mode and we have neither elasticsearch nor opensearch enabled.
           ports:
