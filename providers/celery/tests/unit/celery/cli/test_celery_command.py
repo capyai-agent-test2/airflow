@@ -196,6 +196,39 @@ class TestWorkerStart:
         )
 
 
+class TestWorkerStartLogServer:
+    @classmethod
+    def setup_class(cls):
+        with conf_vars({("core", "executor"): "CeleryExecutor"}):
+            importlib.reload(executor_loader)
+            importlib.reload(cli_parser)
+            cls.parser = cli_parser.get_parser()
+
+    @mock.patch("airflow.providers.celery.cli.celery_command.maybe_patch_concurrency")
+    @mock.patch("airflow.providers.celery.cli.celery_command.setup_locations")
+    @mock.patch("airflow.providers.celery.cli.celery_command.Process")
+    @mock.patch("airflow.providers.celery.executors.celery_executor.app")
+    @conf_vars({("celery", "pool"): "gevent", ("dag_processor", "stale_bundle_cleanup_interval"): "0"})
+    def test_worker_starts_log_server_before_patching_gevent(
+        self, mock_celery_app, mock_process, mock_locations, mock_patch_concurrency
+    ):
+        mock_locations.return_value = ("pid_file", None, None, None)
+        calls = MagicMock()
+        calls.attach_mock(mock_process.return_value.start, "start_log_server")
+        calls.attach_mock(mock_patch_concurrency, "patch_concurrency")
+        calls.attach_mock(mock_celery_app.worker_main, "worker_main")
+
+        args = self.parser.parse_args(["celery", "worker"])
+
+        celery_command.worker(args)
+
+        assert calls.mock_calls == [
+            mock.call.start_log_server(),
+            mock.call.patch_concurrency(["-P", "gevent"]),
+            mock.call.worker_main(mock.ANY),
+        ]
+
+
 @pytest.mark.backend("mysql", "postgres")
 @pytest.mark.usefixtures("conf_stale_bundle_cleanup_disabled")
 class TestWorkerMultiTeam:

@@ -303,12 +303,8 @@ def worker(args):
     if config.has_option("celery", "pool"):
         pool = config.get("celery", "pool")
         options.extend(["--pool", pool])
-        # Celery pools of type eventlet and gevent use greenlets, which
-        # requires monkey patching the app:
-        # https://eventlet.readthedocs.io/en/latest/patching.html#monkeypatching-the-standard-library
-        # Otherwise task instances hang on the workers and are never
-        # executed.
-        maybe_patch_concurrency(["-P", pool])
+    else:
+        pool = None
 
     worker_pid_file_path, stdout, stderr, log_file = setup_locations(
         process=WORKER_PROCESS_NAME,
@@ -320,6 +316,13 @@ def worker(args):
 
     def run_celery_worker():
         with _serve_logs(skip_serve_logs), _run_stale_bundle_cleanup():
+            if pool:
+                # Celery pools of type eventlet and gevent use greenlets, which
+                # requires monkey patching the app:
+                # https://eventlet.readthedocs.io/en/latest/patching.html#monkeypatching-the-standard-library
+                # Otherwise task instances hang on the workers and are never
+                # executed.
+                maybe_patch_concurrency(["-P", pool])
             celery_app.worker_main(options)
 
     if args.umask:
