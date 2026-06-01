@@ -1469,6 +1469,34 @@ class TestSchedulerJob:
         mock_dep.assert_called_once()
         assert mock_dep.call_args.args[0].task_id == blocked.task_id
 
+    def test_task_instance_scheduling_decisions_checks_tasks_with_finished_indirect_setup(
+        self, dag_maker, session
+    ):
+        dag_id = (
+            "SchedulerJobTest."
+            "test_task_instance_scheduling_decisions_checks_tasks_with_finished_indirect_setup"
+        )
+        with dag_maker(dag_id=dag_id, session=session):
+            setup = EmptyOperator(task_id="setup").as_setup()
+            middle = EmptyOperator(task_id="middle")
+            blocked = EmptyOperator(task_id="blocked")
+            setup >> middle >> blocked
+
+        dr = dag_maker.create_dagrun(state=DagRunState.RUNNING)
+        setup_ti = dr.get_task_instance(setup.task_id, session=session)
+        setup_ti.state = TaskInstanceState.FAILED
+        middle_ti = dr.get_task_instance(middle.task_id, session=session)
+        middle_ti.state = TaskInstanceState.RUNNING
+        blocked_ti = dr.get_task_instance(blocked.task_id, session=session)
+        session.merge(setup_ti)
+        session.merge(middle_ti)
+        session.flush()
+
+        scheduling_decision = dr.task_instance_scheduling_decisions(session=session)
+
+        assert scheduling_decision.changed_tis is True
+        assert blocked_ti.state == TaskInstanceState.UPSTREAM_FAILED
+
     def test_are_premature_tis_skips_blocked_tasks_without_finished_upstreams(self, dag_maker, session):
         dag_id = "SchedulerJobTest.test_are_premature_tis_skips_blocked_tasks_without_finished_upstreams"
         with dag_maker(dag_id=dag_id, session=session):

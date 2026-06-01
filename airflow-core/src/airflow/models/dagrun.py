@@ -133,6 +133,9 @@ def _is_dependency_check_skippable(ti: TI, finished_task_ids: set[str]) -> bool:
     task = ti.task
     if not task or not task.upstream_task_ids or task.trigger_rule == TriggerRule.ALWAYS:
         return False
+    setup_task_ids = {setup.task_id for setup in task.get_upstreams_only_setups()}
+    if not setup_task_ids.isdisjoint(finished_task_ids):
+        return False
     return task.upstream_task_ids.isdisjoint(finished_task_ids)
 
 
