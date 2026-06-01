@@ -2191,28 +2191,33 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 if evaluator.run(dag.timetable.asset_condition, statuses=statuses):
                     queued_adrq_batches.append(remaining_adrqs)
 
-            previous_run_afters = session.scalars(
-                select(DagRun.run_after).where(
+            latest_existing_asset_dag_run_id = session.scalar(
+                select(func.max(DagRun.id)).where(
                     DagRun.dag_id == dag.dag_id,
                     DagRun.run_type == DagRunType.ASSET_TRIGGERED,
-                    DagRun.run_after.is_not(None),
-                )
-            ).all()
-            default_previous_run_after = timezone.make_aware(datetime.min)
-            previous_run_afters_by_batch = (
-                max(
-                    (run_after for run_after in previous_run_afters if run_after < triggered_date),
-                    default=default_previous_run_after,
-                )
-                for triggered_date in (
-                    timezone.coerce_datetime(max(adrq.created_at for adrq in batch))
-                    for batch in queued_adrq_batches
                 )
             )
+            default_previous_run_after = timezone.make_aware(datetime.min)
 
-            for index, (queued_adrq_batch, previous_run_after) in enumerate(
-                zip(queued_adrq_batches, previous_run_afters_by_batch)
-            ):
+            for index, queued_adrq_batch in enumerate(queued_adrq_batches):
+                triggered_date: DateTime = timezone.coerce_datetime(
+                    max(adrq.created_at for adrq in queued_adrq_batch)
+                )
+                if latest_existing_asset_dag_run_id is None:
+                    previous_run_after = default_previous_run_after
+                else:
+                    previous_run_after = (
+                        session.scalar(
+                            select(func.max(DagRun.run_after)).where(
+                                DagRun.id <= latest_existing_asset_dag_run_id,
+                                DagRun.dag_id == dag.dag_id,
+                                DagRun.run_type == DagRunType.ASSET_TRIGGERED,
+                                DagRun.run_after < triggered_date,
+                            )
+                        )
+                        or default_previous_run_after
+                    )
+
                 if active_runs >= dag_model.max_active_runs:
                     self.log.info(
                         "Asset-triggered Dag '%s' reached max_active_runs; leaving %d queued assets.",
@@ -2221,9 +2226,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     )
                     break
                 active_runs += 1
-                triggered_date: DateTime = timezone.coerce_datetime(
-                    max(adrq.created_at for adrq in queued_adrq_batch)
-                )
                 self.log.debug(
                     "Creating asset-triggered DagRun for '%s': %d queued assets, triggered_date=%s",
                     dag.dag_id,
