@@ -75,7 +75,10 @@ from airflow.api_fastapi.common.parameters import (
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.common.types import Mimetype
 from airflow.api_fastapi.core_api.base import OrmClause
-from airflow.api_fastapi.core_api.datamodels.assets import AssetEventCollectionResponse
+from airflow.api_fastapi.core_api.datamodels.assets import (
+    AssetEventCollectionResponse,
+    build_asset_event_response,
+)
 from airflow.api_fastapi.core_api.datamodels.common import BulkBody, BulkResponse
 from airflow.api_fastapi.core_api.datamodels.dag_run import (
     BulkDAGRunBody,
@@ -291,7 +294,12 @@ def get_upstream_asset_events(
             DagRun.dag_id == dag_id,
             DagRun.run_id == dag_run_id,
         )
-        .options(joinedload(DagRun.consumed_asset_events).joinedload(AssetEvent.asset))
+        .options(
+            joinedload(DagRun.consumed_asset_events).joinedload(AssetEvent.asset),
+            joinedload(DagRun.consumed_asset_events)
+            .subqueryload(AssetEvent.created_dagruns)
+            .subqueryload(DagRun.consumed_asset_events),
+        )
     )
     if dag_run is None:
         raise HTTPException(
@@ -300,7 +308,7 @@ def get_upstream_asset_events(
         )
     events = dag_run.consumed_asset_events
     return AssetEventCollectionResponse(
-        asset_events=events,
+        asset_events=[build_asset_event_response(event) for event in events],
         total_entries=len(events),
     )
 

@@ -60,6 +60,7 @@ from airflow.api_fastapi.core_api.datamodels.assets import (
     MaterializeAssetBody,
     QueuedEventCollectionResponse,
     QueuedEventResponse,
+    build_asset_event_response,
 )
 from airflow.api_fastapi.core_api.datamodels.dag_run import DAGRunResponse
 from airflow.api_fastapi.core_api.openapi.exceptions import create_openapi_http_exception_doc
@@ -354,19 +355,8 @@ def get_asset_events(
     )
     assets_events = session.scalars(assets_event_select)
 
-    asset_event_responses = []
-    for asset_event in assets_events:
-        response = AssetEventResponse.model_validate(asset_event)
-        for dag_run, dag_run_response in zip(asset_event.created_dagruns, response.created_dagruns):
-            latest_consumed_event = max(
-                dag_run.consumed_asset_events,
-                key=lambda event: (event.timestamp, event.id),
-            )
-            dag_run_response.triggered_by_asset_event = latest_consumed_event.id == asset_event.id
-        asset_event_responses.append(response)
-
     return AssetEventCollectionResponse(
-        asset_events=asset_event_responses,
+        asset_events=[build_asset_event_response(asset_event) for asset_event in assets_events],
         total_entries=total_entries,
     )
 

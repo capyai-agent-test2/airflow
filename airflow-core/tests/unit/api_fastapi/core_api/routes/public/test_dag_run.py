@@ -1598,7 +1598,7 @@ class TestGetDagRunAssetTriggerEvents:
         session.commit()
         assert event.timestamp
 
-        with assert_queries_count(3):
+        with assert_queries_count(4):
             response = test_client.get(
                 "/dags/TEST_DAG_ID/dagRuns/TEST_DAG_RUN_ID/upstreamAssetEvents",
             )
@@ -1628,6 +1628,7 @@ class TestGetDagRunAssetTriggerEvents:
                             "start_date": from_datetime_to_zulu_without_ms(dr.start_date),
                             "state": "running",
                             "partition_key": partition_key,
+                            "triggered_by_asset_event": True,
                         }
                     ],
                     "partition_key": partition_key,
@@ -1636,6 +1637,57 @@ class TestGetDagRunAssetTriggerEvents:
             "total_entries": 1,
         }
         assert response.json() == expected_response
+
+    @pytest.mark.usefixtures("configure_git_connection_for_dag_bundle")
+    def test_marks_only_latest_consumed_event_as_triggering_dag_run(self, test_client, dag_maker, session):
+        asset1 = Asset(name="ds1", uri="file:///da1")
+
+        with dag_maker(dag_id="source_dag", start_date=START_DATE1, session=session):
+            EmptyOperator(task_id="task", outlets=[asset1])
+        source_dag_run = dag_maker.create_dagrun()
+        ti = source_dag_run.task_instances[0]
+
+        asset1_id = session.scalar(select(AssetModel.id).where(AssetModel.uri == asset1.uri))
+        events = [
+            AssetEvent(
+                asset_id=asset1_id,
+                source_task_id=ti.task_id,
+                source_dag_id=ti.dag_id,
+                source_run_id=ti.run_id,
+                source_map_index=ti.map_index,
+                timestamp=START_DATE1,
+            ),
+            AssetEvent(
+                asset_id=asset1_id,
+                source_task_id=ti.task_id,
+                source_dag_id=ti.dag_id,
+                source_run_id=ti.run_id,
+                source_map_index=ti.map_index,
+                timestamp=START_DATE1 + timedelta(minutes=1),
+            ),
+        ]
+        session.add_all(events)
+
+        with dag_maker(dag_id="TEST_DAG_ID", start_date=START_DATE1, session=session):
+            pass
+        dag_run = dag_maker.create_dagrun(
+            run_id="TEST_DAG_RUN_ID",
+            run_type=DagRunType.ASSET_TRIGGERED,
+        )
+        dag_run.consumed_asset_events.extend(events)
+
+        session.commit()
+
+        response = test_client.get(
+            "/dags/TEST_DAG_ID/dagRuns/TEST_DAG_RUN_ID/upstreamAssetEvents",
+        )
+
+        assert response.status_code == 200
+        asset_events = sorted(response.json()["asset_events"], key=lambda asset_event: asset_event["id"])
+        assert [asset_event["id"] for asset_event in asset_events] == [event.id for event in events]
+        assert [
+            asset_event["created_dagruns"][0]["triggered_by_asset_event"] for asset_event in asset_events
+        ] == [False, True]
 
     def test_should_respond_401(self, unauthenticated_test_client):
         response = unauthenticated_test_client.get(
