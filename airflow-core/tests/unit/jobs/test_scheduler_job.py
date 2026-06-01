@@ -1336,6 +1336,75 @@ class TestSchedulerJob:
         compiled_query = str(captured_queries[0].compile(dialect=mysql.dialect()))
         assert compiled_query.count("USE INDEX (ti_state)") == 1
 
+    def test_find_executable_task_instances_skips_row_number_for_single_dagrun(self, dag_maker, session):
+        dag_id = "SchedulerJobTest.test_find_executable_task_instances_skips_row_number_for_single_dagrun"
+        task_ids = [f"task_{i}" for i in range(3)]
+        with dag_maker(dag_id=dag_id, max_active_tasks=16, session=session):
+            for task_id in task_ids:
+                EmptyOperator(task_id=task_id)
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+        dag_run = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED)
+        tis = dag_run.task_instances
+        for ti in tis:
+            ti.state = State.SCHEDULED
+            session.merge(ti)
+        session.flush()
+
+        captured_queries = []
+
+        def capture_locked_query(query, **kwargs):
+            captured_queries.append(query)
+            return query
+
+        with mock.patch("airflow.jobs.scheduler_job_runner.with_row_locks", side_effect=capture_locked_query):
+            queued_tis = self.job_runner._executable_task_instances_to_queued(max_tis=32, session=session)
+
+        assert {queued_ti.key for queued_ti in queued_tis} == {ti.key for ti in tis}
+        compiled_query = str(captured_queries[0].compile()).lower()
+        assert "row_number" not in compiled_query
+
+    def test_find_executable_task_instances_uses_row_number_for_multiple_dagruns(self, dag_maker, session):
+        first_dag_id = (
+            "SchedulerJobTest.test_find_executable_task_instances_uses_row_number_for_multiple_dagruns_1"
+        )
+        second_dag_id = (
+            "SchedulerJobTest.test_find_executable_task_instances_uses_row_number_for_multiple_dagruns_2"
+        )
+
+        with dag_maker(dag_id=first_dag_id, max_active_tasks=16, session=session):
+            first_task = EmptyOperator(task_id="task")
+        first_dag_run = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED)
+
+        with dag_maker(dag_id=second_dag_id, max_active_tasks=16, session=session):
+            second_task = EmptyOperator(task_id="task")
+        second_dag_run = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED)
+
+        first_ti = first_dag_run.get_task_instance(first_task.task_id, session=session)
+        second_ti = second_dag_run.get_task_instance(second_task.task_id, session=session)
+        for ti in [first_ti, second_ti]:
+            ti.state = State.SCHEDULED
+            session.merge(ti)
+        session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+        captured_queries = []
+
+        def capture_locked_query(query, **kwargs):
+            captured_queries.append(query)
+            return query
+
+        with mock.patch("airflow.jobs.scheduler_job_runner.with_row_locks", side_effect=capture_locked_query):
+            queued_tis = self.job_runner._executable_task_instances_to_queued(max_tis=32, session=session)
+
+        assert {queued_ti.key for queued_ti in queued_tis} == {first_ti.key, second_ti.key}
+        compiled_query = str(captured_queries[0].compile()).lower()
+        assert "row_number" in compiled_query
+
     def test_find_executable_task_instances_pool(self, dag_maker):
         dag_id = "SchedulerJobTest.test_find_executable_task_instances_pool"
         task_id_1 = "dummy"

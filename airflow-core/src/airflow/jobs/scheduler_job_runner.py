@@ -613,52 +613,58 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     tuple_(TI.dag_id, TI.run_id, TI.task_id).not_in(starved_tasks_task_dagrun_concurrency)
                 )
 
-            # Create a subquery with row numbers partitioned by dag_id and run_id.
-            # Different dags can have the same run_id but
-            # the dag_id combined with the run_id uniquely identify a run.
-            ranked_query = (
-                query.add_columns(
-                    func.row_number()
-                    .over(
-                        partition_by=[TI.dag_id, TI.run_id],
-                        order_by=[-TI.priority_weight, DR.logical_date, TI.map_index],
-                    )
-                    .label("row_num"),
-                    DM.max_active_tasks.label("dr_max_active_tasks"),
-                    # Create columns for the order_by checks here for sqlite.
-                    TI.priority_weight.label("priority_weight_for_ordering"),
-                    DR.logical_date.label("logical_date_for_ordering"),
-                    TI.map_index.label("map_index_for_ordering"),
-                )
-            ).subquery()
-
-            # Select only rows where row_number <= max_active_tasks.
-            query = (
-                select(TI)
-                .select_from(ranked_query)
-                .join(
-                    TI,
-                    (TI.dag_id == ranked_query.c.dag_id)
-                    & (TI.task_id == ranked_query.c.task_id)
-                    & (TI.run_id == ranked_query.c.run_id)
-                    & (TI.map_index == ranked_query.c.map_index),
-                )
-                .where(ranked_query.c.row_num <= ranked_query.c.dr_max_active_tasks)
-                # Add the order_by columns from the ranked query for sqlite.
-                .order_by(
-                    -ranked_query.c.priority_weight_for_ordering,
-                    ranked_query.c.logical_date_for_ordering,
-                    ranked_query.c.map_index_for_ordering,
-                )
-                .options(selectinload(TI.dag_model))
-            )
-
-            query = query.limit(max_tis)
-
             timer = stats.timer("scheduler.critical_section_query_duration")
             timer.start()
 
             try:
+                candidate_dr_keys = session.execute(
+                    query.with_only_columns(TI.dag_id, TI.run_id).order_by(None).distinct().limit(2)
+                ).all()
+
+                if len(candidate_dr_keys) > 1:
+                    # Create a subquery with row numbers partitioned by dag_id and run_id.
+                    # Different dags can have the same run_id but
+                    # the dag_id combined with the run_id uniquely identify a run.
+                    ranked_query = (
+                        query.add_columns(
+                            func.row_number()
+                            .over(
+                                partition_by=[TI.dag_id, TI.run_id],
+                                order_by=[-TI.priority_weight, DR.logical_date, TI.map_index],
+                            )
+                            .label("row_num"),
+                            DM.max_active_tasks.label("dr_max_active_tasks"),
+                            # Create columns for the order_by checks here for sqlite.
+                            TI.priority_weight.label("priority_weight_for_ordering"),
+                            DR.logical_date.label("logical_date_for_ordering"),
+                            TI.map_index.label("map_index_for_ordering"),
+                        )
+                    ).subquery()
+
+                    # Select only rows where row_number <= max_active_tasks.
+                    query = (
+                        select(TI)
+                        .select_from(ranked_query)
+                        .join(
+                            TI,
+                            (TI.dag_id == ranked_query.c.dag_id)
+                            & (TI.task_id == ranked_query.c.task_id)
+                            & (TI.run_id == ranked_query.c.run_id)
+                            & (TI.map_index == ranked_query.c.map_index),
+                        )
+                        .where(ranked_query.c.row_num <= ranked_query.c.dr_max_active_tasks)
+                        # Add the order_by columns from the ranked query for sqlite.
+                        .order_by(
+                            -ranked_query.c.priority_weight_for_ordering,
+                            ranked_query.c.logical_date_for_ordering,
+                            ranked_query.c.map_index_for_ordering,
+                        )
+                        .options(selectinload(TI.dag_model))
+                    )
+                else:
+                    query = query.options(selectinload(TI.dag_model))
+
+                query = query.limit(max_tis)
                 locked_query = with_row_locks(query, of=TI, session=session, skip_locked=True)
                 task_instances_to_examine = session.scalars(locked_query).all()
 
