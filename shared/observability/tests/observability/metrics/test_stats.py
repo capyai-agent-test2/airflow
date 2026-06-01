@@ -121,6 +121,30 @@ class TestStats:
         # Avoid side-effects
         importlib.reload(airflow_shared.observability.metrics.stats)
 
+    def test_force_flush_uses_backend_when_available(self):
+        importlib.reload(airflow_shared.observability.metrics.stats)
+        stats = airflow_shared.observability.metrics.stats
+        backend = Mock()
+        stats.initialize(factory=lambda: backend, export_legacy_names=True)
+
+        assert stats.force_flush(timeout_millis=123) is backend.force_flush.return_value
+        backend.force_flush.assert_called_once_with(timeout_millis=123)
+        assert stats.Stats.force_flush(timeout_millis=456) is backend.force_flush.return_value
+        backend.force_flush.assert_called_with(timeout_millis=456)
+        # Avoid side-effects
+        importlib.reload(airflow_shared.observability.metrics.stats)
+
+    def test_force_flush_is_noop_when_backend_does_not_buffer_metrics(self):
+        importlib.reload(airflow_shared.observability.metrics.stats)
+        stats = airflow_shared.observability.metrics.stats
+        stats.initialize(
+            factory=get_statsd_logger_factory(stats_class=statsd.StatsClient), export_legacy_names=True
+        )
+
+        assert stats.force_flush(timeout_millis=123) is True
+        # Avoid side-effects
+        importlib.reload(airflow_shared.observability.metrics.stats)
+
     def test_load_custom_statsd_client(self):
         importlib.reload(airflow_shared.observability.metrics.stats)
         stats = airflow_shared.observability.metrics.stats

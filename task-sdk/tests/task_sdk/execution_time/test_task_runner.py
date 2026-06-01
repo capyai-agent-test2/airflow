@@ -499,6 +499,22 @@ def test_run_swallows_supervisor_terminal_send_failure(create_runtime_ti, mock_s
     assert error is None
 
 
+def test_flush_spans_flushes_metrics_with_same_timeout():
+    tracer_provider = mock.Mock()
+    with (
+        mock.patch("airflow.sdk.execution_time.task_runner.trace.get_tracer_provider") as get_tracer_provider,
+        mock.patch("airflow.sdk.execution_time.task_runner.stats.force_flush") as force_flush,
+        mock.patch("airflow.sdk.execution_time.task_runner.conf.getint", return_value=123),
+    ):
+        get_tracer_provider.return_value = tracer_provider
+
+        with task_runner.flush_spans():
+            pass
+
+    tracer_provider.force_flush.assert_called_once_with(timeout_millis=123)
+    force_flush.assert_called_once_with(timeout_millis=123)
+
+
 def test_run_signals_fail_closed_when_failure_terminal_send_fails(create_runtime_ti, mock_supervisor_comms):
     """
     When the task FAILS and the terminal-state send to the supervisor fails too

@@ -86,6 +86,11 @@ class StatsLogger(Protocol):
         """Timer metric that can be cancelled."""
         raise NotImplementedError()
 
+    @classmethod
+    def force_flush(cls, timeout_millis: int = 10000) -> bool:
+        """Flush buffered metrics."""
+        raise NotImplementedError()
+
 
 class NoStatsLogger:
     """If no StatsLogger is configured, NoStatsLogger is used as a fallback."""
@@ -126,3 +131,8 @@ class NoStatsLogger:
     def timer(cls, *args, **kwargs) -> Timer:
         """Timer metric that can be cancelled."""
         return Timer()
+
+    @classmethod
+    def force_flush(cls, timeout_millis: int = 10000) -> bool:
+        """Flush buffered metrics."""
+        return True

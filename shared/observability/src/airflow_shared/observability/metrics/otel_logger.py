@@ -296,6 +296,12 @@ class SafeOtelLogger:
         """Timer context manager returns the duration and can be cancelled."""
         return _OtelTimer(self, stat, tags)
 
+    def force_flush(self, timeout_millis: int = 10000) -> bool:
+        """Flush any pending OTel metrics."""
+        if hasattr(self.otel, "force_flush"):
+            return self.otel.force_flush(timeout_millis=timeout_millis)
+        return True
+
 
 class InternalGauge:
     """Stores sync gauge instrument and current value to support delta feature."""

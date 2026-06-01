@@ -283,6 +283,14 @@ def timer(
     return backend.timer(stat, **regular_kw)
 
 
+def force_flush(timeout_millis: int = 10000) -> bool:
+    """Flush buffered metrics when the configured backend supports it."""
+    backend = _get_backend()
+    if hasattr(backend, "force_flush"):
+        return backend.force_flush(timeout_millis=timeout_millis)
+    return True
+
+
 class _DualTimer:
     """
     Timer that manages both a regular and a legacy backend timer.
@@ -327,3 +335,4 @@ class Stats:
     gauge = staticmethod(gauge)
     timing = staticmethod(timing)
     timer = staticmethod(timer)
+    force_flush = staticmethod(force_flush)
