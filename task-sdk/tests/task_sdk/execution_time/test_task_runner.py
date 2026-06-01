@@ -500,7 +500,7 @@ def test_run_swallows_supervisor_terminal_send_failure(create_runtime_ti, mock_s
 
 
 def test_flush_spans_flushes_metrics_with_same_timeout():
-    tracer_provider = mock.Mock()
+    tracer_provider = mock.Mock(spec=["force_flush"])
     with (
         mock.patch("airflow.sdk.execution_time.task_runner.trace.get_tracer_provider") as get_tracer_provider,
         mock.patch("airflow.sdk.execution_time.task_runner.stats.force_flush") as force_flush,

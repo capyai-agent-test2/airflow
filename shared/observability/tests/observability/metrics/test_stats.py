@@ -124,7 +124,7 @@ class TestStats:
     def test_force_flush_uses_backend_when_available(self):
         importlib.reload(airflow_shared.observability.metrics.stats)
         stats = airflow_shared.observability.metrics.stats
-        backend = Mock()
+        backend = Mock(spec=StatsLogger)
         stats.initialize(factory=lambda: backend, export_legacy_names=True)
 
         assert stats.force_flush(timeout_millis=123) is backend.force_flush.return_value
