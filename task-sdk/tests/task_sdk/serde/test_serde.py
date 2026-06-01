@@ -198,6 +198,14 @@ class C:
         return None
 
 
+class CustomIntEnum(enum.IntEnum):
+    A = 1
+    B = 2
+
+    def serialize(self):
+        return f"{self.name}.{self.value}"
+
+
 @pytest.mark.usefixtures("recalculate_patterns")
 class TestSerDe:
     def test_ser_primitives(self):
@@ -217,10 +225,17 @@ class TestSerDe:
         e = serialize(i)
         assert i == e
 
+    def test_ser_primitive_based_enum_without_serializer_raises(self):
         Color = enum.IntEnum("Color", ["RED", "GREEN"])
-        i = Color.RED
-        e = serialize(i)
-        assert i == e
+        with pytest.raises(TypeError, match="cannot serialize object of type <enum 'Color'>"):
+            serialize(Color.RED)
+
+    def test_ser_primitive_based_enum_uses_custom_serializer(self):
+        assert serialize(CustomIntEnum.A) == {
+            CLASSNAME: "tests.task_sdk.serde.test_serde.CustomIntEnum",
+            VERSION: 0,
+            DATA: "A.1",
+        }
 
     def test_ser_collections(self):
         i = [1, 2]
