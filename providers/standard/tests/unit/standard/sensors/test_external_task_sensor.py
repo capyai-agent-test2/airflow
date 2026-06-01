@@ -30,6 +30,7 @@ from airflow import settings
 from airflow.models import DagRun, TaskInstance
 from airflow.models.dag import DAG
 from airflow.models.serialized_dag import SerializedDagModel
+from airflow.models.xcom import XComModel
 from airflow.models.xcom_arg import XComArg
 from airflow.providers.common.compat.sdk import (
     AirflowException,
@@ -1680,6 +1681,70 @@ def test_external_task_sensor_extra_link(
     url = task.operator_extra_links[0].get_link(operator=task, ti_key=ti.key)
 
     assert f"/dags/{expected_external_dag_id}/runs" in url
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Needs Flask app context fixture for AF 2")
+def test_external_task_sensor_extra_link_uses_external_dates_filter(
+    create_task_instance_of_operator, session
+):
+    external_dag_id = "external_dag"
+    external_logical_date = DEFAULT_DATE - timedelta(minutes=5)
+    external_run_id = "external_run"
+    ti = create_task_instance_of_operator(
+        ExternalTaskSensor,
+        dag_id="external_task_sensor_extra_links_dag",
+        logical_date=DEFAULT_DATE,
+        task_id="external_task_sensor_extra_links_task",
+        external_dag_id=external_dag_id,
+        execution_date_fn=lambda logical_date: external_logical_date,
+    )
+    task = ti.render_templates()
+    task.external_dates_filter = external_logical_date.isoformat()
+    session.add(
+        DagRun(
+            dag_id=external_dag_id,
+            run_id=external_run_id,
+            logical_date=external_logical_date,
+            run_after=external_logical_date,
+            run_type=DagRunType.MANUAL,
+            state=DagRunState.SUCCESS,
+        )
+    )
+    session.flush()
+
+    url = task.operator_extra_links[0].get_link(operator=task, ti_key=ti.key)
+
+    assert f"/dags/{external_dag_id}/runs/{external_run_id}" in url
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Needs Flask app context fixture for AF 2")
+def test_external_task_sensor_extra_link_uses_stored_link(create_task_instance_of_operator, session):
+    stored_url = "/dags/external_dag/runs/external_run"
+    ti = create_task_instance_of_operator(
+        ExternalTaskSensor,
+        dag_id="external_task_sensor_extra_links_dag",
+        logical_date=DEFAULT_DATE,
+        task_id="external_task_sensor_extra_links_task",
+        external_dag_id="external_dag",
+        execution_date_fn=lambda logical_date: DEFAULT_DATE - timedelta(minutes=5),
+    )
+    task = ti.render_templates()
+    session.add(
+        XComModel(
+            dag_run_id=ti.dag_run.id,
+            dag_id=ti.dag_id,
+            task_id=ti.task_id,
+            run_id=ti.run_id,
+            map_index=ti.map_index,
+            key=task.operator_extra_links[0].xcom_key,
+            value=stored_url,
+        )
+    )
+    session.flush()
+
+    url = task.operator_extra_links[0].get_link(operator=task, ti_key=ti.key)
+
+    assert url == stored_url
 
 
 class TestExternalTaskMarker:
