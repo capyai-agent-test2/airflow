@@ -31,7 +31,8 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.runtime.environment import EnvironmentContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import Column, Integer, MetaData, Table, select
+from sqlalchemy import Column, Integer, MetaData, Table, create_engine, select, text
+from sqlalchemy.orm import Session
 
 from airflow import settings
 from airflow.models import Base as airflow_base
@@ -46,7 +47,9 @@ from airflow.utils.db import (
     create_default_connections,
     downgrade,
     initdb,
+    reflect_tables,
     resetdb,
+    synchronize_log_template,
     upgradedb,
 )
 from airflow.utils.db_manager import RunDBManager
@@ -87,6 +90,41 @@ def initialized_db():
 
 
 class TestDb:
+    def test_reflect_tables_uses_model_schema(self):
+        class CustomSchemaLogTemplate:
+            __tablename__ = "log_template"
+
+        metadata = MetaData(schema="custom_schema")
+        CustomSchemaLogTemplate.__table__ = Table(
+            "log_template", metadata, Column("id", Integer, primary_key=True)
+        )
+        engine = create_engine("sqlite://")
+
+        with engine.begin() as connection:
+            connection.execute(text("ATTACH DATABASE ':memory:' AS custom_schema"))
+            metadata.create_all(connection)
+
+            reflected = reflect_tables([CustomSchemaLogTemplate], Session(connection))
+
+        assert "custom_schema.log_template" in reflected.tables
+
+    def test_synchronize_log_template_uses_schema_qualified_reflected_table(self, mocker):
+        metadata = MetaData(schema="custom_schema")
+        Table(
+            "log_template",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("filename"),
+            Column("elasticsearch_id"),
+        )
+        mocker.patch("airflow.utils.db.reflect_tables", return_value=metadata)
+        session = mocker.MagicMock(spec=Session)
+        session.execute.return_value.first.return_value = None
+
+        synchronize_log_template(session=session)
+
+        session.add.assert_called()
+
     def test_initdb_use_migration_files_uses_alembic_for_empty_db(self, mocker):
         session = mocker.MagicMock()
         mock_config = object()
