@@ -82,7 +82,9 @@ Add the following settings in ``airflow.cfg``:
 *   ``num_dag_runs_to_retain_rendered_fields``: Controls the number of recent dag runs for which
     Rendered Task Instance Fields are retained. Records from older runs are deleted during task execution.
 *   ``compress_serialized_dags``: This option controls whether to compress the Serialized Dag to the Database.
-    It is useful when there are very large Dags in your cluster. When ``True``, this will disable the Dag dependencies view.
+    It is useful when there are very large Dags in your cluster, especially for MySQL deployments that reach
+    packet-size limits while inserting rows into the ``serialized_dag`` table. When ``True``, this will disable
+    the Dag dependencies view.
 
 If you are updating Airflow from <1.10.7, please do not forget to run ``airflow db migrate``.
 
