@@ -869,7 +869,16 @@ def post_clear_task_instances(
     if future:
         body.end_date = None
 
-    if (task_markers_to_clear := body.task_ids) is not None:
+    task_markers_to_clear = body.task_ids
+    if body.task_group_id is not None:
+        task_group = dag.task_group_dict.get(body.task_group_id)
+        if task_group is None:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, f"Task group '{body.task_group_id}' not found in Dag '{dag_id}'"
+            )
+        task_markers_to_clear = [task.task_id for task in task_group.iter_tasks()]
+
+    if task_markers_to_clear is not None:
         mapped_tasks_tuples = {t for t in task_markers_to_clear if isinstance(t, tuple)}
         # Unmapped tasks are expressed in their task_ids (without map_indexes)
         normal_task_ids = {t for t in task_markers_to_clear if not isinstance(t, tuple)}

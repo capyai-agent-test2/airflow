@@ -2943,6 +2943,30 @@ class TestGetTaskInstanceTry(TestTaskInstanceEndpoint):
 
 
 class TestPostClearTaskInstances(TestTaskInstanceEndpoint):
+    def test_clear_task_group_includes_more_than_default_page_size(self, test_client, dag_maker, session):
+        dag_id = "clear_large_task_group"
+        group_id = "large_group"
+
+        with dag_maker(dag_id, session=session):
+            with TaskGroup(group_id=group_id):
+                for task_index in range(55):
+                    EmptyOperator(task_id=f"task_{task_index}")
+        dag_maker.create_dagrun(run_id="TEST_DAG_RUN_ID")
+        session.commit()
+
+        response = test_client.post(
+            f"/dags/{dag_id}/clearTaskInstances",
+            json={
+                "dag_run_id": "TEST_DAG_RUN_ID",
+                "dry_run": True,
+                "only_failed": False,
+                "task_group_id": group_id,
+            },
+        )
+
+        assert response.status_code == 200, response.json()
+        assert response.json()["total_entries"] == 55
+
     @pytest.mark.parametrize(
         ("main_dag", "task_instances", "request_dag", "payload", "expected_ti"),
         [
