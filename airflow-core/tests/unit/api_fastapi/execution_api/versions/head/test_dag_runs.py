@@ -28,6 +28,7 @@ from airflow.api_fastapi.execution_api.security import require_auth
 from airflow.models import DagModel
 from airflow.models.dagrun import DagRun
 from airflow.providers.standard.operators.empty import EmptyOperator
+from airflow.sdk import Param
 from airflow.utils.state import DagRunState, State
 from airflow.utils.types import DagRunType
 
@@ -221,6 +222,31 @@ class TestDagRunTrigger:
                 "reason": "already_exists",
             }
         }
+
+    def test_trigger_dag_run_param_validation_error(self, client, session, dag_maker):
+        dag_id = "test_trigger_dag_run_invalid_param"
+        run_id = "test_run_id"
+
+        with dag_maker(
+            dag_id=dag_id,
+            session=session,
+            params={"validated_param": Param("a", type="string", enum=["a", "b"])},
+            serialized=True,
+        ):
+            EmptyOperator(task_id="test_task")
+        session.commit()
+
+        response = client.post(
+            f"/execution/dag-runs/{dag_id}/{run_id}",
+            json={"conf": {"validated_param": "c"}},
+        )
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["reason"] == "param_validation_error"
+        assert detail["message"].startswith(
+            "Invalid input for param validated_param: 'c' is not one of ['a', 'b']"
+        )
 
     @pytest.mark.parametrize("parent_triggering_user_name", ["alice", None])
     def test_trigger_dag_run_inherits_triggering_user_name(
