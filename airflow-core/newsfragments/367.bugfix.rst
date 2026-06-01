@@ -1,0 +1,1 @@
+Prevent mark-failed task actions from clearing selected downstream task instances.
