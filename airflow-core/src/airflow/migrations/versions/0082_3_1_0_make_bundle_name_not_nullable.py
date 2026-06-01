@@ -30,6 +30,7 @@ from __future__ import annotations
 from alembic import op
 from sqlalchemy.sql import text
 
+from airflow.configuration import conf
 from airflow.migrations.db_types import StringID
 from airflow.migrations.utils import ignore_sqlite_value_error
 
@@ -41,38 +42,71 @@ depends_on = None
 airflow_version = "3.1.0"
 
 
+def _get_configured_dag_bundles() -> list[tuple[str, str | None]]:
+    config_list = conf.getjson("dag_processor", "dag_bundle_config_list")
+    if not isinstance(config_list, list):
+        return []
+
+    bundles = []
+    for bundle_config in config_list:
+        if not isinstance(bundle_config, dict):
+            continue
+        name = bundle_config.get("name")
+        kwargs = bundle_config.get("kwargs")
+        path = kwargs.get("path") if isinstance(kwargs, dict) else None
+        bundles.append((name, path if isinstance(path, str) else None))
+    return [(name, path) for name, path in bundles if isinstance(name, str)]
+
+
+def _insert_dag_bundle(dialect_name: str, name: str) -> None:
+    conn = op.get_bind()
+    if dialect_name == "postgresql":
+        conn.execute(
+            text("INSERT INTO dag_bundle (name) VALUES (:name) ON CONFLICT (name) DO NOTHING"),
+            {"name": name},
+        )
+    elif dialect_name == "mysql":
+        conn.execute(text("INSERT IGNORE INTO dag_bundle (name) VALUES (:name)"), {"name": name})
+    elif dialect_name == "sqlite":
+        conn.execute(text("INSERT OR IGNORE INTO dag_bundle (name) VALUES (:name)"), {"name": name})
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+
+
 def upgrade():
     """Make bundle_name not nullable."""
     dialect_name = op.get_bind().dialect.name
-    if dialect_name == "postgresql":
-        op.execute(
-            text("""
-                INSERT INTO dag_bundle (name) VALUES
-                    ('example_dags'),
-                    ('dags-folder')
-                ON CONFLICT (name) DO NOTHING;
-                """)
-        )
-    if dialect_name == "mysql":
-        op.execute(
-            text("""
-                    INSERT IGNORE INTO dag_bundle (name) VALUES
-                    ('example_dags'),
-                    ('dags-folder');
-                    """)
-        )
+    configured_bundles = _get_configured_dag_bundles()
+    default_bundle_name = configured_bundles[0][0] if configured_bundles else "dags-folder"
+
     if dialect_name == "sqlite":
         op.execute(text("PRAGMA foreign_keys=OFF"))
-        op.execute(
-            text("""
-                    INSERT OR IGNORE INTO dag_bundle (name) VALUES
-                    ('example_dags'),
-                    ('dags-folder');
-                    """)
-        )
+
+    bundle_names = ["example_dags", default_bundle_name, *(name for name, _ in configured_bundles)]
+    for bundle_name in dict.fromkeys(bundle_names):
+        _insert_dag_bundle(dialect_name, bundle_name)
 
     conn = op.get_bind()
     with ignore_sqlite_value_error(), op.batch_alter_table("dag", schema=None) as batch_op:
+        for bundle_name, bundle_path in configured_bundles:
+            if bundle_path:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE dag
+                        SET bundle_name = :bundle_name
+                        WHERE bundle_name IS NULL
+                            AND (fileloc = :bundle_path OR fileloc LIKE :bundle_path_prefix ESCAPE '!')
+                        """
+                    ),
+                    {
+                        "bundle_name": bundle_name,
+                        "bundle_path": bundle_path.rstrip("/"),
+                        "bundle_path_prefix": f"{_escape_like(bundle_path.rstrip('/'))}/%",
+                    },
+                )
         conn.execute(
             text(
                 """
@@ -80,11 +114,12 @@ def upgrade():
                 SET bundle_name =
                     CASE
                         WHEN fileloc LIKE '%/airflow/example_dags/%' THEN 'example_dags'
-                        ELSE 'dags-folder'
+                        ELSE :default_bundle_name
                     END
                 WHERE bundle_name IS NULL
                 """
-            )
+            ),
+            {"default_bundle_name": default_bundle_name},
         )
         # drop the foreign key temporarily and recreate it once both columns are changed
         batch_op.drop_constraint(batch_op.f("dag_bundle_name_fkey"), type_="foreignkey")
