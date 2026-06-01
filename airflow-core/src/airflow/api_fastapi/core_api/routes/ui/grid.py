@@ -378,8 +378,19 @@ def _build_ti_summaries(
         return None
 
     serdag = _get_serdag(dag_bag, dag_id, dag_version_id, session)
-    if TYPE_CHECKING:
-        assert serdag
+    if serdag is None:
+        task_instances = []
+        for task_id in sorted(ti_details):
+            agg = _get_aggs_for_node(ti_details[task_id])
+            task_instances.append(
+                {
+                    "task_id": task_id,
+                    "task_display_name": task_id,
+                    **agg,
+                    "child_states": None,
+                }
+            )
+        return {"run_id": run_id, "dag_id": dag_id, "task_instances": task_instances}
 
     def get_node_summaries() -> Iterable[dict[str, Any]]:
         yielded_task_ids: set[str] = set()

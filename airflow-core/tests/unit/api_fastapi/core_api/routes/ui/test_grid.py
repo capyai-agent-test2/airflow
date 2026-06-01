@@ -1175,6 +1175,21 @@ class TestGetGridDataEndpoint:
         assert len(summaries) == 1
         assert summaries[0]["run_id"] == "run_1"
 
+    def test_grid_ti_summaries_stream_handles_missing_serialized_dag(self, session, test_client, monkeypatch):
+        """Streaming endpoint falls back to flat task summaries when Dag structure is unavailable."""
+        session.commit()
+        monkeypatch.setattr(DBDagBag, "get_dag", lambda *args, **kwargs: None)
+
+        response = test_client.get(f"/grid/ti_summaries/{DAG_ID}", params={"run_ids": ["run_2"]})
+
+        assert response.status_code == 200
+        summaries = self._parse_ndjson(response)
+        assert len(summaries) == 1
+        task_instances = {ti["task_id"]: ti for ti in summaries[0]["task_instances"]}
+        assert TASK_ID in task_instances
+        assert task_instances[TASK_ID]["task_display_name"] == TASK_ID
+        assert task_instances[TASK_ID]["child_states"] is None
+
     def test_grid_ti_summaries_stream_empty_run_ids(self, session, test_client):
         """Streaming endpoint with no run_ids returns an empty body."""
         session.commit()
