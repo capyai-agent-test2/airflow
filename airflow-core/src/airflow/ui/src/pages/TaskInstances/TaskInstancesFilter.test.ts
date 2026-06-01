@@ -28,6 +28,9 @@ describe("getTaskInstancesFilterKeys", () => {
 
     expect(keys).toContain(SearchParamsKeys.NAME_PATTERN);
     expect(keys).toContain(SearchParamsKeys.RENDERED_MAP_INDEX);
+    expect(keys.indexOf(SearchParamsKeys.NAME_PATTERN)).toBeLessThan(
+      keys.indexOf(SearchParamsKeys.RENDERED_MAP_INDEX),
+    );
   });
 
   it("uses rendered map index search first for mapped task instance lists", () => {
@@ -38,6 +41,9 @@ describe("getTaskInstancesFilterKeys", () => {
     });
 
     expect(keys[0]).toBe(SearchParamsKeys.RENDERED_MAP_INDEX);
-    expect(keys).not.toContain(SearchParamsKeys.NAME_PATTERN);
+    expect(keys).toContain(SearchParamsKeys.NAME_PATTERN);
+    expect(keys.indexOf(SearchParamsKeys.RENDERED_MAP_INDEX)).toBeLessThan(
+      keys.indexOf(SearchParamsKeys.NAME_PATTERN),
+    );
   });
 });

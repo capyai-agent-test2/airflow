@@ -48,6 +48,7 @@ export const getTaskInstancesFilterKeys = ({
 }): Array<FilterableSearchParamsKeys> => {
   const paramKeys: Array<FilterableSearchParamsKeys> = [
     (taskId === undefined ? NAME_PATTERN_PARAM : RENDERED_MAP_INDEX_PARAM) as FilterableSearchParamsKeys,
+    ...(taskId === undefined ? [] : [NAME_PATTERN_PARAM as FilterableSearchParamsKeys]),
     LOGICAL_DATE_RANGE_PARAM as FilterableSearchParamsKeys,
     ASSET_EVENT_DATE_RANGE_PARAM as FilterableSearchParamsKeys,
     DURATION_GTE_PARAM as FilterableSearchParamsKeys,
