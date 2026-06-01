@@ -96,10 +96,32 @@ been added:
 
 See :doc:`../modules_management` for details on how Python and Airflow manage modules.
 
+Handlers defined in ``LOGGING_CONFIG`` are not used until a logger references them. For example,
+to send logs emitted through the standard library ``airflow.task`` logger to an additional handler,
+add the handler definition and append its name to the logger's ``handlers`` list:
+
+    .. code-block:: python
+
+      from copy import deepcopy
+      from airflow.config_templates.airflow_local_settings import DEFAULT_LOGGING_CONFIG
+
+      LOGGING_CONFIG = deepcopy(DEFAULT_LOGGING_CONFIG)
+
+      LOGGING_CONFIG["handlers"]["my_handler"] = {
+          "class": "my_package.my_module.MyHandler",
+      }
+      LOGGING_CONFIG["loggers"]["airflow.task"]["handlers"].append("my_handler")
+
+In Airflow 3, task execution logs written by Airflow tasks use the Task SDK structlog write path.
+If a custom destination needs each task log message while it is emitted, expose a ``REMOTE_TASK_LOG``
+object from the same module as ``LOGGING_CONFIG`` and implement the remote logging interface
+``processors`` hook for that destination.
+
 
 .. note::
 
-   You can override the way both standard logs of the components and "task" logs are handled.
+   You can override the standard library logger configuration and the handler used for task log
+   storage and retrieval. The task execution log write path uses the Task SDK logging processors.
 
 
 Custom logger for Operators, Hooks and Tasks
