@@ -405,8 +405,9 @@ def upgrade() -> None:
     )
     op.create_index("dag_id_state", "dag_run", ["dag_id", "state"], unique=False)
     op.create_index("idx_dag_run_dag_id", "dag_run", ["dag_id"], unique=False)
-    op.create_index("idx_dag_run_queued_dags", "dag_run", ["state", "dag_id"], unique=False)
     op.create_index("idx_dag_run_running_dags", "dag_run", ["state", "dag_id"], unique=False)
+    if op.get_bind().dialect.name != "mysql":
+        op.create_index("idx_dag_run_queued_dags", "dag_run", ["state", "dag_id"], unique=False)
     op.create_index(
         "idx_last_scheduling_decision",
         "dag_run",
@@ -828,7 +829,8 @@ def downgrade() -> None:
     op.drop_table("dag_schedule_dataset_reference")
     op.drop_index("idx_last_scheduling_decision", table_name="dag_run")
     op.drop_index("idx_dag_run_running_dags", table_name="dag_run")
-    op.drop_index("idx_dag_run_queued_dags", table_name="dag_run")
+    if op.get_bind().dialect.name != "mysql":
+        op.drop_index("idx_dag_run_queued_dags", table_name="dag_run")
     op.drop_index("idx_dag_run_dag_id", table_name="dag_run")
     op.drop_index("dag_id_state", table_name="dag_run")
     op.drop_table("dag_run")
