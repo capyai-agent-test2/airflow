@@ -213,6 +213,29 @@ class TestBaseSensor:
         assert state == TaskInstanceState.FAILED
         assert isinstance(error, AirflowSensorTimeout)
 
+    def test_fail_with_reschedule_parses_string_start_date(
+        self, run_task, make_sensor, time_machine, mock_supervisor_comms
+    ):
+        sensor = make_sensor(return_value=False, poke_interval=10, timeout=5, mode="reschedule")
+
+        date1 = timezone.utcnow()
+        time_machine.move_to(date1, tick=False)
+
+        state, msg, _ = run_task(task=sensor)
+
+        assert state == TaskInstanceState.UP_FOR_RESCHEDULE
+        assert msg.reschedule_date == date1 + timedelta(seconds=sensor.poke_interval)
+
+        time_machine.shift(sensor.poke_interval)
+
+        mock_supervisor_comms.send.return_value = TaskRescheduleStartDate.model_construct(
+            start_date=date1.isoformat()
+        )
+        state, msg, error = run_task(task=sensor, context_update={"task_reschedule_count": 1})
+
+        assert state == TaskInstanceState.FAILED
+        assert isinstance(error, AirflowSensorTimeout)
+
     def test_soft_fail_with_reschedule(self, run_task, make_sensor, time_machine, mock_supervisor_comms):
         sensor = make_sensor(
             return_value=False, poke_interval=10, timeout=5, soft_fail=True, mode="reschedule"

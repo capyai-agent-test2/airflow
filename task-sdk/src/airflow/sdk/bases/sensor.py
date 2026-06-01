@@ -185,7 +185,9 @@ class BaseSensorOperator(BaseOperator):
 
         if self.reschedule:
             ti = context["ti"]
-            first_reschedule_date = ti.get_first_reschedule_date(context)
+            first_reschedule_date: datetime.datetime | str | None = ti.get_first_reschedule_date(context)
+            if isinstance(first_reschedule_date, str):
+                first_reschedule_date = timezone.parse(first_reschedule_date)
             started_at = start_date = first_reschedule_date or timezone.utcnow()
 
             def run_duration() -> float:
