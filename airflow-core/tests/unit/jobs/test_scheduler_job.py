@@ -3835,6 +3835,40 @@ class TestSchedulerJob:
         session.rollback()
         session.close()
 
+    def test_dagrun_timeout_fails_running_task_instances(self, dag_maker, session):
+        with dag_maker(
+            dag_id="test_scheduler_fail_running_task_instances_on_dagrun_timeout",
+            dagrun_timeout=datetime.timedelta(seconds=60),
+            session=session,
+        ):
+            EmptyOperator(task_id="running")
+            EmptyOperator(task_id="scheduled")
+            EmptyOperator(task_id="unstarted")
+
+        dr = dag_maker.create_dagrun(
+            start_date=timezone.utcnow() - datetime.timedelta(days=1),
+            state=DagRunState.RUNNING,
+        )
+        running_ti = dr.get_task_instance("running", session=session)
+        scheduled_ti = dr.get_task_instance("scheduled", session=session)
+        unstarted_ti = dr.get_task_instance("unstarted", session=session)
+        running_ti.state = TaskInstanceState.RUNNING
+        running_ti.start_date = timezone.utcnow() - datetime.timedelta(minutes=30)
+        scheduled_ti.state = TaskInstanceState.SCHEDULED
+        unstarted_ti.state = None
+        session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+        self.job_runner._schedule_dag_run(dr, session)
+        session.flush()
+
+        assert dr.state == State.FAILED
+        assert running_ti.state == TaskInstanceState.FAILED
+        assert scheduled_ti.state == TaskInstanceState.SKIPPED
+        assert unstarted_ti.state == TaskInstanceState.SKIPPED
+
     def test_dagrun_timeout_fails_run_and_update_next_dagrun(self, dag_maker):
         """
         Test that dagrun timeout fails run and update the next dagrun
