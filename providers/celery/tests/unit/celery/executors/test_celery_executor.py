@@ -1011,13 +1011,14 @@ def test_execute_workload_runs_base_executor_workload_on_airflow_3_3_plus():
     not hasattr(BaseExecutor, "run_workload"),
     reason="BaseExecutor.run_workload not available in this Airflow version",
 )
-def test_execute_workload_ignores_already_running_task():
-    """Test that execute_workload raises Celery Ignore when task is already running."""
+@pytest.mark.parametrize("exception_type", ["already_running", "start_aborted"])
+def test_execute_workload_ignores_aborted_task_start(exception_type):
+    """Test that execute_workload raises Celery Ignore when task start is aborted."""
     import importlib
 
     from celery.exceptions import Ignore
 
-    from airflow.sdk.exceptions import TaskAlreadyRunningError
+    from airflow.sdk.exceptions import TaskAlreadyRunningError, TaskStartAbortedError
 
     importlib.reload(celery_executor_utils)
     execute_workload_unwrapped = celery_executor_utils.execute_workload.__wrapped__
@@ -1031,7 +1032,10 @@ def test_execute_workload_ignores_already_running_task():
         mock.patch("airflow.executors.base_executor.BaseExecutor.run_workload") as mock_run_workload,
         mock.patch.object(celery_executor_utils, "app", mock_app),
     ):
-        mock_run_workload.side_effect = TaskAlreadyRunningError("Task already running")
+        if exception_type == "already_running":
+            mock_run_workload.side_effect = TaskAlreadyRunningError("Task already running")
+        else:
+            mock_run_workload.side_effect = TaskStartAbortedError("Task no longer runnable")
 
         workload_json = """
         {

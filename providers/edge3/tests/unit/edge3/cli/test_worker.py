@@ -53,6 +53,7 @@ from airflow.providers.edge3.worker_api.datamodels import (
     WorkerRegistrationReturn,
     WorkerSetStateReturn,
 )
+from airflow.sdk.exceptions import TaskStartAbortedError
 from airflow.utils.state import TaskInstanceState
 
 from tests_common.test_utils.config import conf_vars
@@ -338,6 +339,7 @@ class TestEdgeWorker:
         worker_with_job: EdgeWorker,
         tmp_path: Path,
     ):
+        mock_supervise.return_value = 0
         worker_with_job.__dict__["_execution_api_server_url"] = "https://mock-server/execution"
         edge_job = worker_with_job.jobs.pop().edge_job
         error_file_path = tmp_path / "fork-error.log"
@@ -357,6 +359,7 @@ class TestEdgeWorker:
         worker_with_job: EdgeWorker,
         tmp_path: Path,
     ):
+        mock_run_workload.return_value = 0
         worker_with_job.__dict__["_execution_api_server_url"] = "https://mock-server/execution"
         edge_job = worker_with_job.jobs.pop().edge_job
         error_file_path = tmp_path / "fork-error.log"
@@ -404,6 +407,46 @@ class TestEdgeWorker:
         assert result == 1
         assert error_file_path.exists()
         assert "Supervise failed" in error_file_path.read_text()
+
+    @patch("airflow.executors.base_executor.BaseExecutor.run_workload")
+    @pytest.mark.skipif(
+        not AIRFLOW_V_3_3_PLUS, reason="Test is for Airflow >= 3.3.0 where BaseExecutor.run_workload is used"
+    )
+    @pytest.mark.asyncio
+    async def test_supervise_launch_aborted_start(
+        self,
+        mock_run_workload,
+        worker_with_job: EdgeWorker,
+        tmp_path: Path,
+    ):
+        mock_run_workload.side_effect = TaskStartAbortedError("not runnable")
+        worker_with_job.__dict__["_execution_api_server_url"] = "https://mock-server/execution"
+        edge_job = worker_with_job.jobs.pop().edge_job
+        error_file_path = tmp_path / "fork-error.log"
+        result = worker_with_job._run_job_via_supervisor(edge_job.command, error_file_path)
+
+        assert result == TaskStartAbortedError.exit_code
+        assert not error_file_path.exists()
+
+    @pytest.mark.asyncio
+    async def test_supervise_subprocess_exits_with_workload_code(
+        self,
+        worker_with_job: EdgeWorker,
+        tmp_path: Path,
+    ):
+        edge_job = worker_with_job.jobs.pop().edge_job
+        error_file_path = tmp_path / "fork-error.log"
+        with (
+            patch.object(
+                worker_with_job,
+                "_run_job_via_supervisor",
+                return_value=TaskStartAbortedError.exit_code,
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            worker_with_job._run_job_via_supervisor_subprocess(edge_job.command, error_file_path)
+
+        assert exc_info.value.code == TaskStartAbortedError.exit_code
 
     @patch("airflow.providers.edge3.cli.worker.jobs_fetch")
     @patch("airflow.providers.edge3.cli.worker.EdgeWorker._launch_job")
@@ -509,6 +552,44 @@ class TestEdgeWorker:
         assert "Task fork exited with code 1" in log_chunk_data
         assert "RuntimeError: supervisor crashed" in log_chunk_data
         assert not error_file_path.exists()
+
+    @patch("airflow.providers.edge3.cli.worker.jobs_fetch")
+    @patch("airflow.providers.edge3.cli.worker.jobs_set_state")
+    @patch("airflow.providers.edge3.cli.worker.EdgeWorker._push_logs_in_chunks")
+    @patch("airflow.providers.edge3.cli.worker.logs_push")
+    @pytest.mark.asyncio
+    async def test_fetch_and_run_job_aborted_start_does_not_mark_success_or_failure(
+        self,
+        mock_logs_push,
+        mock_push_log_chunks,
+        mock_jobs_set_state,
+        mock_jobs_fetch,
+        tmp_path: Path,
+        worker_with_job: EdgeWorker,
+    ):
+        edge_job = EdgeJobFetched(
+            dag_id="test",
+            task_id="test",
+            run_id="test",
+            map_index=-1,
+            try_number=1,
+            concurrency_slots=1,
+            command=MOCK_COMMAND,  # type: ignore[arg-type]
+        )
+        mock_jobs_fetch.return_value = edge_job
+        worker_with_job.concurrency = 1
+        launched_job = Job(
+            edge_job, _MockProcess(returncode=TaskStartAbortedError.exit_code), tmp_path / "mock.log"
+        )
+
+        with patch.object(worker_with_job, "_launch_job", return_value=launched_job):
+            await worker_with_job.fetch_and_run_job()
+
+        mock_jobs_fetch.assert_called_once()
+        mock_push_log_chunks.assert_called_once()
+        assert mock_jobs_set_state.call_count == 1
+        assert mock_jobs_set_state.call_args.args[1] == TaskInstanceState.RUNNING
+        mock_logs_push.assert_not_called()
 
     @patch("airflow.providers.edge3.cli.worker.jobs_fetch")
     @patch("airflow.providers.edge3.cli.worker.EdgeWorker._launch_job")

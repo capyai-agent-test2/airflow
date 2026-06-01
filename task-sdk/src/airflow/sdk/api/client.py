@@ -84,7 +84,7 @@ from airflow.sdk.api.datamodels._generated import (
     XComSequenceSliceResponse,
 )
 from airflow.sdk.configuration import conf
-from airflow.sdk.exceptions import ErrorType, TaskAlreadyRunningError
+from airflow.sdk.exceptions import ErrorType, TaskAlreadyRunningError, TaskStartAbortedError
 from airflow.sdk.execution_time.comms import (
     AssetsByAliasResult,
     CreateHITLDetailPayload,
@@ -250,12 +250,13 @@ class TaskInstanceOperations:
         except ServerResponseError as e:
             if e.response.status_code == HTTPStatus.CONFLICT:
                 detail = e.detail
-                if (
-                    isinstance(detail, dict)
-                    and detail.get("reason") == "invalid_state"
-                    and detail.get("previous_state") == "running"
-                ):
-                    raise TaskAlreadyRunningError(f"Task instance {id} is already running") from e
+                if isinstance(detail, dict) and detail.get("reason") == "invalid_state":
+                    previous_state = detail.get("previous_state")
+                    if previous_state == "running":
+                        raise TaskAlreadyRunningError(f"Task instance {id} is already running") from e
+                    raise TaskStartAbortedError(
+                        f"Task instance {id} cannot start from state {previous_state!r}"
+                    ) from e
             raise
         return TIRunContext.model_validate_json(resp.read())
 

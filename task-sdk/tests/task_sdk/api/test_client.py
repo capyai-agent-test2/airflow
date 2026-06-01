@@ -49,7 +49,7 @@ from airflow.sdk.api.datamodels._generated import (
     VariableResponse,
     XComResponse,
 )
-from airflow.sdk.exceptions import ErrorType, TaskAlreadyRunningError
+from airflow.sdk.exceptions import ErrorType, TaskAlreadyRunningError, TaskStartAbortedError
 from airflow.sdk.execution_time.comms import (
     AssetsByAliasResult,
     DeferTask,
@@ -380,7 +380,7 @@ class TestTaskInstanceOperations:
 
     @pytest.mark.parametrize("previous_state", ["failed", "success", "skipped"])
     def test_task_instance_start_other_invalid_states(self, previous_state):
-        """Test that start() raises ServerResponseError for non-running invalid states."""
+        """Test that start() raises TaskStartAbortedError for non-running invalid states."""
         ti_id = uuid6.uuid7()
 
         def handle_request(request: httpx.Request) -> httpx.Response:
@@ -399,7 +399,7 @@ class TestTaskInstanceOperations:
 
         client = make_client(transport=httpx.MockTransport(handle_request))
 
-        with pytest.raises(ServerResponseError):
+        with pytest.raises(TaskStartAbortedError, match=f"cannot start from state '{previous_state}'"):
             client.task_instances.start(ti_id, 100, datetime(2024, 10, 31, tzinfo=timezone.utc))
 
     @pytest.mark.parametrize(

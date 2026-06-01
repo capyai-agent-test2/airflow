@@ -34,6 +34,7 @@ from airflow.executors.workloads.base import BundleInfo
 from airflow.executors.workloads.callback import CallbackDTO
 from airflow.executors.workloads.task import TaskInstanceDTO
 from airflow.models.callback import CallbackFetchMethod
+from airflow.sdk.exceptions import TaskStartAbortedError
 from airflow.settings import Session
 from airflow.utils.state import State
 
@@ -157,6 +158,7 @@ class TestLocalExecutor:
             for i in range(self.TEST_SUCCESS_COMMANDS)
         ]
         fail_ti = success_tis[0].model_copy(update={"id": uuid7(), "task_id": "failure"})
+        aborted_ti = success_tis[0].model_copy(update={"id": uuid7(), "task_id": "aborted"})
 
         # We just mock both styles here, only one will be hit though
         has_failed_once = False
@@ -166,6 +168,8 @@ class TestLocalExecutor:
             if workload.ti.id == fail_ti.id and not has_failed_once:
                 has_failed_once = True
                 raise RuntimeError("fake failure")
+            if workload.ti.id == aborted_ti.id:
+                raise TaskStartAbortedError("fake aborted start")
             return 0
 
         mock_run_workload.side_effect = fake_run_workload
@@ -199,6 +203,16 @@ class TestLocalExecutor:
                 ),
                 session=mock.MagicMock(spec=Session),
             )
+            executor.queue_workload(
+                workloads.ExecuteTask(
+                    token="",
+                    ti=aborted_ti,
+                    dag_rel_path="some/path",
+                    log_path=None,
+                    bundle_info=dict(name="hi", version="hi"),
+                ),
+                session=mock.MagicMock(spec=Session),
+            )
 
             # Process queued workloads to trigger worker spawning
             executor._process_workloads(list(executor.queued_tasks.values()))
@@ -216,6 +230,7 @@ class TestLocalExecutor:
         for ti in success_tis:
             assert executor.event_buffer[ti.key][0] == State.SUCCESS
         assert executor.event_buffer[fail_ti.key][0] == State.FAILED
+        assert aborted_ti.key not in executor.event_buffer
 
     @mock.patch("airflow.executors.local_executor.LocalExecutor.sync")
     @mock.patch("airflow.executors.base_executor.BaseExecutor.trigger_tasks")

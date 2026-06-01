@@ -23,6 +23,8 @@ from multiprocessing import Process
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from airflow.sdk.exceptions import TaskStartAbortedError
+
 if TYPE_CHECKING:
     from airflow.providers.edge3.models.edge_worker import EdgeWorkerState
     from airflow.providers.edge3.worker_api.datamodels import EdgeJobFetched
@@ -94,6 +96,13 @@ class Job:
         if isinstance(self.process, subprocess.Popen):
             return self.process.returncode == 0
         return self.process.exitcode == 0
+
+    @property
+    def is_aborted_start(self) -> bool:
+        """Check if the job exited because task start was aborted."""
+        if isinstance(self.process, subprocess.Popen):
+            return self.process.returncode == TaskStartAbortedError.exit_code
+        return self.process.exitcode == TaskStartAbortedError.exit_code
 
     def failure_details(self) -> str:
         """Format failure details, reading error text from the error file if available."""

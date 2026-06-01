@@ -424,6 +424,8 @@ class EdgeWorker:
 
     def _run_job_via_supervisor(self, workload: ExecuteTask, error_file_path: Path) -> int:
         """Run a task by calling the supervisor directly (executes inside a forked child process)."""
+        from airflow.sdk.exceptions import TaskStartAbortedError
+
         _reset_parent_signal_state()
 
         # Ignore ctrl-c in this process -- we don't want to kill _this_ one. we let tasks run to completion
@@ -435,35 +437,40 @@ class EdgeWorker:
             if AIRFLOW_V_3_3_PLUS:
                 from airflow.executors.base_executor import BaseExecutor
 
-                BaseExecutor.run_workload(
+                return BaseExecutor.run_workload(
                     workload=workload,
                     server=self._execution_api_server_url,
                 )
-            else:
-                from airflow.sdk.execution_time.supervisor import supervise
+            from airflow.sdk.execution_time.supervisor import supervise
 
-                ti = workload.ti
-                setproctitle(
-                    "airflow edge supervisor: "
-                    f"dag_id={ti.dag_id} task_id={ti.task_id} run_id={ti.run_id} map_index={ti.map_index} "
-                    f"try_number={ti.try_number}"
-                )
-                supervise(
-                    # This is the "wrong" ti type, but it duck types the same. TODO: Create a protocol for this.
-                    # Same like in airflow/executors/local_executor.py:_execute_workload()
-                    ti=ti,  # type: ignore[arg-type]
-                    dag_rel_path=workload.dag_rel_path,
-                    bundle_info=workload.bundle_info,
-                    token=workload.token,
-                    server=self._execution_api_server_url,
-                    log_path=workload.log_path,
-                )
-            return 0
+            ti = workload.ti
+            setproctitle(
+                "airflow edge supervisor: "
+                f"dag_id={ti.dag_id} task_id={ti.task_id} run_id={ti.run_id} map_index={ti.map_index} "
+                f"try_number={ti.try_number}"
+            )
+            return supervise(
+                # This is the "wrong" ti type, but it duck types the same. TODO: Create a protocol for this.
+                # Same like in airflow/executors/local_executor.py:_execute_workload()
+                ti=ti,  # type: ignore[arg-type]
+                dag_rel_path=workload.dag_rel_path,
+                bundle_info=workload.bundle_info,
+                token=workload.token,
+                server=self._execution_api_server_url,
+                log_path=workload.log_path,
+            )
+        except TaskStartAbortedError as e:
+            logger.info("Task start aborted: %s", e)
+            return e.exit_code
         except Exception:
             logger.exception("Task execution failed")
             with suppress(Exception):
                 error_file_path.write_text(traceback.format_exc())
             return 1
+
+    def _run_job_via_supervisor_subprocess(self, workload: ExecuteTask, error_file_path: Path) -> None:
+        """Run a task in a child process and propagate the workload exit code."""
+        sys.exit(self._run_job_via_supervisor(workload, error_file_path))
 
     def _launch_job_subprocess(self, workload: ExecuteTask) -> tuple[subprocess.Popen, Path]:
         """Launch workload via a fresh Python interpreter (subprocess.Popen)."""
@@ -511,7 +518,7 @@ class EdgeWorker:
         error_file, error_file_path = _make_task_temp_file("airflow-edge-task-error-")
         error_file.close()  # child writes to the file by path; parent only reads it after exit
         process = Process(
-            target=self._run_job_via_supervisor,
+            target=self._run_job_via_supervisor_subprocess,
             kwargs={"workload": workload, "error_file_path": error_file_path},
         )
         process.start()
@@ -696,7 +703,9 @@ class EdgeWorker:
                         break
             await self._push_logs_in_chunks(job)
 
-            if job.is_success:
+            if job.is_aborted_start:
+                logger.info("Job start aborted: %s", job.edge_job.identifier)
+            elif job.is_success:
                 logger.info("Job completed: %s", job.edge_job.identifier)
                 await jobs_set_state(job.edge_job.key, TaskInstanceState.SUCCESS)
             else:

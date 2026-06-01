@@ -39,8 +39,9 @@ if TYPE_CHECKING:
 log = structlog.get_logger(logger_name=__name__)
 
 
-def execute_workload(workload: ExecuteTask) -> None:
+def execute_workload(workload: ExecuteTask) -> int:
     from airflow.executors.base_executor import BaseExecutor
+    from airflow.sdk.exceptions import TaskStartAbortedError
     from airflow.sdk.log import configure_logging
     from airflow.settings import dispose_orm
 
@@ -50,12 +51,16 @@ def execute_workload(workload: ExecuteTask) -> None:
 
     log.info("Executing workload", workload=workload)
 
-    BaseExecutor.run_workload(
-        workload,
-        # Include the output of the task to stdout too, so that in process logs can be read from via the
-        # kubeapi as pod logs.
-        subprocess_logs_to_stdout=True,
-    )
+    try:
+        return BaseExecutor.run_workload(
+            workload,
+            # Include the output of the task to stdout too, so that in process logs can be read from via the
+            # kubeapi as pod logs.
+            subprocess_logs_to_stdout=True,
+        )
+    except TaskStartAbortedError as e:
+        log.info("Task start aborted", reason=str(e))
+        return e.exit_code
 
 
 def main():
@@ -99,7 +104,7 @@ def main():
             log.error("Failed to parse input JSON string", error=str(e))
             sys.exit(1)
 
-    execute_workload(workload)
+    sys.exit(execute_workload(workload))
 
 
 if __name__ == "__main__":
