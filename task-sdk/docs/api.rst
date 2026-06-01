@@ -260,6 +260,8 @@ Execution Time Components
 
 .. autoapiclass:: airflow.sdk.Context
 
+.. autoclass:: airflow.sdk.types.DagRunProtocol
+
 The ``Context`` object represents the execution-time context available to tasks.
 It corresponds to the same context that is exposed to Jinja templates during task execution.
 
