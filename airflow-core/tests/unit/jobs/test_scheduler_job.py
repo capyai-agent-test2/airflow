@@ -3835,6 +3835,44 @@ class TestSchedulerJob:
         session.rollback()
         session.close()
 
+    def test_dagrun_timeout_sets_skipped_task_instance_end_date_and_duration(self, dag_maker, session):
+        with dag_maker(
+            dag_id="test_scheduler_fail_dagrun_timeout_task_duration",
+            dagrun_timeout=timedelta(seconds=60),
+            session=session,
+        ):
+            EmptyOperator(task_id="running")
+            EmptyOperator(task_id="not_started")
+
+        dr = dag_maker.create_dagrun(start_date=DEFAULT_DATE)
+        running_ti = dr.get_task_instance("running", session=session)
+        running_ti.set_state(TaskInstanceState.RUNNING, session=session)
+        running_ti.start_date = DEFAULT_DATE + timedelta(seconds=30)
+        running_ti.end_date = None
+        running_ti.duration = None
+        session.merge(running_ti)
+
+        not_started_ti = dr.get_task_instance("not_started", session=session)
+        assert not_started_ti.state is None
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job)
+
+        timeout_time = DEFAULT_DATE + timedelta(minutes=2)
+        with time_machine.travel(timeout_time, tick=False):
+            self.job_runner._schedule_dag_run(dr, session)
+            session.flush()
+
+        session.refresh(running_ti)
+        session.refresh(not_started_ti)
+        assert running_ti.state == TaskInstanceState.SKIPPED
+        assert running_ti.end_date == timeout_time
+        assert running_ti.duration == 90
+        assert not_started_ti.state == TaskInstanceState.SKIPPED
+        assert not_started_ti.start_date == timeout_time
+        assert not_started_ti.end_date == timeout_time
+        assert not_started_ti.duration == 0
+
     def test_dagrun_timeout_fails_run_and_update_next_dagrun(self, dag_maker):
         """
         Test that dagrun timeout fails run and update the next dagrun
