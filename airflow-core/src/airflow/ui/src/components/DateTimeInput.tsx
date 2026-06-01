@@ -19,7 +19,7 @@
 import { Input, type InputProps } from "@chakra-ui/react";
 import dayjs from "dayjs";
 import tz from "dayjs/plugin/timezone";
-import { forwardRef, type ChangeEvent, type ClipboardEvent, useState } from "react";
+import { forwardRef, type ChangeEvent, type ClipboardEvent, useEffect, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
 import { useTimezone } from "src/context/timezone";
@@ -33,10 +33,26 @@ const debounceDelay = 1000;
 // absolute instant. Strings without one are treated as being in the selected
 // Airflow UI timezone — consistent between manual input and paste.
 const parseInput = (raw: string, timezone: string) => {
+  if (raw === "") {
+    return undefined;
+  }
   const hasExplicitTz = /(?:[Zz]|[+-]\d{2}:?\d{2})$/u.test(raw);
-  const parsed = hasExplicitTz ? dayjs(raw) : dayjs.tz(raw, timezone);
+
+  let parsed;
+
+  try {
+    parsed = hasExplicitTz ? dayjs(raw) : dayjs.tz(raw, timezone);
+  } catch {
+    return undefined;
+  }
 
   return parsed.isValid() ? parsed : undefined;
+};
+
+const formatDisplayDate = (raw: string, timezone: string) => {
+  const parsed = parseInput(raw, timezone);
+
+  return parsed ? parsed.tz(timezone).format(DEFAULT_DATETIME_FORMAT) : "";
 };
 
 type Props = {
@@ -45,7 +61,11 @@ type Props = {
 
 export const DateTimeInput = forwardRef<HTMLInputElement, Props>(({ onChange, value, ...rest }, ref) => {
   const { selectedTimezone } = useTimezone();
-  const [displayDate, setDisplayDate] = useState(value);
+  const [displayDate, setDisplayDate] = useState(formatDisplayDate(value, selectedTimezone));
+
+  useEffect(() => {
+    setDisplayDate(formatDisplayDate(value, selectedTimezone));
+  }, [selectedTimezone, value]);
 
   const emit = (event: ChangeEvent<HTMLInputElement> | ClipboardEvent<HTMLInputElement>, utc: string) => {
     onChange?.({
@@ -59,7 +79,7 @@ export const DateTimeInput = forwardRef<HTMLInputElement, Props>(({ onChange, va
 
     // Set display value via UTC -> local to avoid year mismatch for years
     // before 1000 (dayjs/issues/1237).
-    setDisplayDate(parsed ? parsed.tz(selectedTimezone).format(DEFAULT_DATETIME_FORMAT) : "");
+    setDisplayDate(formatDisplayDate(event.target.value, selectedTimezone));
     emit(event, parsed ? parsed.toISOString() : "");
   };
 

@@ -34,17 +34,17 @@ dayjs.extend(timezone);
 
 type ChangeHandler = (event: ChangeEvent<HTMLInputElement>) => void;
 
-const renderWithTimezone = (selectedTimezone: string) => {
+const renderWithTimezone = (selectedTimezone: string, value = "") => {
   const onChange: Mock<ChangeHandler> = vi.fn();
 
-  render(
+  const view = render(
     <TimezoneContext.Provider value={{ selectedTimezone, setSelectedTimezone: vi.fn() }}>
-      <DateTimeInput onChange={onChange} value="" />
+      <DateTimeInput onChange={onChange} value={value} />
     </TimezoneContext.Provider>,
     { wrapper: Wrapper },
   );
 
-  return { input: screen.getByTestId<HTMLInputElement>("datetime-input"), onChange };
+  return { input: screen.getByTestId<HTMLInputElement>("datetime-input"), onChange, ...view };
 };
 
 const paste = (input: HTMLInputElement, text: string) =>
@@ -54,6 +54,26 @@ const lastEmittedValue = (onChange: Mock<ChangeHandler>): string | undefined =>
   onChange.mock.calls.at(-1)?.[0].target.value;
 
 describe("DateTimeInput onPaste timezone handling", () => {
+  it("renders an initial UTC value in the selected timezone", () => {
+    const { input, onChange } = renderWithTimezone("Asia/Seoul", "2026-01-15T10:30:00Z");
+
+    expect(input.value).toBe("2026-01-15T19:30");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("updates the displayed datetime when the controlled value changes", () => {
+    const { input, onChange, rerender } = renderWithTimezone("UTC", "");
+
+    rerender(
+      <TimezoneContext.Provider value={{ selectedTimezone: "UTC", setSelectedTimezone: vi.fn() }}>
+        <DateTimeInput onChange={onChange} value="2026-01-15T10:30:00Z" />
+      </TimezoneContext.Provider>,
+    );
+
+    expect(input.value).toBe("2026-01-15T10:30");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("renders pasted UTC instant in the selected UTC timezone", () => {
     const { input, onChange } = renderWithTimezone("UTC");
 
