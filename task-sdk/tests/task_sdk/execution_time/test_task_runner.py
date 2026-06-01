@@ -908,6 +908,23 @@ def test_defer_task_queue_assignment(
     )
 
 
+def test_defer_task_allows_trigger_to_complete_task(create_runtime_ti) -> None:
+    """Ensure a trigger can complete the task directly without a resume method."""
+    from airflow.providers.standard.operators.empty import EmptyOperator
+
+    task = EmptyOperator(task_id="empty_trig_complete_test")
+    runtime_ti = create_runtime_ti(dag_id="deferred_run", task=task)
+    actual_msg, actual_state = _defer_task(
+        defer=TaskDeferred(trigger=SuccessTrigger(kwargs={}), method_name=None),
+        ti=runtime_ti,
+        log=mock.MagicMock(),
+    )
+
+    assert isinstance(actual_msg, DeferTask)
+    assert actual_state == TaskInstanceState.DEFERRED
+    assert actual_msg.next_method is None
+
+
 def test_run_downstream_skipped(mocked_parse, create_runtime_ti, mock_supervisor_comms, listener_manager):
     listener = TestTaskRunnerCallsListeners.CustomListener()
     listener_manager(listener)

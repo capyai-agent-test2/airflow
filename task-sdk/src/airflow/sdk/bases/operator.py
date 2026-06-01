@@ -1652,7 +1652,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         self,
         *,
         trigger: BaseTrigger,
-        method_name: str,
+        method_name: str | None,
         kwargs: dict[str, Any] | None = None,
         timeout: timedelta | int | float | None = None,
     ) -> NoReturn:
