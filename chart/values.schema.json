@@ -4538,9 +4538,10 @@
                             "description": "Exec specifies the action to take."
                         },
                         "failureThreshold": {
-                            "description": "Minimum consecutive failures for the probe to be considered failed after having succeeded. Defaults to 3. Minimum value is 1.",
+                            "description": "Minimum consecutive failures for the probe to be considered failed after having succeeded. Minimum value is 1.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 5
                         },
                         "grpc": {
                             "$ref": "#/definitions/io.k8s.api.core.v1.GRPCAction",
@@ -4551,14 +4552,16 @@
                             "description": "HTTPGet specifies the http request to perform."
                         },
                         "initialDelaySeconds": {
-                            "description": "Number of seconds after the container has started before liveness probes are initiated. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
+                            "description": "Number of seconds after the container has started before liveness probes are initiated.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 10
                         },
                         "periodSeconds": {
-                            "description": "How often (in seconds) to perform the probe. Default to 10 seconds. Minimum value is 1.",
+                            "description": "How often (in seconds) to perform the probe. Minimum value is 1.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 60
                         },
                         "successThreshold": {
                             "description": "Minimum consecutive successes for the probe to be considered successful after having failed. Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.",
@@ -4575,9 +4578,10 @@
                             "type": "integer"
                         },
                         "timeoutSeconds": {
-                            "description": "Number of seconds after which the probe times out. Defaults to 1 second. Minimum value is 1. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
+                            "description": "Number of seconds after which the probe times out. Minimum value is 1 second.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 20
                         },
                         "enabled": {
                             "description": "Enable scheduler probe.",
@@ -4610,9 +4614,10 @@
                             "description": "Exec specifies the action to take."
                         },
                         "failureThreshold": {
-                            "description": "Minimum consecutive failures for the probe to be considered failed after having succeeded. Defaults to 3. Minimum value is 1.",
+                            "description": "Minimum consecutive failures for the probe to be considered failed after having succeeded. Minimum value is 1.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 6
                         },
                         "grpc": {
                             "$ref": "#/definitions/io.k8s.api.core.v1.GRPCAction",
@@ -4623,14 +4628,16 @@
                             "description": "HTTPGet specifies the http request to perform."
                         },
                         "initialDelaySeconds": {
-                            "description": "Number of seconds after the container has started before liveness probes are initiated. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
+                            "description": "Number of seconds after the container has started before startup probes are initiated.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 0
                         },
                         "periodSeconds": {
-                            "description": "How often (in seconds) to perform the probe. Default to 10 seconds. Minimum value is 1.",
+                            "description": "How often (in seconds) to perform the probe. Minimum value is 1.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 10
                         },
                         "successThreshold": {
                             "description": "Minimum consecutive successes for the probe to be considered successful after having failed. Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.",
@@ -4647,9 +4654,10 @@
                             "type": "integer"
                         },
                         "timeoutSeconds": {
-                            "description": "Number of seconds after which the probe times out. Defaults to 1 second. Minimum value is 1. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
+                            "description": "Number of seconds after which the probe times out. Minimum value is 1 second.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 20
                         },
                         "enabled": {
                             "description": "Enable scheduler probe.",
@@ -5164,9 +5172,10 @@
                             "description": "Exec specifies the action to take."
                         },
                         "failureThreshold": {
-                            "description": "Minimum consecutive failures for the probe to be considered failed after having succeeded. Defaults to 3. Minimum value is 1.",
+                            "description": "Minimum consecutive failures for the probe to be considered failed after having succeeded. Minimum value is 1.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 5
                         },
                         "grpc": {
                             "$ref": "#/definitions/io.k8s.api.core.v1.GRPCAction",
@@ -5177,14 +5186,16 @@
                             "description": "HTTPGet specifies the http request to perform."
                         },
                         "initialDelaySeconds": {
-                            "description": "Number of seconds after the container has started before liveness probes are initiated. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
+                            "description": "Number of seconds after the container has started before readiness probes are initiated.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 10
                         },
                         "periodSeconds": {
-                            "description": "How often (in seconds) to perform the probe. Default to 10 seconds. Minimum value is 1.",
+                            "description": "How often (in seconds) to perform the probe. Minimum value is 1.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 60
                         },
                         "successThreshold": {
                             "description": "Minimum consecutive successes for the probe to be considered successful after having failed. Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.",
@@ -5201,9 +5212,10 @@
                             "type": "integer"
                         },
                         "timeoutSeconds": {
-                            "description": "Number of seconds after which the probe times out. Defaults to 1 second. Minimum value is 1. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
+                            "description": "Number of seconds after which the probe times out. Minimum value is 1 second.",
                             "format": "int32",
-                            "type": "integer"
+                            "type": "integer",
+                            "default": 20
                         },
                         "enabled": {
                             "description": "Enable scheduler probe.",
