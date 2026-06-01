@@ -157,7 +157,7 @@ html_favicon = AIRFLOW_FAVICON_PATH.as_posix()
 html_static_path = [AIRFLOW_CTL_DOC_STATIC_PATH.as_posix(), SPHINX_DESIGN_STATIC_PATH.as_posix()]
 
 # A list of JavaScript filenames.
-html_js_files = ["gh-jira-links.js", "redirects.js"]
+html_js_files = ["docs-version-selector.js", "gh-jira-links.js", "redirects.js"]
 
 # Substitute in links
 manual_substitutions_in_generated_html = [

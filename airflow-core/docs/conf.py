@@ -202,7 +202,7 @@ html_favicon = AIRFLOW_FAVICON_PATH.as_posix()
 html_static_path = [AIRFLOW_CORE_DOC_STATIC_PATH.as_posix(), SPHINX_DESIGN_STATIC_PATH.as_posix()]
 
 # A list of JavaScript filenames.
-html_js_files = ["gh-jira-links.js", "redirects.js"]
+html_js_files = ["docs-version-selector.js", "gh-jira-links.js", "redirects.js"]
 
 html_extra_path = [(AIRFLOW_CORE_DOCKER_COMPOSE_PATH / "airflow.sh").as_posix()]
 html_extra_with_substitutions = [(AIRFLOW_CORE_DOCKER_COMPOSE_PATH / "docker-compose.yaml").as_posix()]

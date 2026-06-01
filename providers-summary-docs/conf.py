@@ -139,7 +139,7 @@ html_favicon = AIRFLOW_FAVICON_PATH.as_posix()
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = [SPHINX_DESIGN_STATIC_PATH.as_posix()]
 
-html_js_files = ["gh-jira-links.js"]
+html_js_files = ["docs-version-selector.js", "gh-jira-links.js"]
 
 manual_substitutions_in_generated_html = ["example-dags.html", "operators.html", "index.html"]
 

@@ -85,6 +85,7 @@ html_short_title = "Task SDK"
 html_favicon = AIRFLOW_FAVICON_PATH.as_posix()
 html_static_path = [SPHINX_DESIGN_STATIC_PATH.as_posix()]
 html_css_files = ["custom.css"]
+html_js_files = ["docs-version-selector.js"]
 html_sidebars = get_html_sidebars(PACKAGE_VERSION)
 html_theme_options = get_html_theme_options()
 conf_py_path = "/task-sdk/docs/"
