@@ -174,6 +174,15 @@ class TestClient:
         assert err.value.args == ("Not found",)
         assert err.value.detail is None
 
+    def test_error_parsing_includes_detail_note(self):
+        responses = [httpx.Response(422, json={"detail": {"message": "Cache unavailable"}})]
+        client = make_client_w_responses(responses)
+
+        with pytest.raises(ServerResponseError) as err:
+            client.get("http://error")
+
+        assert "Server error detail={'message': 'Cache unavailable'}" in err.value.__notes__
+
     def test_server_response_error_pickling(self):
         responses = [httpx.Response(404, json={"detail": {"message": "Invalid input"}})]
         client = make_client_w_responses(responses)

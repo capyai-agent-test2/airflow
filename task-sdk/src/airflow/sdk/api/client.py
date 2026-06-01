@@ -202,6 +202,8 @@ def raise_on_4xx_5xx_with_note(response: httpx.Response):
     except httpx.HTTPStatusError as e:
         if TYPE_CHECKING:
             assert hasattr(e, "add_note")
+        if isinstance(e, ServerResponseError) and e.detail is not None:
+            e.add_note(f"Server error detail={e.detail!r}")
         e.add_note(
             f"Correlation-id={response.headers.get('correlation-id', None) or response.request.headers.get('correlation-id', 'no-correlation-id')}"
         )
