@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import atexit
+import json
 import multiprocessing
 import os
 import signal
@@ -167,6 +168,36 @@ TARGET_DIR_NAME = "provider_requirements"
 
 PROVIDER_REQUIREMENTS_DIR_PATH = FILES_SBOM_PATH / TARGET_DIR_NAME
 DOCKER_FILE_PREFIX = f"/files/sbom/{TARGET_DIR_NAME}/"
+
+
+def update_airflow_sbom_component_purl(sbom: dict[str, Any], airflow_version: str) -> None:
+    metadata = sbom.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    component = metadata.get("component")
+    if not isinstance(component, dict):
+        return
+
+    expected_purl = f"pkg:pypi/apache-airflow@{airflow_version}"
+    old_reference = component.get("bom-ref")
+    component["purl"] = expected_purl
+    if not isinstance(old_reference, str) or not old_reference.startswith(
+        ("pkg:npm/apache-airflow@", "pkg:application/apache-airflow@")
+    ):
+        return
+
+    component["bom-ref"] = expected_purl
+    for dependency in sbom.get("dependencies", []):
+        if not isinstance(dependency, dict):
+            continue
+        if dependency.get("ref") == old_reference:
+            dependency["ref"] = expected_purl
+        depends_on = dependency.get("dependsOn")
+        if isinstance(depends_on, list):
+            dependency["dependsOn"] = [
+                expected_purl if depends_on_reference == old_reference else depends_on_reference
+                for depends_on_reference in depends_on
+            ]
 
 
 def get_requirements_for_provider(
@@ -454,7 +485,9 @@ class SbomCoreJob(SbomApplicationJob):
                     response.status_code,
                     f"SBOM Generate {self.airflow_version}:python{self.python_version}",
                 )
-            self.target_path.write_bytes(response.content)
+            sbom_content = response.json()
+            update_airflow_sbom_component_purl(sbom_content, airflow_version=self.airflow_version)
+            self.target_path.write_text(json.dumps(sbom_content, indent=2) + "\n")
             suffix = ""
             if self.python_version:
                 suffix += f":python{self.python_version}"
