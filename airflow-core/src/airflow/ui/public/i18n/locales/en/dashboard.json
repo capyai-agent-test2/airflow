@@ -35,10 +35,10 @@
   "source": "Source",
   "stats": {
     "activeDags": "Active Dags",
-    "failedDags": "Failed Dags",
-    "queuedDags": "Queued Dags",
+    "failedDags": "Dags with Failed Latest Run",
+    "queuedDags": "Dags with Queued Latest Run",
     "requiredActions": "Required Actions",
-    "runningDags": "Running Dags",
+    "runningDags": "Dags with Running Latest Run",
     "stats": "Stats"
   },
   "uri": "Uri",
