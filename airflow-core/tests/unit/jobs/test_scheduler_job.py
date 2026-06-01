@@ -4907,6 +4907,40 @@ class TestSchedulerJob:
             is not None
         )
 
+    def test_adopt_or_reset_orphaned_tasks_can_log_detached_tasks(self, dag_maker, session):
+        dag_id = "test_adopt_or_reset_orphaned_tasks_can_log_detached_tasks"
+        with dag_maker(dag_id=dag_id, schedule="@daily"):
+            EmptyOperator(task_id="task")
+        old_job = Job()
+        session.add(old_job)
+        session.commit()
+        self.job_runner = SchedulerJobRunner(job=Job())
+
+        dr1 = dag_maker.create_dagrun(run_type=DagRunType.MANUAL)
+        ti = dr1.get_task_instances(session=session)[0]
+        ti.state = State.QUEUED
+        ti.queued_by_job_id = old_job.id
+        session.merge(ti)
+        session.merge(dr1)
+        session.commit()
+
+        executor = MagicMock(spec=BaseExecutor)
+
+        def detach_and_return(tis):
+            session.expunge_all()
+            return tis
+
+        executor.try_adopt_task_instances.side_effect = detach_and_return
+        with (
+            mock.patch.object(
+                self.job_runner,
+                "_executor_to_workloads",
+                side_effect=lambda workloads, _session: {executor: workloads},
+            ),
+            mock.patch.object(TaskInstance, "prepare_db_for_next_try", autospec=True),
+        ):
+            assert self.job_runner.adopt_or_reset_orphaned_tasks(session=session) == 1
+
     def test_adopt_or_reset_orphaned_tasks_external_triggered_dag(self, dag_maker, session):
         dag_id = "test_reset_orphaned_tasks_external_triggered_dag"
         with dag_maker(dag_id=dag_id, schedule="@daily"):
