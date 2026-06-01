@@ -1353,11 +1353,13 @@ class TestDagFileProcessorManager:
             rel_path=Path(dag_filename),
             bundle_path=tmp_path,
         )
+        file_name = dag_filename[:-3]
         last_runtime = manager._file_stats[file_info].last_duration
+        statsd_timing_mock.assert_any_call(f"dag_processing.last_duration.{file_name}", last_runtime)
         statsd_timing_mock.assert_any_call(
             "dag_processing.last_duration",
             last_runtime,
-            tags={"bundle_name": bundle_name, "file_name": dag_filename[:-3]},
+            tags={"bundle_name": bundle_name, "file_name": file_name},
         )
 
     @pytest.mark.usefixtures("testing_dag_bundle")

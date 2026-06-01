@@ -1607,6 +1607,7 @@ def process_parse_results(
         file_name = normalize_name_for_stats(Path(relative_fileloc).stem)
         # bundle_name is included to distinguish files with the same name across different bundles
         normalized_bundle = normalize_name_for_stats(bundle_name)
+        stats.timing(f"dag_processing.last_duration.{file_name}", stat.last_duration)
         stats.timing(
             "dag_processing.last_duration",
             stat.last_duration,
