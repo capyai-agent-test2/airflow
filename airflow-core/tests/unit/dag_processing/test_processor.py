@@ -1000,6 +1000,42 @@ class TestExecuteDagCallbacks:
 
         assert call_count == 2
 
+    def test_execute_dag_callbacks_forwards_callback_output_to_processor_log(self, spy_agency):
+        logger = logging.getLogger("test_execute_dag_callbacks")
+        logger.propagate = True
+        logger.setLevel(logging.INFO)
+
+        def on_failure(context):
+            print("printed from callback")
+            logger.info("logged from callback")
+
+        with DAG(dag_id="test_dag", on_failure_callback=on_failure) as dag:
+            BaseOperator(task_id="test_task")
+
+        def fake_collect_dags(self, *args, **kwargs):
+            self.dags[dag.dag_id] = dag
+
+        spy_agency.spy_on(DagBag.collect_dags, call_fake=fake_collect_dags, owner=DagBag)
+
+        dagbag = DagBag()
+        dagbag.collect_dags()
+
+        request = DagCallbackRequest(
+            filepath="test.py",
+            dag_id="test_dag",
+            run_id="test_run",
+            bundle_name="testing",
+            bundle_version=None,
+            is_failure_callback=True,
+            msg="Test failure message",
+        )
+
+        log = MagicMock(spec=FilteringBoundLogger)
+        _execute_dag_callbacks(dagbag, request, log)
+
+        log.info.assert_any_call("printed from callback")
+        log.info.assert_any_call("logged from callback")
+
     def test_execute_dag_callbacks_no_callback_defined(self, spy_agency):
         """Test _execute_dag_callbacks when no callback is defined"""
         with DAG(dag_id="test_dag") as dag:  # No callbacks defined
