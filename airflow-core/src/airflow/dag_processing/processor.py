@@ -180,6 +180,36 @@ ToDagProcessor = Annotated[
 ]
 
 
+class _DagCallbackLogWriter:
+    def __init__(self, log: FilteringBoundLogger, level: int):
+        self.log = log
+        self.level = level
+        self._buffer = ""
+
+    def write(self, message: str) -> int:
+        if message.endswith("\n"):
+            message = message.rstrip()
+            self._buffer += message
+            self.flush()
+        else:
+            self._buffer += message
+        return len(message)
+
+    def flush(self) -> None:
+        if not self._buffer:
+            return
+        message = self._buffer
+        self._buffer = ""
+        if self.level >= logging.ERROR:
+            self.log.error(message)
+        elif self.level >= logging.WARNING:
+            self.log.warning(message)
+        elif self.level <= logging.DEBUG:
+            self.log.debug(message)
+        else:
+            self.log.info(message)
+
+
 def _pre_import_airflow_modules(file_path: str, log: FilteringBoundLogger) -> None:
     """
     Pre-import Airflow modules found in the given file.
@@ -383,7 +413,17 @@ def _execute_dag_callbacks(dagbag: DagBag, request: DagCallbackRequest, log: Fil
             dag_id=request.dag_id,
         )
         try:
-            callback(context)
+            stdout = _DagCallbackLogWriter(log, logging.INFO)
+            stderr = _DagCallbackLogWriter(log, logging.ERROR)
+            try:
+                with (
+                    contextlib.redirect_stdout(stdout),
+                    contextlib.redirect_stderr(stderr),
+                ):
+                    callback(context)
+            finally:
+                stdout.flush()
+                stderr.flush()
         except Exception:
             log.exception("Callback failed", dag_id=request.dag_id)
             stats.incr("dag.callback_exceptions", tags={"dag_id": request.dag_id})
