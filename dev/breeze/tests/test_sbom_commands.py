@@ -22,7 +22,7 @@ from unittest.mock import patch
 import pytest
 
 from airflow_breeze.commands.sbom_commands import update_sbom_information
-from airflow_breeze.utils.cdxgen import SbomCoreJob
+from airflow_breeze.utils.cdxgen import SbomCoreJob, update_airflow_sbom_component_purl
 from airflow_breeze.utils.path_utils import FILES_SBOM_PATH
 
 
@@ -53,6 +53,39 @@ def test_sbom_core_job_resolves_constraints_reference(
 
     mock_dl.assert_called_once()
     assert mock_dl.call_args.kwargs["constraints_reference"] == expected_constraints_reference
+
+
+@pytest.mark.parametrize(
+    "generated_purl",
+    [
+        "pkg:npm/apache-airflow@3.2.0",
+        "pkg:application/apache-airflow@3.2.0",
+    ],
+)
+def test_update_airflow_sbom_component_purl_replaces_generated_purl(generated_purl):
+    sbom = {
+        "metadata": {
+            "component": {
+                "bom-ref": generated_purl,
+                "name": "apache-airflow",
+                "purl": generated_purl,
+            },
+        },
+        "dependencies": [
+            {"ref": generated_purl, "dependsOn": ["pkg:pypi/apache-airflow-providers-standard@1.0.0"]},
+            {"ref": "pkg:pypi/apache-airflow-providers-standard@1.0.0", "dependsOn": [generated_purl]},
+        ],
+    }
+
+    update_airflow_sbom_component_purl(sbom, airflow_version="3.2.0")
+
+    expected_purl = "pkg:pypi/apache-airflow@3.2.0"
+    assert sbom["metadata"]["component"]["purl"] == expected_purl
+    assert sbom["metadata"]["component"]["bom-ref"] == expected_purl
+    assert sbom["dependencies"] == [
+        {"ref": expected_purl, "dependsOn": ["pkg:pypi/apache-airflow-providers-standard@1.0.0"]},
+        {"ref": "pkg:pypi/apache-airflow-providers-standard@1.0.0", "dependsOn": [expected_purl]},
+    ]
 
 
 def test_update_sbom_information_with_airflow_root_path_skips_released_versions_lookup(tmp_path):
