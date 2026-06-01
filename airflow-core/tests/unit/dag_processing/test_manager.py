@@ -1407,6 +1407,7 @@ class TestDagFileProcessorManager:
 
             os.remove(zip_dag_path)
 
+            manager.stale_dag_threshold = 0
             manager.run()
 
             assert SerializedDagModel.has_dag(dag_id)
@@ -1432,12 +1433,29 @@ class TestDagFileProcessorManager:
         ]
 
         manager = DagFileProcessorManager(max_runs=1)
+        manager.stale_dag_threshold = 0
         manager.deactivate_deleted_dags("dag_maker", set(active_files))
 
         # The DAG from test_dag1.py is still active
         assert session.get(DagModel, "test_dag1").is_stale is False
         # and the DAG from test_dag2.py is deactivated
         assert session.get(DagModel, "test_dag2").is_stale is True
+
+    def test_deactivate_deleted_dags_honors_stale_threshold_for_missing_files(self, dag_maker, session):
+        with dag_maker("test_dag1") as dag1:
+            dag1.relative_fileloc = "test_dag1.py"
+        dag_maker.sync_dagbag_to_db()
+
+        manager = DagFileProcessorManager(max_runs=1)
+        manager.stale_dag_threshold = 86400
+        manager.deactivate_deleted_dags("dag_maker", set())
+
+        assert session.get(DagModel, "test_dag1").is_stale is False
+
+        session.get(DagModel, "test_dag1").last_parsed_time = timezone.utcnow() - timedelta(days=2)
+        manager.deactivate_deleted_dags("dag_maker", set())
+
+        assert session.get(DagModel, "test_dag1").is_stale is True
 
     @pytest.mark.parametrize(
         ("rel_filelocs", "expected_return", "expected_dag1_stale", "expected_dag2_stale"),
@@ -1523,6 +1541,7 @@ class TestDagFileProcessorManager:
         dag_maker.sync_dagbag_to_db()
 
         manager = DagFileProcessorManager(max_runs=1)
+        manager.stale_dag_threshold = 0
         manager.deactivate_deleted_dags("dag_maker", set(active_files))
 
         if should_call_cleanup:
