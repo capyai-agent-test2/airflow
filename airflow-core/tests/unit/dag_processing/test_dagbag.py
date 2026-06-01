@@ -325,6 +325,30 @@ def test_validate_executor_field():
         _validate_executor_fields(dag)
 
 
+def test_dagbag_can_skip_executor_field_validation(tmp_path):
+    dag_file = tmp_path / "test_dag.py"
+    dag_file.write_text(
+        textwrap.dedent(
+            """
+            from airflow.sdk import DAG, BaseOperator
+
+            with DAG("test-dag", schedule=None):
+                BaseOperator(task_id="t1", executor="KubernetesExecutor")
+            """
+        )
+    )
+
+    dagbag = DagBag(
+        dag_folder=tmp_path,
+        include_examples=False,
+        safe_mode=False,
+        validate_executor_fields=False,
+    )
+
+    assert not dagbag.import_errors
+    assert "test-dag" in dagbag.dags
+
+
 class TestDagBag:
     def setup_class(self):
         db_clean_up()
