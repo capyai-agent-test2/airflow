@@ -17,6 +17,7 @@
 # under the License.
 from __future__ import annotations
 
+import json
 import os
 from unittest import mock
 
@@ -24,10 +25,16 @@ import pytest
 
 from airflow.cli import cli_parser
 from airflow.cli.commands import dag_processor_command
+from airflow.dag_processing.bundles.base import BaseDagBundle
 
 from tests_common.test_utils.config import conf_vars
 
 pytestmark = pytest.mark.db_test
+
+
+class BundleThatFailsOnCreate(BaseDagBundle):
+    def __init__(self, *args, **kwargs):
+        raise RuntimeError("Bundle should not be created while validating CLI arguments")
 
 
 class TestDagProcessorCommand:
@@ -56,6 +63,29 @@ class TestDagProcessorCommand:
         with configure_testing_dag_bundle(os.devnull):
             dag_processor_command.dag_processor(args)
         assert mock_runner.call_args.kwargs["processor"].bundle_names_to_parse == ["testing"]
+
+    @conf_vars(
+        {
+            ("core", "load_examples"): "False",
+            ("dag_processor", "dag_bundle_config_list"): json.dumps(
+                [
+                    {
+                        "name": "failing-bundle",
+                        "classpath": "unit.cli.commands.test_dag_processor_command.BundleThatFailsOnCreate",
+                        "kwargs": {"refresh_interval": 1},
+                    }
+                ]
+            ),
+        }
+    )
+    @mock.patch("airflow.cli.commands.dag_processor_command.DagProcessorJobRunner")
+    def test_bundle_name_validation_does_not_create_bundle(self, mock_runner):
+        mock_runner.return_value.job_type = "DagProcessorJob"
+        args = self.parser.parse_args(["dag-processor", "--bundle-name", "failing-bundle"])
+
+        dag_processor_command.dag_processor(args)
+
+        assert mock_runner.call_args.kwargs["processor"].bundle_names_to_parse == ["failing-bundle"]
 
     @mock.patch("airflow.cli.hot_reload.run_with_reloader")
     def test_dag_processor_with_dev_flag(self, mock_reloader):
