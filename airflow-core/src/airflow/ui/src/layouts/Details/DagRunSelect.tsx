@@ -19,12 +19,13 @@
 import { createListCollection, type SelectValueChangeDetails, Select } from "@chakra-ui/react";
 import { forwardRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import type { GridRunsResponse } from "openapi/requests/types.gen";
 import { StateBadge } from "src/components/StateBadge";
 import Time from "src/components/Time";
 import { useGridRuns } from "src/queries/useGridRuns.ts";
+import { buildRunNavigationPath } from "src/utils/dagNavigation";
 
 type DagRunSelected = {
   run: GridRunsResponse;
@@ -38,6 +39,7 @@ type DagRunSelectProps = {
 export const DagRunSelect = forwardRef<HTMLDivElement, DagRunSelectProps>(({ limit }, ref) => {
   const { dagId = "", runId, taskId } = useParams();
   const { t: translate } = useTranslation(["dag", "common"]);
+  const location = useLocation();
   const navigate = useNavigate();
 
   const { data: gridRuns, isLoading } = useGridRuns({ limit });
@@ -50,11 +52,19 @@ export const DagRunSelect = forwardRef<HTMLDivElement, DagRunSelectProps>(({ lim
   });
 
   const selectDagRun = ({ items }: SelectValueChangeDetails<DagRunSelected>) => {
-    const runPartialPath = items.length > 0 ? `/runs/${items[0]?.run.run_id}` : "";
-
     void Promise.resolve(
       navigate({
-        pathname: `/dags/${dagId}${runPartialPath}/${taskId === undefined ? "" : `tasks/${taskId}`}`,
+        pathname:
+          items.length > 0
+            ? buildRunNavigationPath({
+                dagId,
+                pathname: location.pathname,
+                runId: items[0]?.run.run_id ?? "",
+                taskId,
+              })
+            : taskId === undefined
+              ? `/dags/${dagId}`
+              : `/dags/${dagId}/tasks/${taskId}`,
       }),
     );
   };
