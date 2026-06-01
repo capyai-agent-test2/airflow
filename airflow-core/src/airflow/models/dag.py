@@ -591,6 +591,7 @@ class DagModel(Base):
         cls,
         bundle_name: str,
         rel_filelocs: Collection[str],
+        stale_dag_threshold: float = 0,
         *,
         session: Session = NEW_SESSION,
     ) -> bool:
@@ -599,11 +600,13 @@ class DagModel(Base):
 
         :param bundle_name: bundle for filelocs
         :param rel_filelocs: relative filelocs for bundle
+        :param stale_dag_threshold: seconds to wait after the Dag was last parsed before marking stale
         :param session: ORM Session
         :return: True if any DAGs were marked as stale, False otherwise
         """
         log.debug("Deactivating DAGs (for which DAG files are deleted) from %s table ", cls.__tablename__)
         rel_filelocs = set(rel_filelocs)
+        stale_after = timezone.utcnow() - timedelta(seconds=stale_dag_threshold)
         dag_models = session.scalars(
             select(cls)
             .where(
@@ -613,13 +616,16 @@ class DagModel(Base):
                 load_only(
                     cls.relative_fileloc,
                     cls.is_stale,
+                    cls.last_parsed_time,
                 ),
             )
         )
 
         any_deactivated = False
         for dm in dag_models:
-            if dm.relative_fileloc not in rel_filelocs:
+            if dm.relative_fileloc not in rel_filelocs and (
+                dm.last_parsed_time is None or dm.last_parsed_time < stale_after
+            ):
                 dm.is_stale = True
                 any_deactivated = True
 

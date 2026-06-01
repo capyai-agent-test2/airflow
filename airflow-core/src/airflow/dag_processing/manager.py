@@ -907,6 +907,7 @@ class DagFileProcessorManager(LoggingMixin):
             any_deactivated = DagModel.deactivate_deleted_dags(
                 bundle_name=bundle_name,
                 rel_filelocs=observed_filelocs,
+                stale_dag_threshold=self.stale_dag_threshold,
                 session=session,
             )
             # Only run cleanup if we actually deactivated any DAGs
