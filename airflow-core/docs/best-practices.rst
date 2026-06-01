@@ -454,8 +454,9 @@ for any variable that contains sensitive data.
 Timetables
 ----------
 Avoid using Airflow Variables/Connections or accessing Airflow database at the top level of your timetable code.
-Database access should be delayed until the execution time of the Dag. This means that you should not have variables/connections retrieval
-as argument to your timetable class initialization or have Variable/connection at the top level of your custom timetable module.
+Database access should be delayed until the scheduler needs the timetable to compute the next Dag run. This means
+that you should not have variables/connections retrieval as an argument to your timetable class initialization, in
+the timetable's ``__init__``, or at the top level of your custom timetable module.
 
 Bad example:
 
@@ -466,8 +467,8 @@ Bad example:
 
 
     class CustomTimetable(CronDataIntervalTimetable):
-        def __init__(self, *args, something=Variable.get("something"), **kwargs):
-            self._something = something
+        def __init__(self, *args, enabled_key="schedule_enabled", **kwargs):
+            self._enabled = Variable.get(enabled_key)
             super().__init__(*args, **kwargs)
 
 Good example:
@@ -475,13 +476,27 @@ Good example:
 .. code-block:: python
 
     from airflow.sdk import Variable
+    from airflow.timetables.base import DagRunInfo, DataInterval, TimeRestriction
     from airflow.timetables.interval import CronDataIntervalTimetable
 
 
     class CustomTimetable(CronDataIntervalTimetable):
-        def __init__(self, *args, something="something", **kwargs):
-            self._something = Variable.get(something)
+        def __init__(self, *args, enabled_key="schedule_enabled", **kwargs):
+            self._enabled_key = enabled_key
             super().__init__(*args, **kwargs)
+
+        def next_dagrun_info(
+            self,
+            *,
+            last_automated_data_interval: DataInterval | None,
+            restriction: TimeRestriction,
+        ) -> DagRunInfo | None:
+            if Variable.get(self._enabled_key) != "true":
+                return None
+            return super().next_dagrun_info(
+                last_automated_data_interval=last_automated_data_interval,
+                restriction=restriction,
+            )
 
 
 Triggering Dags after changes
