@@ -24,6 +24,8 @@ Private service for dag structure.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterator
+from itertools import count
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -37,6 +39,17 @@ from airflow.models.serialized_dag import SerializedDagModel
 def get_upstream_assets(
     asset_expression: dict, entry_node_ref: str, level: int = 0
 ) -> tuple[list[dict], list[dict]]:
+    condition_id_sequence = count(level)
+    return _get_upstream_assets(asset_expression, entry_node_ref, condition_id_sequence, is_source_asset=True)
+
+
+def _get_upstream_assets(
+    asset_expression: dict,
+    entry_node_ref: str,
+    condition_id_sequence: Iterator[int],
+    *,
+    is_source_asset: bool = False,
+) -> tuple[list[dict], list[dict]]:
     edges: list[dict] = []
     nodes: list[dict] = []
     asset_expression_type: str | None = None
@@ -44,7 +57,7 @@ def get_upstream_assets(
     # include assets, asset-alias, asset-name-refs, asset-uri-refs
     assets_info: list[dict] = []
 
-    nested_expression: dict = {}
+    nested_expressions: list[dict] = []
 
     expr_key = ""
     if asset_expression.keys() == {"any"}:
@@ -59,22 +72,22 @@ def get_upstream_assets(
         for expr in asset_exprs:
             nested_expr_key = next(iter(expr.keys()))
             if nested_expr_key in ("any", "all"):
-                nested_expression = expr
+                nested_expressions.append(expr)
             elif nested_expr_key in ("asset", "alias", "asset-name-ref", "asset-uri-ref"):
-                asset_info = expr[nested_expr_key]
+                asset_info = {**expr[nested_expr_key]}
                 asset_info["type"] = nested_expr_key if nested_expr_key != "alias" else "asset-alias"
 
                 assets_info.append(asset_info)
             else:
                 raise TypeError(f"Unsupported type: {expr.keys()}")
 
-    if asset_expression_type and assets_info:
-        asset_condition_id = f"{asset_expression_type}-{level}"
+    if asset_expression_type and (assets_info or nested_expressions):
+        asset_condition_id = f"{asset_expression_type}-{next(condition_id_sequence)}"
         edges.append(
             {
                 "source_id": asset_condition_id,
                 "target_id": entry_node_ref,
-                "is_source_asset": level == 0,
+                "is_source_asset": is_source_asset,
             }
         )
         nodes.append(
@@ -115,8 +128,8 @@ def get_upstream_assets(
                 }
             )
 
-        if nested_expression is not None:
-            n, e = get_upstream_assets(nested_expression, asset_condition_id, level=level + 1)
+        for nested_expression in nested_expressions:
+            n, e = _get_upstream_assets(nested_expression, asset_condition_id, condition_id_sequence)
 
             nodes = nodes + n
             edges = edges + e
