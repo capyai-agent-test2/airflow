@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 import structlog
 from git import Repo
 from git.exc import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError
-from tenacity import retry, retry_if_exception_type, stop_after_attempt
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from airflow.dag_processing.bundles.base import BaseDagBundle
 from airflow.providers.common.compat.sdk import AirflowException
@@ -36,6 +36,8 @@ if AIRFLOW_V_3_3_PLUS:
     from airflow.dag_processing.bundles.base import BundleVersion
 
 log = structlog.get_logger(__name__)
+
+CLONE_RETRY_WAIT_SECONDS = 1
 
 
 class GitDagBundle(BaseDagBundle):
@@ -247,6 +249,7 @@ class GitDagBundle(BaseDagBundle):
     @retry(
         retry=retry_if_exception_type((InvalidGitRepositoryError, GitCommandError)),
         stop=stop_after_attempt(2),
+        wait=wait_fixed(CLONE_RETRY_WAIT_SECONDS),
         reraise=True,
     )
     def _clone_repo_if_required(self) -> None:
@@ -285,6 +288,7 @@ class GitDagBundle(BaseDagBundle):
     @retry(
         retry=retry_if_exception_type((InvalidGitRepositoryError, GitCommandError)),
         stop=stop_after_attempt(2),
+        wait=wait_fixed(CLONE_RETRY_WAIT_SECONDS),
         reraise=True,
     )
     def _clone_bare_repo_if_required(self) -> None:

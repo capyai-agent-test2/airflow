@@ -32,7 +32,7 @@ from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from airflow.dag_processing.bundles.base import get_bundle_storage_root_path
 from airflow.models import Connection
 from airflow.providers.common.compat.sdk import AirflowException
-from airflow.providers.git.bundles.git import GitDagBundle
+from airflow.providers.git.bundles.git import CLONE_RETRY_WAIT_SECONDS, GitDagBundle
 from airflow.providers.git.hooks.git import GitHook
 
 from tests_common.test_utils.config import conf_vars
@@ -104,6 +104,7 @@ class TestGitDagBundle:
                 conn_type="git",
             )
         )
+
         create_connection_without_db(
             Connection(
                 conn_id=CONN_HTTPS,
@@ -118,6 +119,10 @@ class TestGitDagBundle:
                 conn_type="git",
             )
         )
+
+    def test_clone_retries_wait_between_attempts(self):
+        assert GitDagBundle._clone_repo_if_required.retry.wait(None) == CLONE_RETRY_WAIT_SECONDS
+        assert GitDagBundle._clone_bare_repo_if_required.retry.wait(None) == CLONE_RETRY_WAIT_SECONDS
 
     def test_supports_versioning(self):
         assert GitDagBundle.supports_versioning is True
