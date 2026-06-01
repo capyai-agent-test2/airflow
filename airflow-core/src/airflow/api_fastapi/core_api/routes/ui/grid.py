@@ -387,7 +387,6 @@ def _build_ti_summaries(
                     "task_id": task_id,
                     "task_display_name": task_id,
                     **agg,
-                    "child_states": None,
                 }
             )
         return {"run_id": run_id, "dag_id": dag_id, "task_instances": task_instances}

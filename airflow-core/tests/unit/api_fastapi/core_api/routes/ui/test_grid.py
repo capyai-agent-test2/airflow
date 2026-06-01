@@ -1188,7 +1188,7 @@ class TestGetGridDataEndpoint:
         task_instances = {ti["task_id"]: ti for ti in summaries[0]["task_instances"]}
         assert TASK_ID in task_instances
         assert task_instances[TASK_ID]["task_display_name"] == TASK_ID
-        assert task_instances[TASK_ID]["child_states"] is None
+        assert task_instances[TASK_ID]["child_states"] == {"success": 1}
 
     def test_grid_ti_summaries_stream_empty_run_ids(self, session, test_client):
         """Streaming endpoint with no run_ids returns an empty body."""
