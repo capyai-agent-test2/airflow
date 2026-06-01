@@ -119,6 +119,62 @@ the meta-data file in your Dag easily. The location of the file to read can be f
     # Configuration dict is available here
 
 
+Reusing a Dag factory function
+..............................
+
+You can move repeated Dag structure into a separate Python module and import a factory function from each
+Dag file. This is useful when several Dags share the same tasks and dependencies, but each Dag file should
+still define its own Dag object or configuration.
+
+For example, put the reusable Dag structure in a module in your Dag folder:
+
+.. code-block:: python
+
+    # reusable_dag.py
+
+    from datetime import datetime
+
+    from airflow.sdk import DAG, task
+
+    DEFAULT_DAG_ARGS = {
+        "catchup": False,
+        "start_date": datetime(2025, 4, 29),
+    }
+
+
+    def build_message_dag(dag_id: str, message: str) -> DAG:
+        with DAG(dag_id=dag_id, schedule=None, **DEFAULT_DAG_ARGS) as dag:
+
+            @task
+            def print_message(message: str) -> None:
+                print(message)
+
+            print_message(message)
+
+        return dag
+
+Then each Dag file can import the factory and register a separate Dag:
+
+.. code-block:: python
+
+    # dag_1.py
+
+    from reusable_dag import build_message_dag
+
+    build_message_dag(dag_id="reusable_dag_1", message="Hello from the first Dag")
+
+.. code-block:: python
+
+    # dag_2.py
+
+    from reusable_dag import build_message_dag
+
+    build_message_dag(dag_id="reusable_dag_2", message="Hello from the second Dag")
+
+Add an ``__init__.py`` file if you put reusable modules in a package. If the reusable module should not be
+parsed as a Dag file by the scheduler, add it to ``.airflowignore``.
+
+
 Registering dynamic Dags
 ........................
 
