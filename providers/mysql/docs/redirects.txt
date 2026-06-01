@@ -1,1 +1,2 @@
 connections/index.rst connections/mysql.rst
+_api/airflow/providers/mysql/operators/mysql/index.rst operators.rst
