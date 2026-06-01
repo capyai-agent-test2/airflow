@@ -53,6 +53,7 @@ class BaseTaskInstanceDTO(BaseModel):
     pool_slots: int
     queue: str
     priority_weight: int
+    run_as_user: str | None = None
     executor_config: dict | None = Field(default=None, exclude=True)
 
     parent_context_carrier: dict | None = None

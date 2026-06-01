@@ -894,8 +894,6 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
     # Surface the post-RUNNING startup breakdown so support engineers and DAG authors can
     # attribute apparent slow startup to bundle prep (Airflow-side, e.g. git fetch) vs.
     # DAG file parse (user code). Emitted before return so it lands in the task log.
-    # Under `run_as_user` impersonation, parse() runs once pre-sudo and again post-sudo,
-    # so this event fires twice for those tasks -- the two entries show impersonation overhead.
     log.info(
         "Worker startup parse complete",
         bundle_name=bundle_info.name,
@@ -1027,6 +1025,11 @@ def startup(msg: StartupDetails) -> tuple[RuntimeTaskInstance, Context, Logger]:
         log.exception("error calling listener")
 
     with _airflow_parsing_context_manager(dag_id=msg.ti.dag_id, task_id=msg.ti.task_id):
+        run_as_user = msg.ti.run_as_user or conf.get("core", "default_impersonation", fallback=None)
+        if os.environ.get("_AIRFLOW__REEXECUTED_PROCESS") != "1" and run_as_user and run_as_user != getuser():
+            _reexecute_task_runner_as_user(msg=msg, run_as_user=run_as_user, log=log)
+            return None, None, None
+
         ti = parse(msg, log)
     log.debug("Dag file parsed", file=msg.dag_rel_path)
 
@@ -1035,30 +1038,24 @@ def startup(msg: StartupDetails) -> tuple[RuntimeTaskInstance, Context, Logger]:
     )
 
     if os.environ.get("_AIRFLOW__REEXECUTED_PROCESS") != "1" and run_as_user and run_as_user != getuser():
-        # enters here for re-exec process
-        os.environ["_AIRFLOW__REEXECUTED_PROCESS"] = "1"
-        # store startup message in environment for re-exec process
-        os.environ["_AIRFLOW__STARTUP_MSG"] = msg.model_dump_json()
-        os.set_inheritable(SUPERVISOR_COMMS.socket.fileno(), True)
-
-        # Import main directly from the module instead of re-executing the file.
-        # This ensures that when other parts modules import
-        # airflow.sdk.execution_time.task_runner, they get the same module instance
-        # with the properly initialized SUPERVISOR_COMMS global variable.
-        # If we re-executed the module with `python -m`, it would load as __main__ and future
-        # imports would get a fresh copy without the initialized globals.
-        rexec_python_code = "from airflow.sdk.execution_time.task_runner import main; main()"
-        cmd = ["sudo", "-E", "-H", "-u", run_as_user, sys.executable, "-c", rexec_python_code]
-        log.info(
-            "Running command",
-            command=cmd,
-        )
-        os.execvp("sudo", cmd)
-
-        # ideally, we should never reach here, but if we do, we should return None, None, None
+        _reexecute_task_runner_as_user(msg=msg, run_as_user=run_as_user, log=log)
         return None, None, None
 
     return ti, ti.get_template_context(), log
+
+
+def _reexecute_task_runner_as_user(*, msg: StartupDetails, run_as_user: str, log: Logger) -> None:
+    os.environ["_AIRFLOW__REEXECUTED_PROCESS"] = "1"
+    os.environ["_AIRFLOW__STARTUP_MSG"] = msg.model_dump_json()
+    os.set_inheritable(SUPERVISOR_COMMS.socket.fileno(), True)
+
+    rexec_python_code = "from airflow.sdk.execution_time.task_runner import main; main()"
+    cmd = ["sudo", "-E", "-H", "-u", run_as_user, sys.executable, "-c", rexec_python_code]
+    log.info(
+        "Running command",
+        command=cmd,
+    )
+    os.execvp("sudo", cmd)
 
 
 def _serialize_template_field(
