@@ -144,7 +144,10 @@ class ConfiguredSentry(NoopSentry):
                 try:
                     self.add_tagging(context["dag_run"], ti)
                     self.add_breadcrumbs(ti)
-                    return run(ti, context, log)
+                    result = run(ti, context, log)
+                    if error := result[2]:
+                        sentry_sdk.capture_exception(error)
+                    return result
                 except Exception as e:
                     sentry_sdk.capture_exception(e)
                     raise
