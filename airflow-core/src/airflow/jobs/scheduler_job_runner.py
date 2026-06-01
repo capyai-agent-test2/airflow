@@ -2403,6 +2403,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         if (
             dag_run.start_date
             and dag.dagrun_timeout
+            and dag_run.state == DagRunState.RUNNING
             and dag_run.start_date < timezone.utcnow() - dag.dagrun_timeout
         ):
             dag_run.set_state(DagRunState.FAILED)
