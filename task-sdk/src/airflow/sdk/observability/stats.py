@@ -22,6 +22,7 @@ from __future__ import annotations
 from airflow.sdk._shared.observability.metrics.stats import (
     Stats,
     decr,
+    force_flush,
     gauge,
     incr,
     initialize,
@@ -33,6 +34,7 @@ from airflow.sdk._shared.observability.metrics.stats import (
 __all__ = [
     "Stats",
     "decr",
+    "force_flush",
     "gauge",
     "incr",
     "initialize",

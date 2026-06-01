@@ -2071,12 +2071,12 @@ def flush_spans():
     try:
         yield
     finally:
+        timeout_millis = conf.getint("traces", "task_runner_flush_timeout_milliseconds", fallback=30000)
+
         provider = trace.get_tracer_provider()
         if hasattr(provider, "force_flush"):
-            from airflow.sdk.configuration import conf
-
-            timeout_millis = conf.getint("traces", "task_runner_flush_timeout_milliseconds", fallback=30000)
             provider.force_flush(timeout_millis=timeout_millis)
+        stats.force_flush(timeout_millis=timeout_millis)
 
 
 @flush_spans()

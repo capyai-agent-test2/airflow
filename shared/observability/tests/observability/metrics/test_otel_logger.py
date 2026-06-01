@@ -125,6 +125,13 @@ class TestOtelMetrics:
 
         self.meter.get_meter().create_counter.assert_called_once_with(name=full_name(name))
 
+    def test_force_flush(self):
+        self.meter.force_flush = mock.Mock()
+
+        self.stats.force_flush(timeout_millis=123)
+
+        self.meter.force_flush.assert_called_once_with(timeout_millis=123)
+
     def test_incr_new_metric_with_tags(self, name):
         tags = {"hello": "world"}
         key = _generate_key_name(full_name(name), tags)
