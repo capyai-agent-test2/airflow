@@ -1,1 +1,2 @@
 connections/index.rst connections/postgres.rst
+_api/airflow/providers/postgres/operators/postgres/index.rst operators.rst
