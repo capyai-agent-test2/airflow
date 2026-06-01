@@ -209,7 +209,7 @@ class TaskDeferred(BaseException):
         self,
         *,
         trigger,
-        method_name: str,
+        method_name: str | None,
         kwargs: dict[str, Any] | None = None,
         timeout=None,
     ):

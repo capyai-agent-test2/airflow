@@ -1427,8 +1427,15 @@ class TestTIUpdateState:
             assert response.json()["detail"] == "Database error occurred"
 
     @pytest.mark.parametrize("queues_enabled", [False, True])
+    @pytest.mark.parametrize("next_method", ["execute_callback", None])
     def test_ti_update_state_to_deferred(
-        self, client, session, create_task_instance, time_machine, queues_enabled: bool
+        self,
+        client,
+        session,
+        create_task_instance,
+        time_machine,
+        queues_enabled: bool,
+        next_method: str | None,
     ):
         """
         Test that tests if the transition to deferred state is handled correctly.
@@ -1465,7 +1472,7 @@ class TestTIUpdateState:
                 "trigger_timeout": "P1D",  # 1 day
                 "queue": "default" if queues_enabled else None,
                 "classpath": "my-classpath",
-                "next_method": "execute_callback",
+                "next_method": next_method,
                 # expected format is now in serde serialized format
                 "next_kwargs": {
                     "foo": {
@@ -1495,7 +1502,7 @@ class TestTIUpdateState:
             assert len(tis) == 1
 
             assert tis[0].state == TaskInstanceState.DEFERRED
-            assert tis[0].next_method == "execute_callback"
+            assert tis[0].next_method == next_method
 
             assert tis[0].next_kwargs == {
                 "foo": {
