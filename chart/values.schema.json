@@ -1615,6 +1615,12 @@
                 "type": "string"
             }
         },
+        "fernetKeySecretUseHelmHooks": {
+            "description": "Enable Helm hooks for the Fernet key secret.",
+            "type": "boolean",
+            "x-docsSection": "Common",
+            "default": true
+        },
         "apiSecretKey": {
             "description": "The Flask secret key for Airflow Api to encrypt browser session.",
             "type": [
