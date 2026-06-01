@@ -410,6 +410,9 @@ class ConnectionAccessor:
     """Wrapper to access Connection entries in template."""
 
     def __getattr__(self, conn_id: str) -> Any:
+        if conn_id.startswith("__") and conn_id.endswith("__"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {conn_id!r}")
+
         from airflow.sdk.definitions.connection import Connection
 
         return Connection.get(conn_id)
@@ -456,6 +459,9 @@ class VariableAccessor:
         return "<VariableAccessor (dynamic access)>"
 
     def __getattr__(self, key: str) -> Any:
+        if key.startswith("__") and key.endswith("__"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {key!r}")
+
         return _get_variable(key, self._deserialize_json)
 
     def get(self, key, default: Any = NOTSET) -> Any:
@@ -817,6 +823,9 @@ class MacrosAccessor:
     _macros_module = None
 
     def __getattr__(self, item: str) -> Any:
+        if item.startswith("__") and item.endswith("__"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {item!r}")
+
         # Lazily load Macros module
         if not self._macros_module:
             import airflow.sdk.execution_time.macros
