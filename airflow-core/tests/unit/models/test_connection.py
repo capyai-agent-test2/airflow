@@ -26,12 +26,13 @@ import pytest
 from structlog.testing import capture_logs
 
 from airflow.exceptions import AirflowException, AirflowNotFoundException
-from airflow.models import Connection
+from airflow.models import Connection, Variable
 from airflow.sdk.exceptions import AirflowRuntimeError, ErrorType
 from airflow.sdk.execution_time.comms import ErrorResponse
+from airflow.utils.sqlalchemy import prohibit_commit
 
 from tests_common.test_utils.config import conf_vars
-from tests_common.test_utils.db import clear_db_connections
+from tests_common.test_utils.db import clear_db_connections, clear_db_variables
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -539,4 +540,23 @@ class TestConnection:
             "test_conn1": "testing",
             "test_conn2": None,
         }
+        clear_db_connections()
+
+    @pytest.mark.db_test
+    def test_secrets_can_be_read_while_scoped_session_commit_is_prohibited(self, session: Session):
+        clear_db_connections()
+        clear_db_variables()
+
+        session.add(Connection(conn_id="listener_conn", conn_type="test_type"))
+        Variable.set("listener_variable", "listener_value", session=session)
+        session.commit()
+
+        with prohibit_commit(session):
+            connection = Connection.get_connection_from_secrets("listener_conn")
+            variable = Variable.get("listener_variable")
+
+        assert connection.conn_id == "listener_conn"
+        assert variable == "listener_value"
+
+        clear_db_variables()
         clear_db_connections()
