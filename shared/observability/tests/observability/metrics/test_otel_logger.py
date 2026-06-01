@@ -25,6 +25,8 @@ from unittest import mock
 
 import pytest
 from opentelemetry.metrics import MeterProvider
+from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.metrics.view import ExponentialBucketHistogramAggregation, View
 
 from airflow_shared.observability.common import get_otel_data_exporter
@@ -127,12 +129,50 @@ class TestOtelMetrics:
 
     def test_incr_new_metric_with_tags(self, name):
         tags = {"hello": "world"}
-        key = _generate_key_name(full_name(name), tags)
 
         self.stats.incr(name, tags=tags)
 
         self.meter.get_meter().create_counter.assert_called_once_with(name=full_name(name))
-        self.map[key].add.assert_called_once_with(1, attributes=tags)
+        self.map[full_name(name)].add.assert_called_once_with(1, attributes=tags)
+
+    def test_incr_existing_metric_with_different_tags(self, name):
+        first_tags = {"dag_id": "dag", "task_id": "task_1"}
+        second_tags = {"dag_id": "dag", "task_id": "task_2"}
+
+        self.stats.incr(name, tags=first_tags)
+        self.stats.incr(name, tags=second_tags)
+
+        self.meter.get_meter().create_counter.assert_called_once_with(name=full_name(name))
+        self.map[full_name(name)].add.assert_has_calls(
+            [
+                mock.call(1, attributes=first_tags),
+                mock.call(1, attributes=second_tags),
+            ]
+        )
+
+    def test_incr_existing_metric_with_different_tags_uses_one_otel_instrument(self, name):
+        metric_reader = InMemoryMetricReader()
+        stats = SafeOtelLogger(SdkMeterProvider(metric_readers=[metric_reader]))
+        first_tags = {"dag_id": "dag", "task_id": "task_1"}
+        second_tags = {"dag_id": "dag", "task_id": "task_2"}
+
+        stats.incr(name, tags=first_tags)
+        stats.incr(name, tags=second_tags)
+
+        metric_data = metric_reader.get_metrics_data()
+        metrics = [
+            metric
+            for resource_metric in metric_data.resource_metrics
+            for scope_metric in resource_metric.scope_metrics
+            for metric in scope_metric.metrics
+        ]
+        assert [metric.name for metric in metrics] == [full_name(name)]
+        assert [
+            (data_point.value, dict(data_point.attributes)) for data_point in metrics[0].data.data_points
+        ] == [
+            (1, first_tags),
+            (1, second_tags),
+        ]
 
     def test_incr_existing_metric(self, name):
         # Create the metric and set value to 1

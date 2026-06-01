@@ -357,9 +357,9 @@ class MetricsMap:
         Return the counter; creates a new one if it did not exist.
 
         :param name: The name of the counter to fetch or create.
-        :param attributes:  Counter attributes, used to generate a unique key to store the counter.
+        :param attributes: Counter attributes, accepted for API compatibility.
         """
-        key = _generate_key_name(name, attributes)
+        key = name
         if key not in self.map:
             self.map[key] = self._create_counter(name)
         return self.map[key]
@@ -369,9 +369,9 @@ class MetricsMap:
         Delete a counter.
 
         :param name: The name of the counter to delete.
-        :param attributes: Counter attributes which were used to generate a unique key to store the counter.
+        :param attributes: Counter attributes, accepted for API compatibility.
         """
-        key = _generate_key_name(name, attributes)
+        key = name
         if key in self.map.keys():
             del self.map[key]
 
