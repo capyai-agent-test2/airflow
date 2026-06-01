@@ -34,6 +34,7 @@ import structlog
 from sqlalchemy import delete, func, insert, select, tuple_, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import joinedload, load_only
+from sqlalchemy.orm.exc import StaleDataError
 
 from airflow._shared.timezones.timezone import utcnow
 from airflow.assets.manager import asset_manager
@@ -295,7 +296,7 @@ def _serialize_dag_capturing_errors(
             _sync_dag_perms(dag, session=session)
 
         return []
-    except OperationalError:
+    except (OperationalError, StaleDataError):
         raise
     except Exception:
         log.exception("Failed to write serialized DAG dag_id=%s fileloc=%s", dag.dag_id, dag.fileloc)
@@ -501,7 +502,7 @@ def update_dag_parsing_results_in_db(
                             _prefetched=prefetched_metadata.get(dag.dag_id),
                         )
                     )
-            except OperationalError:
+            except (OperationalError, StaleDataError):
                 session.rollback()
                 raise
             # Only now we are "complete" do we update import_errors - don't want to record errors from
