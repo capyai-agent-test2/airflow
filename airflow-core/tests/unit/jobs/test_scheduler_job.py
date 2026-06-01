@@ -5317,6 +5317,85 @@ class TestSchedulerJob:
         assert created_run.creating_job_id == scheduler_job.id
 
     @pytest.mark.need_serialized_dag
+    def test_create_dag_runs_for_independent_queued_asset_any_events(self, session, dag_maker):
+        asset1 = Asset(uri="test://asset-any-1", name="test_asset_any_1", group="test_group")
+        asset2 = Asset(uri="test://asset-any-2", name="test_asset_any_2", group="test_group")
+
+        with dag_maker(dag_id="asset-any-producer", start_date=timezone.utcnow(), session=session):
+            BashOperator(task_id="task1", bash_command="echo 1", outlets=[asset1])
+            BashOperator(task_id="task2", bash_command="echo 1", outlets=[asset2])
+        producer_run = dag_maker.create_dagrun(run_id="asset-any-producer-run")
+
+        asset_ids = {
+            uri: asset_id
+            for uri, asset_id in session.execute(
+                select(AssetModel.uri, AssetModel.id).where(AssetModel.uri.in_([asset1.uri, asset2.uri]))
+            )
+        }
+        event1 = AssetEvent(
+            asset_id=asset_ids[asset1.uri],
+            source_task_id="task1",
+            source_dag_id=producer_run.dag_id,
+            source_run_id=producer_run.run_id,
+            source_map_index=-1,
+            timestamp=DEFAULT_DATE,
+        )
+        event2 = AssetEvent(
+            asset_id=asset_ids[asset2.uri],
+            source_task_id="task2",
+            source_dag_id=producer_run.dag_id,
+            source_run_id=producer_run.run_id,
+            source_map_index=-1,
+            timestamp=DEFAULT_DATE,
+        )
+        session.add_all([event1, event2])
+
+        with dag_maker(dag_id="asset-any-consumer", schedule=asset1 | asset2):
+            pass
+        consumer_dag = dag_maker.dag
+
+        session.add_all(
+            [
+                AssetDagRunQueue(
+                    asset_id=asset_ids[asset1.uri],
+                    target_dag_id=consumer_dag.dag_id,
+                    created_at=DEFAULT_DATE,
+                ),
+                AssetDagRunQueue(
+                    asset_id=asset_ids[asset2.uri],
+                    target_dag_id=consumer_dag.dag_id,
+                    created_at=DEFAULT_DATE,
+                ),
+            ]
+        )
+        session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[self.null_exec])
+
+        with create_session() as session:
+            self.job_runner._create_dagruns_for_dags(session, session)
+
+        created_runs = session.scalars(
+            select(DagRun).where(DagRun.dag_id == consumer_dag.dag_id).order_by(DagRun.id)
+        ).all()
+        assert len(created_runs) == 2
+        assert [{event.id for event in dag_run.consumed_asset_events} for dag_run in created_runs] == [
+            {event1.id},
+            {event2.id},
+        ]
+        assert all(dag_run.state == State.QUEUED for dag_run in created_runs)
+        assert all(dag_run.creating_job_id == scheduler_job.id for dag_run in created_runs)
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AssetDagRunQueue)
+                .where(AssetDagRunQueue.target_dag_id == consumer_dag.dag_id)
+            )
+            == 0
+        )
+
+    @pytest.mark.need_serialized_dag
     def test_create_dag_runs_asset_alias_with_asset_event_attached(self, session, dag_maker):
         """
         Test Dag Run trigger on AssetAlias includes the corresponding AssetEvent in `consumed_asset_events`.
