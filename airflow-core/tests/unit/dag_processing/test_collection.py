@@ -22,6 +22,7 @@ import logging
 import warnings
 from collections.abc import Generator
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest import mock
 from unittest.mock import patch
@@ -29,6 +30,7 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import OperationalError, SAWarning
+from sqlalchemy.orm.exc import StaleDataError
 
 import airflow.dag_processing.collection
 from airflow._shared.timezones import timezone as tz
@@ -586,6 +588,30 @@ class TestUpdateDagParsingResults:
 
         serialized_dags_count = session.scalar(select(func.count(SerializedDagModel.dag_id)))
         assert serialized_dags_count == 0
+
+    @patch.object(SerializedDagModel, "write_dag")
+    @patch("airflow.serialization.definitions.dag.SerializedDAG.bulk_write_to_db")
+    def test_sync_to_db_retries_stale_serialized_dag_update(self, mock_bulk_write_to_db, mock_s10n_write_dag):
+        """Test that stale serialized Dag writes are retried instead of recorded as import errors."""
+        dag = SimpleNamespace(dag_id="test", relative_fileloc="test.py")
+        stale_error = StaleDataError("serialized_dag row disappeared")
+        mock_s10n_write_dag.side_effect = [stale_error, True]
+        mock_session = mock.MagicMock()
+        import_errors = {}
+
+        update_dag_parsing_results_in_db(
+            "testing",
+            None,
+            dags=[dag],
+            import_errors=import_errors,
+            parse_duration=None,
+            warnings=set(),
+            session=mock_session,
+        )
+
+        assert mock_s10n_write_dag.call_count == 2
+        mock_session.rollback.assert_called_once()
+        assert import_errors == {}
 
     def test_serialized_dags_are_written_to_db_on_sync(self, testing_dag_bundle, session):
         """Test DAGs are Serialized and written to DB when parsing result is updated"""
