@@ -29,6 +29,9 @@ The sole purpose of this YAML file is it to check the values file is consistent 
   {{- if semverCompare "<3.1.0" .Values.airflowVersion }}
     {{ required "This chart only supports Apache Airflow version 3.1.0 and above." nil }}
   {{- end }}
+  {{- if and (not .Values.fernetKeySecretUseHelmHooks) (not (or .Values.fernetKey .Values.fernetKeySecretName)) }}
+    {{ required "When disabling fernetKeySecretUseHelmHooks, you must set either fernetKey or fernetKeySecretName to keep the Fernet key stable across syncs." nil }}
+  {{- end }}
 {{- /*
 ##############################
    Redis related checks

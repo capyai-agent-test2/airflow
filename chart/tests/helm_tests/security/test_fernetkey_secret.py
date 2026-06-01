@@ -19,7 +19,8 @@ from __future__ import annotations
 import base64
 
 import jmespath
-from chart_utils.helm_template_generator import render_chart
+import pytest
+from chart_utils.helm_template_generator import HelmFailedError, render_chart
 from cryptography.fernet import Fernet
 
 
@@ -57,3 +58,29 @@ class TestFernetKeySecret:
 
         # Verify the key is valid by creating a Fernet instance
         Fernet(fernet_key.encode())  # Raise: Fernet key must be 32 url-safe base64-encoded bytes.
+
+    def test_should_disable_helm_hooks_for_fernetkey_secret(self):
+        fernet_key_provided = Fernet.generate_key().decode()
+        docs = render_chart(
+            values={
+                "fernetKey": fernet_key_provided,
+                "fernetKeySecretAnnotations": {"test_annotation": "test_annotation_value"},
+                "fernetKeySecretUseHelmHooks": False,
+            },
+            show_only=["templates/secrets/fernetkey-secret.yaml"],
+        )[0]
+
+        annotations = docs["metadata"]["annotations"]
+        assert annotations == {"test_annotation": "test_annotation_value"}
+
+    def test_should_require_stable_fernet_key_when_disabling_helm_hooks(self):
+        with pytest.raises(HelmFailedError) as ex_ctx:
+            render_chart(
+                values={"fernetKeySecretUseHelmHooks": False},
+                show_only=["templates/secrets/fernetkey-secret.yaml"],
+            )
+
+        assert (
+            "When disabling fernetKeySecretUseHelmHooks, you must set either fernetKey or "
+            "fernetKeySecretName to keep the Fernet key stable across syncs." in ex_ctx.value.stderr.decode()
+        )

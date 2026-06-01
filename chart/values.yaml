@@ -545,6 +545,11 @@ fernetKeySecretName: ~
 # Add custom annotations to the fernet key secret
 fernetKeySecretAnnotations: {}
 
+# Enable Helm hooks for the fernet key secret.
+# For GitOps workflows that sync Helm manifests repeatedly, set this to false
+# together with a stable fernetKey or fernetKeySecretName to avoid secret rotation.
+fernetKeySecretUseHelmHooks: true
+
 # Flask secret key for Airflow 3+ Api: '[api] secret_key' in airflow.cfg
 apiSecretKey: ~
 
