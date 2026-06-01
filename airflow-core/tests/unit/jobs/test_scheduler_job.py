@@ -101,6 +101,7 @@ from airflow.sdk.definitions.callback import AsyncCallback, SyncCallback
 from airflow.sdk.definitions.timetables.assets import PartitionedAssetTimetable
 from airflow.serialization.definitions.dag import SerializedDAG
 from airflow.serialization.serialized_objects import LazyDeserializedDAG
+from airflow.task.trigger_rule import TriggerRule
 from airflow.timetables.base import DagRunInfo, DataInterval
 from airflow.utils.session import NEW_SESSION, create_session, provide_session
 from airflow.utils.sqlalchemy import with_row_locks
@@ -1412,6 +1413,89 @@ class TestSchedulerJob:
         res = self.job_runner._executable_task_instances_to_queued(max_tis=32, session=session)
         session.flush()
         assert total_executed_ti == len(res)
+
+    def test_task_instance_scheduling_decisions_skips_blocked_tasks_without_finished_upstreams(
+        self, dag_maker, session
+    ):
+        dag_id = (
+            "SchedulerJobTest."
+            "test_task_instance_scheduling_decisions_skips_blocked_tasks_without_finished_upstreams"
+        )
+        with dag_maker(dag_id=dag_id, session=session):
+            blocker = EmptyOperator(task_id="blocker")
+            blocked = EmptyOperator(task_id="blocked")
+            independent = EmptyOperator(task_id="independent")
+            blocker >> blocked
+
+        dr = dag_maker.create_dagrun(state=DagRunState.RUNNING)
+        blocker_ti = dr.get_task_instance(blocker.task_id, session=session)
+        blocker_ti.state = TaskInstanceState.RUNNING
+        session.merge(blocker_ti)
+        session.flush()
+
+        with mock.patch.object(
+            TaskInstance, "are_dependencies_met", autospec=True, return_value=True
+        ) as mock_dep:
+            scheduling_decision = dr.task_instance_scheduling_decisions(session=session)
+
+        assert {ti.task_id for ti in scheduling_decision.schedulable_tis} == {independent.task_id}
+        mock_dep.assert_called_once()
+        assert mock_dep.call_args.args[0].task_id == independent.task_id
+
+    def test_task_instance_scheduling_decisions_checks_always_tasks_without_finished_upstreams(
+        self, dag_maker, session
+    ):
+        dag_id = (
+            "SchedulerJobTest."
+            "test_task_instance_scheduling_decisions_checks_always_tasks_without_finished_upstreams"
+        )
+        with dag_maker(dag_id=dag_id, session=session):
+            blocker = EmptyOperator(task_id="blocker")
+            blocked = EmptyOperator(task_id="blocked", trigger_rule=TriggerRule.ALWAYS)
+            blocker >> blocked
+
+        dr = dag_maker.create_dagrun(state=DagRunState.RUNNING)
+        blocker_ti = dr.get_task_instance(blocker.task_id, session=session)
+        blocker_ti.state = TaskInstanceState.RUNNING
+        session.merge(blocker_ti)
+        session.flush()
+
+        with mock.patch.object(
+            TaskInstance, "are_dependencies_met", autospec=True, return_value=True
+        ) as mock_dep:
+            scheduling_decision = dr.task_instance_scheduling_decisions(session=session)
+
+        assert {ti.task_id for ti in scheduling_decision.schedulable_tis} == {blocked.task_id}
+        mock_dep.assert_called_once()
+        assert mock_dep.call_args.args[0].task_id == blocked.task_id
+
+    def test_are_premature_tis_skips_blocked_tasks_without_finished_upstreams(self, dag_maker, session):
+        dag_id = "SchedulerJobTest.test_are_premature_tis_skips_blocked_tasks_without_finished_upstreams"
+        with dag_maker(dag_id=dag_id, session=session):
+            blocker = EmptyOperator(task_id="blocker")
+            blocked = EmptyOperator(task_id="blocked")
+            blocker >> blocked
+
+        dr = dag_maker.create_dagrun(state=DagRunState.RUNNING)
+        blocker_ti = dr.get_task_instance(blocker.task_id, session=session)
+        blocker_ti.state = TaskInstanceState.RUNNING
+        blocked_ti = dr.get_task_instance(blocked.task_id, session=session)
+        session.merge(blocker_ti)
+        session.flush()
+
+        with mock.patch.object(
+            TaskInstance, "are_dependencies_met", autospec=True, return_value=False
+        ) as mock_dep:
+            are_runnable_tasks, changed_tis = dr._are_premature_tis(
+                [blocker_ti, blocked_ti],
+                [],
+                session=session,
+            )
+
+        assert not are_runnable_tasks
+        assert not changed_tis
+        mock_dep.assert_called_once()
+        assert mock_dep.call_args.args[0].task_id == blocker.task_id
 
     def test_find_executable_task_instances_order_logical_date(self, dag_maker):
         """
