@@ -820,7 +820,7 @@ class TestGetAssetEvents(TestAssets):
         session.commit()
         assert len(assets) == 2
 
-        with assert_queries_count(3):
+        with assert_queries_count(4):
             response = test_client.get("/assets/events")
 
         assert response.status_code == 200
@@ -849,6 +849,7 @@ class TestGetAssetEvents(TestAssets):
                             "data_interval_start": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
                             "data_interval_end": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
                             "partition_key": None,
+                            "triggered_by_asset_event": True,
                         }
                     ],
                     "timestamp": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
@@ -878,6 +879,7 @@ class TestGetAssetEvents(TestAssets):
                             "data_interval_start": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
                             "data_interval_end": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
                             "partition_key": None,
+                            "triggered_by_asset_event": True,
                         }
                     ],
                     "timestamp": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
@@ -886,6 +888,51 @@ class TestGetAssetEvents(TestAssets):
             ],
             "total_entries": 2,
         }
+
+    def test_marks_only_latest_consumed_event_as_triggering_dag_run(self, test_client, session):
+        self.create_assets(num=1, session=session)
+        asset_events = [
+            AssetEvent(
+                id=1,
+                asset_id=1,
+                extra={},
+                source_task_id="source_task_id",
+                source_dag_id="source_dag_id",
+                source_run_id="producer_run_1",
+                timestamp=DEFAULT_DATE,
+            ),
+            AssetEvent(
+                id=2,
+                asset_id=1,
+                extra={},
+                source_task_id="source_task_id",
+                source_dag_id="source_dag_id",
+                source_run_id="producer_run_2",
+                timestamp=DEFAULT_DATE + timedelta(minutes=1),
+            ),
+        ]
+        dag_run = DagRun(
+            dag_id="consumer_dag_id",
+            run_id="consumer_run_id",
+            run_type=DagRunType.ASSET_TRIGGERED,
+            logical_date=DEFAULT_DATE,
+            start_date=DEFAULT_DATE,
+            data_interval=(DEFAULT_DATE, DEFAULT_DATE),
+            state=DagRunState.SUCCESS,
+        )
+        dag_run.end_date = DEFAULT_DATE
+        dag_run.consumed_asset_events.extend(asset_events)
+        session.add(dag_run)
+        session.commit()
+
+        response = test_client.get("/assets/events", params={"order_by": "timestamp"})
+
+        assert response.status_code == 200
+        asset_events = response.json()["asset_events"]
+        assert [asset_event["id"] for asset_event in asset_events] == [1, 2]
+        assert [
+            asset_event["created_dagruns"][0]["triggered_by_asset_event"] for asset_event in asset_events
+        ] == [False, True]
 
     def test_should_respond_401(self, unauthenticated_test_client):
         response = unauthenticated_test_client.get("/assets/events")
@@ -1037,6 +1084,7 @@ class TestGetAssetEvents(TestAssets):
                             "data_interval_start": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
                             "data_interval_end": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
                             "partition_key": None,
+                            "triggered_by_asset_event": True,
                         }
                     ],
                     "timestamp": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
@@ -1066,6 +1114,7 @@ class TestGetAssetEvents(TestAssets):
                             "data_interval_start": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
                             "data_interval_end": from_datetime_to_zulu_without_ms(DEFAULT_DATE),
                             "partition_key": None,
+                            "triggered_by_asset_event": True,
                         }
                     ],
                     "timestamp": from_datetime_to_zulu_without_ms(DEFAULT_DATE),

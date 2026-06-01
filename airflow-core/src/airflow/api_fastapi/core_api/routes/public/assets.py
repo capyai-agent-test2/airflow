@@ -82,6 +82,7 @@ from airflow.models.asset import (
     AssetWatcherModel,
     TaskOutletAssetReference,
 )
+from airflow.models.dagrun import DagRun
 from airflow.typing_compat import Unpack
 from airflow.utils.state import DagRunState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
@@ -348,12 +349,24 @@ def get_asset_events(
     )
 
     assets_event_select = assets_event_select.options(
-        subqueryload(AssetEvent.created_dagruns), joinedload(AssetEvent.asset)
+        subqueryload(AssetEvent.created_dagruns).subqueryload(DagRun.consumed_asset_events),
+        joinedload(AssetEvent.asset),
     )
     assets_events = session.scalars(assets_event_select)
 
+    asset_event_responses = []
+    for asset_event in assets_events:
+        response = AssetEventResponse.model_validate(asset_event)
+        for dag_run, dag_run_response in zip(asset_event.created_dagruns, response.created_dagruns):
+            latest_consumed_event = max(
+                dag_run.consumed_asset_events,
+                key=lambda event: (event.timestamp, event.id),
+            )
+            dag_run_response.triggered_by_asset_event = latest_consumed_event.id == asset_event.id
+        asset_event_responses.append(response)
+
     return AssetEventCollectionResponse(
-        asset_events=assets_events,
+        asset_events=asset_event_responses,
         total_entries=total_entries,
     )
 

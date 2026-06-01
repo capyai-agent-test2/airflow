@@ -101,6 +101,7 @@
   "duration": "Duration",
   "edit": "Edit",
   "endDate": "End Date",
+  "includedIn": "Included in",
   "error": {
     "back": "Back",
     "defaultMessage": "An unexpected error occurred",
