@@ -18,10 +18,11 @@
  */
 import { Flex, type FlexProps } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import type { DagRunState, TaskInstanceState } from "openapi/requests/types.gen";
 import { BasicTooltip } from "src/components/BasicTooltip";
+import { buildRunNavigationPath } from "src/utils/dagNavigation";
 import { renderDuration } from "src/utils/datetimeUtils";
 
 type Props = {
@@ -48,6 +49,7 @@ export const GridButton = ({
   ...rest
 }: Props) => {
   const { t: translate } = useTranslation();
+  const location = useLocation();
 
   const tooltipContent = (
     <>
@@ -81,7 +83,7 @@ export const GridButton = ({
       <Link
         replace
         to={{
-          pathname: `/dags/${dagId}/runs/${runId}/${taskId === undefined ? "" : `tasks/${taskId}`}`,
+          pathname: buildRunNavigationPath({ dagId, pathname: location.pathname, runId, taskId }),
           search: searchParams.toString(),
         }}
       >

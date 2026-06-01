@@ -22,12 +22,13 @@ import { AsyncSelect } from "chakra-react-select";
 import type { OptionsOrGroups, GroupBase, SingleValue } from "chakra-react-select";
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useDebouncedCallback } from "use-debounce";
 
 import { UseDagServiceGetDagsKeyFn } from "openapi/queries";
 import { DagService } from "openapi/requests/services.gen";
 import type { DAGCollectionResponse, DAGResponse } from "openapi/requests/types.gen";
+import { buildDagNavigationPath } from "src/utils/dagNavigation";
 import type { Option } from "src/utils/option";
 
 import { DropdownIndicator } from "./SearchDagsDropdownIndicator";
@@ -38,6 +39,7 @@ export const SearchDags = ({
   readonly setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }) => {
   const { t: translate } = useTranslation("dags");
+  const location = useLocation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const SEARCH_LIMIT = 10;
@@ -45,7 +47,9 @@ export const SearchDags = ({
   const onSelect = (selected: SingleValue<Option>) => {
     if (selected) {
       setIsOpen(false);
-      void Promise.resolve(navigate(`/dags/${selected.value}`));
+      void Promise.resolve(
+        navigate(buildDagNavigationPath({ dagId: selected.value, pathname: location.pathname })),
+      );
     }
   };
 
