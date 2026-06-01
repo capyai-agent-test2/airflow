@@ -2430,6 +2430,28 @@ class TestRuntimeTaskInstance:
             ),
         )
 
+    @pytest.mark.parametrize(
+        "default",
+        [
+            pytest.param("fallback", id="custom-default"),
+            pytest.param(NOTSET, id="arg-not-set-default"),
+        ],
+    )
+    def test_xcom_pull_with_no_map_index_returns_default_when_no_xcom_found(
+        self,
+        default,
+        create_runtime_ti,
+        mock_supervisor_comms,
+    ):
+        test_task_id = "pull_task"
+        task = BaseOperator(task_id=test_task_id)
+        runtime_ti = create_runtime_ti(task=task)
+        mock_supervisor_comms.send.return_value = XComSequenceSliceResult(root=[])
+
+        result = runtime_ti.xcom_pull(key="test_key", task_ids="task_a", default=default)
+
+        assert result is default
+
     def test_get_param_from_context(
         self, mocked_parse, make_ti_context, mock_supervisor_comms, create_runtime_ti
     ):
