@@ -1638,6 +1638,43 @@ def test_mapped_task_check_before_expand(dag_maker, session, flag_upstream_faile
     )
 
 
+@pytest.mark.need_serialized_dag
+def test_none_failed_min_one_success_in_mapped_task_group_waits_for_upstream(dag_maker, session):
+    with dag_maker(session=session, serialized=True) as dag:
+
+        @task
+        def init():
+            return ["seize", "the", "day"]
+
+        @task
+        def echo(message):
+            return message
+
+        @task_group(group_id="tg")
+        def tg(message):
+            sleepy = echo.override(task_id="sleepy")(message)
+            echo.override(task_id="awake", trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS)(sleepy)
+
+        tg.expand(message=init())
+
+    dr = dag_maker.create_dagrun()
+    dag_maker.run_ti(task_id="init", dag_run=dr)
+
+    decision = dr.task_instance_scheduling_decisions(session=session)
+    tis = {(ti.task_id, ti.map_index): ti for ti in decision.schedulable_tis}
+    assert sorted(tis) == [("tg.sleepy", 0), ("tg.sleepy", 1), ("tg.sleepy", 2)]
+
+    awake_ti = dr.get_task_instance("tg.awake", map_index=-1, session=session)
+    awake_ti.refresh_from_task(dag.get_task("tg.awake"))
+    _test_trigger_rule(
+        ti=awake_ti,
+        session=session,
+        flag_upstream_failed=True,
+        expected_reason="requires all upstream tasks to have succeeded or been skipped, but found 3",
+    )
+    assert awake_ti.state is None
+
+
 @pytest.mark.parametrize(("flag_upstream_failed", "expected_ti_state"), [(True, SKIPPED), (False, None)])
 @pytest.mark.need_serialized_dag
 def test_mapped_task_group_finished_upstream_before_expand(
