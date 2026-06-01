@@ -21,6 +21,7 @@ import datetime
 import importlib
 import sys
 import types
+from contextlib import nullcontext
 from unittest import mock
 
 import pytest
@@ -123,6 +124,8 @@ class TestSentryHook:
         sentry_sdk.integrations = mock.Mock(logging=sentry_sdk_integrations_logging)
         sentry_sdk.get_current_scope = mock.MagicMock()
         sentry_sdk.add_breadcrumb = mock.MagicMock()
+        sentry_sdk.capture_exception = mock.create_autospec(lambda exception: None)
+        sentry_sdk.new_scope = mock.create_autospec(lambda: nullcontext(), return_value=nullcontext())
 
         sys.modules["sentry_sdk"] = sentry_sdk
         sys.modules["sentry_sdk.integrations.logging"] = sentry_sdk_integrations_logging
@@ -137,6 +140,8 @@ class TestSentryHook:
         mock_sentry_sdk.init.reset_mock()
         mock_sentry_sdk.get_current_scope.reset_mock()
         mock_sentry_sdk.add_breadcrumb.reset_mock()
+        mock_sentry_sdk.capture_exception.reset_mock()
+        mock_sentry_sdk.new_scope.reset_mock()
 
     @pytest.fixture
     def sentry(self, mock_sentry_sdk):
@@ -268,3 +273,21 @@ class TestSentryHook:
         sentry_minimum.prepare_to_enrich_errors(executor_integration="")
         assert mock_sentry_sdk.integrations.logging.ignore_logger.mock_calls == [mock.call("airflow.task")]
         assert mock_sentry_sdk.init.mock_calls == [mock.call(integrations=[])]
+
+    def test_enrich_errors_captures_returned_task_error(
+        self, mock_supervisor_comms, mock_sentry_sdk, sentry, dag_run, task_instance
+    ):
+        error = ValueError("task failed")
+        mock_supervisor_comms.send.return_value = TaskBreadcrumbsResult.model_construct(breadcrumbs=[])
+
+        def run(ti, context, log):
+            return TaskInstanceState.FAILED, None, error
+
+        result = sentry.enrich_errors(run)(
+            task_instance,
+            {"dag_run": dag_run},
+            mock.create_autospec(lambda *args, **kwargs: None),
+        )
+
+        assert result == (TaskInstanceState.FAILED, None, error)
+        assert mock_sentry_sdk.capture_exception.mock_calls == [mock.call(error)]
