@@ -48,6 +48,7 @@ from airflow.models.taskinstancehistory import TaskInstanceHistory
 from airflow.models.trigger import Trigger
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.utils.log.file_task_handler import (
+    DEFAULT_LOG_FETCH_TIMEOUT_SEC,
     DEFAULT_SORT_DATETIME,
     FileTaskHandler,
     LogType,
@@ -1415,6 +1416,27 @@ def test_permissions_for_new_directories(tmp_path):
 worker_url = "http://10.240.5.168:8793"
 log_location = "dag_id=sample/run_id=manual__2024-05-23T07:18:59.298882+00:00/task_id=sourcing/attempt=1.log"
 log_url = f"{worker_url}/log/{log_location}"
+
+
+@mock.patch("requests.adapters.HTTPAdapter.send")
+def test_fetch_logs_from_service_uses_default_timeout_when_option_is_missing(mock_send):
+    response = Response()
+    response.status_code = HTTPStatus.OK
+    mock_send.return_value = response
+
+    def getint(section, key, fallback=None):
+        if (section, key) == ("api", "log_fetch_timeout_sec"):
+            return fallback
+        if (section, key) == ("webserver", "log_request_clock_grace"):
+            return fallback
+        raise AssertionError(f"Unexpected config lookup: {section}.{key}")
+
+    with mock.patch("airflow.utils.log.file_task_handler.conf.getint", side_effect=getint) as mock_getint:
+        _fetch_logs_from_service(log_url, log_location)
+
+    mock_getint.assert_any_call("api", "log_fetch_timeout_sec", fallback=DEFAULT_LOG_FETCH_TIMEOUT_SEC)
+    _, kwargs = mock_send.call_args
+    assert kwargs["timeout"] == DEFAULT_LOG_FETCH_TIMEOUT_SEC
 
 
 @mock.patch("requests.adapters.HTTPAdapter.send")

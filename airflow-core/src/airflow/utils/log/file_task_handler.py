@@ -65,6 +65,7 @@ if TYPE_CHECKING:
 CHUNK_SIZE = 1024 * 1024 * 5  # 5MB
 DEFAULT_SORT_DATETIME = pendulum.datetime(2000, 1, 1)
 DEFAULT_SORT_TIMESTAMP = int(DEFAULT_SORT_DATETIME.timestamp() * 1000)
+DEFAULT_LOG_FETCH_TIMEOUT_SEC = 5
 SORT_KEY_OFFSET = 10000000
 """An offset used by the _create_sort_key utility.
 
@@ -172,7 +173,7 @@ def _fetch_logs_from_service(url: str, log_relative_path: str) -> Response:
 
     from airflow.api_fastapi.auth.tokens import JWTGenerator, get_signing_key
 
-    timeout = conf.getint("api", "log_fetch_timeout_sec", fallback=None)
+    timeout = conf.getint("api", "log_fetch_timeout_sec", fallback=DEFAULT_LOG_FETCH_TIMEOUT_SEC)
     generator = JWTGenerator(
         secret_key=get_signing_key("api", "secret_key"),
         # Since we are using a secret key, we need to be explicit about the algorithm here too
