@@ -473,7 +473,7 @@ def suppress_logs_and_warning(f: T) -> T:
 
 def validate_dag_bundle_arg(bundle_names: list[str]) -> None:
     """Make sure only known bundles are passed as arguments."""
-    known_bundles = {b.name for b in DagBundlesManager().get_all_dag_bundles()}
+    known_bundles = set(DagBundlesManager().get_all_bundle_names())
 
     unknown_bundles: set[str] = set(bundle_names) - known_bundles
     if unknown_bundles:
