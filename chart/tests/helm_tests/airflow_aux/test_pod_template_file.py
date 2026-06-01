@@ -356,6 +356,45 @@ class TestPodTemplateFile:
         assert jmespath.search("spec.containers[0].imagePullPolicy", docs[0]) == "Always"
         assert jmespath.search("spec.containers[0].name", docs[0]) == "base"
 
+    def test_should_set_airflow_digest_in_pod_template(self):
+        docs = render_chart(
+            values={
+                "images": {
+                    "airflow": {
+                        "repository": "dummy_image",
+                        "tag": "latest",
+                        "digest": "sha256:abc123",
+                    },
+                }
+            },
+            show_only=["templates/pod-template-file.yaml"],
+            chart_dir=self.temp_chart_dir,
+        )
+
+        assert jmespath.search("spec.containers[0].image", docs[0]) == "dummy_image@sha256:abc123"
+
+    def test_should_set_custom_digest_in_pod_template(self):
+        docs = render_chart(
+            values={
+                "images": {
+                    "airflow": {
+                        "repository": "dummy_image",
+                        "tag": "latest",
+                        "digest": "sha256:abc123",
+                    },
+                    "pod_template": {
+                        "repository": "worker_image",
+                        "tag": "current",
+                        "digest": "sha256:def456",
+                    },
+                }
+            },
+            show_only=["templates/pod-template-file.yaml"],
+            chart_dir=self.temp_chart_dir,
+        )
+
+        assert jmespath.search("spec.containers[0].image", docs[0]) == "worker_image@sha256:def456"
+
     def test_mount_airflow_cfg(self):
         docs = render_chart(
             show_only=["templates/pod-template-file.yaml"],
