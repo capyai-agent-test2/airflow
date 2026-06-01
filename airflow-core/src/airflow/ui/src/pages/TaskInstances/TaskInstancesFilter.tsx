@@ -20,52 +20,13 @@ import { VStack } from "@chakra-ui/react";
 import { useSearchParams, useParams } from "react-router-dom";
 
 import { FilterBar, type FilterValue } from "src/components/FilterBar";
-import { SearchParamsKeys, type SearchParamsKeysType } from "src/constants/searchParams";
-import { useFiltersHandler, type FilterableSearchParamsKeys } from "src/utils";
+import { useFiltersHandler } from "src/utils";
 
-const {
-  ASSET_EVENT_DATE_RANGE: ASSET_EVENT_DATE_RANGE_PARAM,
-  DAG_ID_PATTERN: DAG_ID_PATTERN_PARAM,
-  DAG_VERSION: DAG_VERSION_PARAM,
-  DURATION_GTE: DURATION_GTE_PARAM,
-  DURATION_LTE: DURATION_LTE_PARAM,
-  LOGICAL_DATE_RANGE: LOGICAL_DATE_RANGE_PARAM,
-  MAP_INDEX: MAP_INDEX_PARAM,
-  NAME_PATTERN: NAME_PATTERN_PARAM,
-  OPERATOR_NAME_PATTERN: OPERATOR_NAME_PATTERN_PARAM,
-  POOL_NAME_PATTERN: POOL_NAME_PATTERN_PARAM,
-  QUEUE_NAME_PATTERN: QUEUE_NAME_PATTERN_PARAM,
-  RENDERED_MAP_INDEX: RENDERED_MAP_INDEX_PARAM,
-  RUN_ID_PATTERN: RUN_ID_PATTERN_PARAM,
-  TASK_STATE: STATE_PARAM,
-  TRY_NUMBER: TRY_NUMBER_PARAM,
-}: SearchParamsKeysType = SearchParamsKeys;
+import { getTaskInstancesFilterKeys } from "./TaskInstancesFilter.utils";
 
 export const TaskInstancesFilter = () => {
-  const { dagId, runId } = useParams();
-  const paramKeys: Array<FilterableSearchParamsKeys> = [
-    NAME_PATTERN_PARAM as FilterableSearchParamsKeys,
-    LOGICAL_DATE_RANGE_PARAM as FilterableSearchParamsKeys,
-    ASSET_EVENT_DATE_RANGE_PARAM as FilterableSearchParamsKeys,
-    DURATION_GTE_PARAM as FilterableSearchParamsKeys,
-    DURATION_LTE_PARAM as FilterableSearchParamsKeys,
-    TRY_NUMBER_PARAM as FilterableSearchParamsKeys,
-    MAP_INDEX_PARAM as FilterableSearchParamsKeys,
-    RENDERED_MAP_INDEX_PARAM as FilterableSearchParamsKeys,
-    DAG_VERSION_PARAM as FilterableSearchParamsKeys,
-    OPERATOR_NAME_PATTERN_PARAM as FilterableSearchParamsKeys,
-    POOL_NAME_PATTERN_PARAM as FilterableSearchParamsKeys,
-    QUEUE_NAME_PATTERN_PARAM as FilterableSearchParamsKeys,
-    STATE_PARAM as FilterableSearchParamsKeys,
-  ];
-
-  if (runId === undefined) {
-    paramKeys.unshift(RUN_ID_PATTERN_PARAM as FilterableSearchParamsKeys);
-  }
-
-  if (dagId === undefined) {
-    paramKeys.unshift(DAG_ID_PATTERN_PARAM as FilterableSearchParamsKeys);
-  }
+  const { dagId, runId, taskId } = useParams();
+  const paramKeys = getTaskInstancesFilterKeys({ dagId, runId, taskId });
 
   const [searchParams] = useSearchParams();
 
