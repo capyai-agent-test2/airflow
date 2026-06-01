@@ -28,7 +28,7 @@ import time
 from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Collection, Iterable, Iterator
 from contextlib import ExitStack
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from functools import lru_cache, partial
 from itertools import groupby
 from typing import TYPE_CHECKING, Any, cast
@@ -2154,7 +2154,8 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 with_row_locks(
                     select(AssetDagRunQueue)
                     .where(AssetDagRunQueue.target_dag_id == dag.dag_id)
-                    .order_by(AssetDagRunQueue.created_at.desc()),
+                    .options(joinedload(AssetDagRunQueue.asset))
+                    .order_by(AssetDagRunQueue.created_at.asc(), AssetDagRunQueue.asset_id.asc()),
                     of=AssetDagRunQueue,
                     skip_locked=True,
                     key_share=False,
@@ -2169,84 +2170,134 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 )
                 continue
 
-            triggered_date: DateTime = timezone.coerce_datetime(queued_adrqs[0].created_at)
-            self.log.debug(
-                "Creating asset-triggered DagRun for '%s': %d queued assets, triggered_date=%s",
-                dag.dag_id,
-                len(queued_adrqs),
-                triggered_date,
-            )
-            cte = (
-                select(func.max(DagRun.run_after).label("previous_dag_run_run_after"))
-                .where(
+            active_runs = Counter(
+                DagRun.active_runs_of_dags(
+                    dag_ids=[dag.dag_id],
+                    exclude_backfill=True,
+                    session=session,
+                )
+            )[dag.dag_id]
+
+            evaluator = AssetEvaluator(session)
+            remaining_adrqs = list(queued_adrqs)
+            queued_adrq_batches: list[list[AssetDagRunQueue]] = []
+            for adrq in queued_adrqs:
+                statuses = {SerializedAssetUniqueKey.from_asset(adrq.asset): True}
+                if evaluator.run(dag.timetable.asset_condition, statuses=statuses):
+                    queued_adrq_batches.append([adrq])
+                    remaining_adrqs.remove(adrq)
+            if remaining_adrqs:
+                statuses = {SerializedAssetUniqueKey.from_asset(adrq.asset): True for adrq in remaining_adrqs}
+                if evaluator.run(dag.timetable.asset_condition, statuses=statuses):
+                    queued_adrq_batches.append(remaining_adrqs)
+
+            latest_existing_asset_dag_run_id = session.scalar(
+                select(func.max(DagRun.id)).where(
                     DagRun.dag_id == dag.dag_id,
                     DagRun.run_type == DagRunType.ASSET_TRIGGERED,
-                    DagRun.run_after < triggered_date,
-                )
-                .cte()
-            )
-
-            asset_events = list(
-                session.scalars(
-                    select(AssetEvent)
-                    .where(
-                        or_(
-                            AssetEvent.asset_id.in_(
-                                select(DagScheduleAssetReference.asset_id).where(
-                                    DagScheduleAssetReference.dag_id == dag.dag_id
-                                )
-                            ),
-                            AssetEvent.source_aliases.any(
-                                AssetAliasModel.scheduled_dags.any(
-                                    DagScheduleAssetAliasReference.dag_id == dag.dag_id
-                                )
-                            ),
-                        ),
-                        AssetEvent.timestamp <= triggered_date,
-                        AssetEvent.timestamp > func.coalesce(cte.c.previous_dag_run_run_after, date.min),
-                    )
-                    .order_by(AssetEvent.timestamp.asc(), AssetEvent.id.asc())
                 )
             )
+            default_previous_run_after = timezone.make_aware(datetime.min)
 
-            dag_run = dag.create_dagrun(
-                run_id=DagRun.generate_run_id(
-                    run_type=DagRunType.ASSET_TRIGGERED, logical_date=None, run_after=triggered_date
-                ),
-                logical_date=None,
-                data_interval=None,
-                run_after=triggered_date,
-                run_type=DagRunType.ASSET_TRIGGERED,
-                triggered_by=DagRunTriggeredByType.ASSET,
-                state=DagRunState.QUEUED,
-                creating_job_id=self.job.id,
-                session=session,
-            )
-            stats.incr("asset.triggered_dagruns")
-            dag_run.consumed_asset_events.extend(asset_events)
-            self.log.info(
-                "Created asset-triggered DagRun for '%s': run_id=%s, consumed %d asset events",
-                dag.dag_id,
-                dag_run.run_id,
-                len(asset_events),
-            )
-
-            # Delete only consumed ADRQ rows to avoid dropping newly queued events
-            # (e.g. DagRun triggered by asset A while a new event for asset B arrives).
-            adrq_pks = [(record.asset_id, record.target_dag_id) for record in queued_adrqs]
-            result = cast(
-                "CursorResult",
-                session.execute(
-                    delete(AssetDagRunQueue).where(
-                        tuple_(AssetDagRunQueue.asset_id, AssetDagRunQueue.target_dag_id).in_(adrq_pks)
+            for index, queued_adrq_batch in enumerate(queued_adrq_batches):
+                triggered_date: DateTime = timezone.coerce_datetime(
+                    max(adrq.created_at for adrq in queued_adrq_batch)
+                )
+                if latest_existing_asset_dag_run_id is None:
+                    previous_run_after = default_previous_run_after
+                else:
+                    previous_run_after = (
+                        session.scalar(
+                            select(func.max(DagRun.run_after)).where(
+                                DagRun.id <= latest_existing_asset_dag_run_id,
+                                DagRun.dag_id == dag.dag_id,
+                                DagRun.run_type == DagRunType.ASSET_TRIGGERED,
+                                DagRun.run_after < triggered_date,
+                            )
+                        )
+                        or default_previous_run_after
                     )
-                ),
-            )
-            self.log.info(
-                "Deleted %d ADRQ rows for '%s'",
-                result.rowcount,
-                dag.dag_id,
-            )
+
+                if active_runs >= dag_model.max_active_runs:
+                    self.log.info(
+                        "Asset-triggered Dag '%s' reached max_active_runs; leaving %d queued assets.",
+                        dag.dag_id,
+                        sum(len(batch) for batch in queued_adrq_batches[index:]),
+                    )
+                    break
+                active_runs += 1
+                self.log.debug(
+                    "Creating asset-triggered DagRun for '%s': %d queued assets, triggered_date=%s",
+                    dag.dag_id,
+                    len(queued_adrq_batch),
+                    triggered_date,
+                )
+                queued_asset_ids = [adrq.asset_id for adrq in queued_adrq_batch]
+
+                asset_events = list(
+                    session.scalars(
+                        select(AssetEvent)
+                        .where(
+                            AssetEvent.asset_id.in_(queued_asset_ids),
+                            or_(
+                                AssetEvent.asset_id.in_(
+                                    select(DagScheduleAssetReference.asset_id).where(
+                                        DagScheduleAssetReference.dag_id == dag.dag_id
+                                    )
+                                ),
+                                AssetEvent.source_aliases.any(
+                                    AssetAliasModel.scheduled_dags.any(
+                                        DagScheduleAssetAliasReference.dag_id == dag.dag_id
+                                    )
+                                ),
+                            ),
+                            AssetEvent.timestamp <= triggered_date,
+                            AssetEvent.timestamp > previous_run_after,
+                        )
+                        .order_by(AssetEvent.timestamp.asc(), AssetEvent.id.asc())
+                    )
+                )
+
+                dag_run = dag.create_dagrun(
+                    run_id=DagRun.generate_run_id(
+                        run_type=DagRunType.ASSET_TRIGGERED,
+                        logical_date=None,
+                        run_after=triggered_date,
+                    ),
+                    logical_date=None,
+                    data_interval=None,
+                    run_after=triggered_date,
+                    run_type=DagRunType.ASSET_TRIGGERED,
+                    triggered_by=DagRunTriggeredByType.ASSET,
+                    state=DagRunState.QUEUED,
+                    creating_job_id=self.job.id,
+                    session=session,
+                )
+                stats.incr("asset.triggered_dagruns")
+                dag_run.consumed_asset_events.extend(asset_events)
+                self.log.info(
+                    "Created asset-triggered DagRun for '%s': run_id=%s, consumed %d asset events",
+                    dag.dag_id,
+                    dag_run.run_id,
+                    len(asset_events),
+                )
+
+                # Delete only consumed ADRQ rows to avoid dropping newly queued events
+                # (e.g. DagRun triggered by asset A while a new event for asset B arrives).
+                adrq_pks = [(record.asset_id, record.target_dag_id) for record in queued_adrq_batch]
+                result = cast(
+                    "CursorResult",
+                    session.execute(
+                        delete(AssetDagRunQueue).where(
+                            tuple_(AssetDagRunQueue.asset_id, AssetDagRunQueue.target_dag_id).in_(adrq_pks)
+                        )
+                    ),
+                )
+                self.log.info(
+                    "Deleted %d ADRQ rows for '%s'",
+                    result.rowcount,
+                    dag.dag_id,
+                )
 
     def _lock_backfills(self, dag_runs: Collection[DagRun], session: Session) -> dict[int, Backfill]:
         """
