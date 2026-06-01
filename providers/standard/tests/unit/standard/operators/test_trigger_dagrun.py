@@ -30,7 +30,7 @@ from airflow.models.dag import DagModel
 from airflow.models.dagrun import DagRun
 from airflow.models.log import Log
 from airflow.models.taskinstance import TaskInstance
-from airflow.providers.common.compat.sdk import AirflowException, TaskDeferred, conf
+from airflow.providers.common.compat.sdk import AirflowException, AirflowFailException, TaskDeferred, conf
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.standard.triggers.external_task import DagStateTrigger
 from airflow.utils.session import create_session
@@ -196,7 +196,7 @@ class TestDagRunOperator:
 
         comms = FakeSupervisorComms()
         monkeypatch.setattr(task_runner, "SUPERVISOR_COMMS", comms, raising=False)
-        task_instance = mock.Mock()
+        task_instance = mock.Mock(spec=["xcom_push"])
 
         first_task = TriggerDagRunOperator(
             task_id="test_trigger_dagrun_1",
@@ -212,7 +212,7 @@ class TestDagRunOperator:
         )
 
         for task in [first_task, second_task]:
-            task.execute(context={"task": mock.Mock(), "ti": task_instance})
+            task.execute(context={"task": mock.Mock(spec=[]), "ti": task_instance})
 
         assert [msg.run_id for msg in comms.messages] == ["manual_run_1", "manual_run_2"]
         assert all(isinstance(msg, TriggerDagRun) for msg in comms.messages)
@@ -221,6 +221,28 @@ class TestDagRunOperator:
             mock.call(key="trigger_run_id", value="manual_run_1"),
             mock.call(key="trigger_run_id", value="manual_run_2"),
         ]
+
+    @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Implementation is different for Airflow 2 & 3")
+    def test_nested_trigger_dagrun_already_exists_fails_without_retry(self, monkeypatch):
+        from airflow.sdk.exceptions import ErrorType
+        from airflow.sdk.execution_time import task_runner
+        from airflow.sdk.execution_time.comms import ErrorResponse
+
+        comms = mock.Mock(
+            spec=["send"],
+            send=mock.Mock(
+                return_value=ErrorResponse(error=ErrorType.DAGRUN_ALREADY_EXISTS),
+            ),
+        )
+        monkeypatch.setattr(task_runner, "SUPERVISOR_COMMS", comms, raising=False)
+        task = TriggerDagRunOperator(
+            task_id="test_trigger_dagrun",
+            trigger_dag_id=TRIGGERED_DAG_ID,
+            trigger_run_id="manual_run",
+        )
+
+        with pytest.raises(AirflowFailException, match="already exists"):
+            task.execute(context={"task": mock.Mock(spec=[]), "ti": mock.Mock(spec=["xcom_push"])})
 
     @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Implementation is different for Airflow 2 & 3")
     @mock.patch(f"{TRIGGER_OP_PATH}.XCom.get_one")

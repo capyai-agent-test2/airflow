@@ -35,6 +35,7 @@ from airflow.models.dagrun import DagRun
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.providers.common.compat.sdk import (
     AirflowException,
+    AirflowFailException,
     AirflowSkipException,
     BaseOperatorLink,
     XCom,
@@ -369,8 +370,8 @@ class TriggerDagRunOperator(BaseOperator):
                     raise AirflowSkipException(
                         "Skipping due to skip_when_already_exists is set to True and DagRunAlreadyExists"
                     )
-                raise RuntimeError(f"Dag run {run_id} already exists for Dag {self.trigger_dag_id}")
-            raise RuntimeError(f"Failed to trigger dag run {run_id} for Dag {self.trigger_dag_id}")
+                raise AirflowFailException(f"Dag run {run_id} already exists for Dag {self.trigger_dag_id}")
+            raise AirflowFailException(f"Failed to trigger dag run {run_id} for Dag {self.trigger_dag_id}")
 
         self.log.info("Dag Run triggered successfully.", trigger_dag_id=self.trigger_dag_id)
         ti = context.get("ti") or context.get("task_instance")
@@ -402,9 +403,9 @@ class TriggerDagRunOperator(BaseOperator):
                     GetDagRunState(dag_id=self.trigger_dag_id, run_id=run_id)
                 )
                 if isinstance(dag_run_state, ErrorResponse):
-                    raise RuntimeError(f"Failed to fetch dag run state for Dag {self.trigger_dag_id}")
+                    raise AirflowFailException(f"Failed to fetch dag run state for Dag {self.trigger_dag_id}")
                 if dag_run_state.state in self.failed_states:
-                    raise AirflowException(
+                    raise AirflowFailException(
                         f"{self.trigger_dag_id} failed with failed states {dag_run_state.state}"
                     )
                 if dag_run_state.state in self.allowed_states:
