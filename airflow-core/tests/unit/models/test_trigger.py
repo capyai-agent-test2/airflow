@@ -29,6 +29,7 @@ from cryptography.fernet import Fernet
 from sqlalchemy import delete, func, select
 
 from airflow._shared.timezones import timezone
+from airflow.callbacks.callback_requests import EmailRequest, TaskCallbackRequest
 from airflow.jobs.job import Job
 from airflow.jobs.triggerer_job_runner import TriggererJobRunner
 from airflow.models import TaskInstance, Trigger
@@ -309,6 +310,82 @@ def test_submit_event_task_end(mock_utcnow, session, create_task_instance, event
     for k, v in {"return_value": "xcomret", "a": "b", "c": "d"}.items():
         expected_xcoms[k] = json.dumps(v)
     assert actual_xcoms == expected_xcoms
+
+
+@patch("airflow.models.trigger.DatabaseCallbackSink", autospec=True)
+def test_submit_event_task_failed_retries_and_sends_retry_requests(
+    mock_callback_sink, session, create_task_instance
+):
+    trigger = Trigger(classpath="does.not.matter", kwargs={})
+    session.add(trigger)
+    task = EmptyOperator(
+        task_id="op1",
+        retries=1,
+        email=["test@example.com"],
+        email_on_retry=True,
+        on_retry_callback=lambda context: None,
+    )
+    task_instance = create_task_instance(
+        session=session,
+        logical_date=timezone.utcnow(),
+        state=State.DEFERRED,
+        task=task,
+    )
+    task_instance.trigger_id = trigger.id
+    task_instance.try_number = 1
+    task_instance.max_tries = 1
+    session.commit()
+
+    Trigger.submit_event(trigger.id, TaskFailedEvent(), session=session)
+    session.flush()
+
+    session.refresh(task_instance)
+    assert task_instance.state == State.UP_FOR_RETRY
+    assert task_instance.trigger_id is None
+    send_calls = mock_callback_sink.return_value.send.call_args_list
+    assert len(send_calls) == 2
+    assert isinstance(send_calls[0].kwargs["callback"], TaskCallbackRequest)
+    assert send_calls[0].kwargs["callback"].task_callback_type == State.UP_FOR_RETRY
+    assert isinstance(send_calls[1].kwargs["callback"], EmailRequest)
+    assert send_calls[1].kwargs["callback"].email_type == "retry"
+
+
+@patch("airflow.models.trigger.DatabaseCallbackSink", autospec=True)
+def test_submit_event_task_failed_without_retries_sends_failure_requests(
+    mock_callback_sink, session, create_task_instance
+):
+    trigger = Trigger(classpath="does.not.matter", kwargs={})
+    session.add(trigger)
+    task = EmptyOperator(
+        task_id="op1",
+        retries=0,
+        email=["test@example.com"],
+        email_on_failure=True,
+        on_failure_callback=lambda context: None,
+    )
+    task_instance = create_task_instance(
+        session=session,
+        logical_date=timezone.utcnow(),
+        state=State.DEFERRED,
+        task=task,
+    )
+    task_instance.trigger_id = trigger.id
+    task_instance.try_number = 1
+    task_instance.max_tries = 0
+    session.commit()
+
+    Trigger.submit_event(trigger.id, TaskFailedEvent(), session=session)
+    session.flush()
+
+    session.refresh(task_instance)
+    assert task_instance.state == State.FAILED
+    assert task_instance.trigger_id is None
+    send_calls = mock_callback_sink.return_value.send.call_args_list
+    assert len(send_calls) == 2
+    assert isinstance(send_calls[0].kwargs["callback"], TaskCallbackRequest)
+    assert send_calls[0].kwargs["callback"].task_callback_type == State.FAILED
+    assert isinstance(send_calls[1].kwargs["callback"], EmailRequest)
+    assert send_calls[1].kwargs["callback"].email_type == "failure"
 
 
 @pytest.fixture
