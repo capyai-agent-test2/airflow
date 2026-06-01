@@ -214,6 +214,40 @@ class TestCliTasks:
             )
         )
 
+    def test_cli_test_with_params_overrides_matching_mapped_kwargs(self, dag_maker):
+        from airflow.sdk import task
+
+        with dag_maker(dag_id="test_mapped_task_params"):
+
+            @task
+            def get_numbers():
+                return [1, 2]
+
+            @task
+            def multiply_by_two(number):
+                return number * 2
+
+            multiply_by_two.expand(number=get_numbers())
+
+        sdk_task = dag_maker.dag.get_task("multiply_by_two")
+        task_command._apply_task_params_to_mapped_task(sdk_task, {"number": 2, "other": "param"})
+
+        expand_input = sdk_task._get_specified_expand_input()
+        assert expand_input.value["number"] == [2]
+        assert "other" not in expand_input.value
+
+        ti = mock.Mock(map_index=0)
+        ti.xcom_pull.side_effect = AssertionError("unexpected XCom pull")
+        context = {
+            "ti": ti,
+            "task": sdk_task,
+            "dag": dag_maker.dag,
+            "dag_run": mock.Mock(conf={}),
+            "params": {},
+        }
+        sdk_task.render_template_fields(context)
+        assert context["task"].op_kwargs["number"] == 2
+
     def test_cli_test_with_env_vars(self):
         with redirect_stdout(io.StringIO()) as stdout:
             task_command.task_test(
