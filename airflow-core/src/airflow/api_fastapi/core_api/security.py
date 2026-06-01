@@ -26,7 +26,7 @@ from urllib.parse import ParseResult, unquote, urljoin, urlparse
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
 from jwt import ExpiredSignatureError, InvalidTokenError
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from airflow.api_fastapi.app import get_auth_manager
@@ -201,67 +201,84 @@ def requires_access_dag(
 class PermittedDagFilter(OrmClause[set[str]]):
     """A parameter that filters the permitted dags for the user."""
 
-    def to_orm(self, select: Select) -> Select:
-        # self.value may be None (OrmClause holds Optional), ensure we pass an Iterable to in_
-        return select.where(DagModel.dag_id.in_(self.value or set()))
+    def to_orm(self, statement: Select) -> Select:
+        if self.value is None:
+            return statement
+        return statement.where(DagModel.dag_id.in_(self.value or set()))
 
 
 class PermittedDagRunFilter(PermittedDagFilter):
     """A parameter that filters the permitted dag runs for the user."""
 
-    def to_orm(self, select: Select) -> Select:
-        return select.where(DagRun.dag_id.in_(self.value or set()))
+    def to_orm(self, statement: Select) -> Select:
+        if self.value is None:
+            return statement.where(DagRun.dag_id.in_(select(DagModel.dag_id)))
+        return statement.where(DagRun.dag_id.in_(self.value or set()))
 
 
 class PermittedDagWarningFilter(PermittedDagFilter):
     """A parameter that filters the permitted dag warnings for the user."""
 
-    def to_orm(self, select: Select) -> Select:
-        return select.where(DagWarning.dag_id.in_(self.value or set()))
+    def to_orm(self, statement: Select) -> Select:
+        if self.value is None:
+            return statement.where(DagWarning.dag_id.in_(select(DagModel.dag_id)))
+        return statement.where(DagWarning.dag_id.in_(self.value or set()))
 
 
 class PermittedEventLogFilter(PermittedDagFilter):
     """A parameter that filters the permitted even logs for the user."""
 
-    def to_orm(self, select: Select) -> Select:
+    def to_orm(self, statement: Select) -> Select:
+        if self.value is None:
+            return statement.where(or_(Log.dag_id.in_(select(DagModel.dag_id)), Log.dag_id.is_(None)))
         # Event Logs not related to Dags have dag_id as None and are always returned.
         # return select.where(Log.dag_id.in_(self.value or set()) or Log.dag_id.is_(None))
-        return select.where(or_(Log.dag_id.in_(self.value or set()), Log.dag_id.is_(None)))
+        return statement.where(or_(Log.dag_id.in_(self.value or set()), Log.dag_id.is_(None)))
 
 
 class PermittedTIFilter(PermittedDagFilter):
     """A parameter that filters the permitted task instances for the user."""
 
-    def to_orm(self, select: Select) -> Select:
-        return select.where(TI.dag_id.in_(self.value or set()))
+    def to_orm(self, statement: Select) -> Select:
+        if self.value is None:
+            return statement.where(TI.dag_id.in_(select(DagModel.dag_id)))
+        return statement.where(TI.dag_id.in_(self.value or set()))
 
 
 class PermittedXComFilter(PermittedDagFilter):
     """A parameter that filters the permitted XComs for the user."""
 
-    def to_orm(self, select: Select) -> Select:
-        return select.where(XComModel.dag_id.in_(self.value or set()))
+    def to_orm(self, statement: Select) -> Select:
+        if self.value is None:
+            return statement.where(XComModel.dag_id.in_(select(DagModel.dag_id)))
+        return statement.where(XComModel.dag_id.in_(self.value or set()))
 
 
 class PermittedTagFilter(PermittedDagFilter):
     """A parameter that filters the permitted dag tags for the user."""
 
-    def to_orm(self, select: Select) -> Select:
-        return select.where(DagTag.dag_id.in_(self.value or set()))
+    def to_orm(self, statement: Select) -> Select:
+        if self.value is None:
+            return statement.where(DagTag.dag_id.in_(select(DagModel.dag_id)))
+        return statement.where(DagTag.dag_id.in_(self.value or set()))
 
 
 class PermittedDagVersionFilter(PermittedDagFilter):
     """A parameter that filters the permitted dag versions for the user."""
 
-    def to_orm(self, select: Select) -> Select:
-        return select.where(DagVersion.dag_id.in_(self.value or set()))
+    def to_orm(self, statement: Select) -> Select:
+        if self.value is None:
+            return statement.where(DagVersion.dag_id.in_(select(DagModel.dag_id)))
+        return statement.where(DagVersion.dag_id.in_(self.value or set()))
 
 
 class PermittedBackfillFilter(PermittedDagFilter):
     """A parameter that filters the permitted backfills for the user."""
 
-    def to_orm(self, select: Select) -> Select:
-        return select.where(Backfill.dag_id.in_(self.value or set()))
+    def to_orm(self, statement: Select) -> Select:
+        if self.value is None:
+            return statement.where(Backfill.dag_id.in_(select(DagModel.dag_id)))
+        return statement.where(Backfill.dag_id.in_(self.value or set()))
 
 
 def permitted_dag_filter_factory(
@@ -277,8 +294,12 @@ def permitted_dag_filter_factory(
     def depends_permitted_dags_filter(
         user: GetUserDep,
         auth_manager: AuthManagerDep,
+        session: SessionDep,
     ) -> PermittedDagFilter:
         authorized_dags: set[str] = auth_manager.get_authorized_dag_ids(user=user, method=method)
+        dag_count = session.scalar(select(func.count(DagModel.dag_id))) or 0
+        if filter_class is not PermittedDagFilter and authorized_dags and len(authorized_dags) == dag_count:
+            return filter_class(None)
         return filter_class(authorized_dags)
 
     return depends_permitted_dags_filter

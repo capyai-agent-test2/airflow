@@ -28,9 +28,10 @@ from unittest import mock
 import pendulum
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, event, func, select, update
 from sqlalchemy.orm import joinedload
 
+import airflow.settings
 from airflow._shared.state import TaskScope
 from airflow._shared.timezones.timezone import datetime
 from airflow.api_fastapi.auth.managers.simple.user import SimpleAuthManagerUser
@@ -1702,10 +1703,6 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
         joinedload via eager_load_TI_and_TIH_for_validation, each table must appear
         exactly once in the SQL emitted by the real endpoint.
         """
-        from sqlalchemy import event
-
-        import airflow.settings
-
         self.create_task_instances(session)
 
         executed_statements: list[str] = []
@@ -1728,6 +1725,27 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
             assert q.count("JOIN DAG_RUN") == 1, "dag_run must appear exactly once in JOINs"
             if "JOIN DAG_VERSION" in q:
                 assert q.count("JOIN DAG_VERSION") == 1, "dag_version must appear exactly once in JOINs"
+
+    def test_get_task_instances_uses_subquery_for_all_readable_dags(self, test_client, session):
+        self.create_task_instances(session)
+        self.create_task_instances(session, dag_id="example_skip_dag")
+
+        executed_statements: list[str] = []
+
+        def capture(_conn, _cursor, statement, _parameters, _context, _executemany):
+            executed_statements.append(statement.upper())
+
+        event.listen(airflow.settings.engine, "before_cursor_execute", capture)
+        try:
+            response = test_client.get("/dags/~/dagRuns/~/taskInstances")
+        finally:
+            event.remove(airflow.settings.engine, "before_cursor_execute", capture)
+
+        assert response.status_code == 200
+        ti_queries = [s for s in executed_statements if "FROM TASK_INSTANCE" in s and "JOIN DAG_RUN" in s]
+        assert ti_queries
+        assert all("TASK_INSTANCE.DAG_ID IN (SELECT DAG.DAG_ID" in q for q in ti_queries)
+        assert all("TASK_INSTANCE.DAG_ID IN (?, ?" not in q for q in ti_queries)
 
     def test_return_TI_only_from_readable_dags(self, test_client, session):
         task_instances = {
