@@ -736,6 +736,9 @@ class SerializedDAG:
         if not commit:
             return altered
 
+        if state != TaskInstanceState.SUCCESS:
+            return altered
+
         # Clear downstream tasks that are in failed/upstream_failed state to resume them.
         # Flush the session so that the tasks marked success are reflected in the db.
         session.flush()
@@ -849,6 +852,9 @@ class SerializedDAG:
             )
 
             if not commit:
+                return altered
+
+            if state != TaskInstanceState.SUCCESS:
                 return altered
 
             # Clear downstream tasks that are in failed/upstream_failed state to resume them.
