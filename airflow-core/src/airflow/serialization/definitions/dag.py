@@ -697,7 +697,9 @@ class SerializedDAG:
         session=NEW_SESSION,
     ) -> list[TaskInstance]:
         """
-        Set the state of a TaskInstance and clear downstream tasks in failed or upstream_failed state.
+        Set the state of a TaskInstance.
+
+        When setting a TaskInstance to success, also clear downstream tasks in failed or upstream_failed state.
 
         :param task_id: Task ID of the TaskInstance
         :param map_indexes: Only set TaskInstance if its map_index matches.
@@ -796,7 +798,9 @@ class SerializedDAG:
         session=NEW_SESSION,
     ) -> list[TaskInstance]:
         """
-        Set TaskGroup to the given state and clear downstream tasks in failed or upstream_failed state.
+        Set TaskGroup to the given state.
+
+        When setting a TaskGroup to success, also clear downstream tasks in failed or upstream_failed state.
 
         :param group_id: The group_id of the TaskGroup
         :param run_id: The run_id of the TaskInstance
