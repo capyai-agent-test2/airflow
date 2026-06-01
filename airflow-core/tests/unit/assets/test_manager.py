@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
+import time_machine
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -40,6 +41,7 @@ from airflow.models.asset import (
 )
 from airflow.models.dag import DagModel
 from airflow.sdk.definitions.asset import Asset
+from airflow.utils import timezone
 
 from tests_common.test_utils.config import conf_vars
 from unit.listeners import asset_listener
@@ -110,6 +112,41 @@ class TestAssetManager:
             == 1
         )
         assert session.scalar(select(func.count()).select_from(AssetDagRunQueue)) == 2
+
+    @pytest.mark.usefixtures("dag_maker", "testing_dag_bundle")
+    def test_register_asset_change_refreshes_existing_queue_time(self, session, mock_task_instance):
+        asset_manager = AssetManager()
+        asset = Asset(uri="test://asset1", name="test_asset_uri", group="asset")
+        bundle_name = "testing"
+
+        dag = DagModel(dag_id="dag1", is_stale=False, bundle_name=bundle_name)
+        session.add(dag)
+        asm = AssetModel(uri="test://asset1/", name="test_asset_uri", group="asset")
+        session.add(asm)
+        asm.scheduled_dags = [DagScheduleAssetReference(dag_id=dag.dag_id)]
+        session.execute(delete(AssetDagRunQueue))
+        session.flush()
+
+        first_queued_at = timezone.datetime(2026, 1, 1, 0, 0, 0)
+        second_queued_at = timezone.datetime(2026, 1, 1, 1, 0, 0)
+
+        with time_machine.travel(first_queued_at, tick=False):
+            asset_manager.register_asset_change(
+                task_instance=mock_task_instance, asset=asset, session=session
+            )
+            session.flush()
+
+        assert session.scalar(select(func.count()).select_from(AssetDagRunQueue)) == 1
+        assert session.scalar(select(AssetDagRunQueue.created_at)) == first_queued_at
+
+        with time_machine.travel(second_queued_at, tick=False):
+            asset_manager.register_asset_change(
+                task_instance=mock_task_instance, asset=asset, session=session
+            )
+            session.flush()
+
+        assert session.scalar(select(func.count()).select_from(AssetDagRunQueue)) == 1
+        assert session.scalar(select(AssetDagRunQueue.created_at)) == second_queued_at
 
     @pytest.mark.usefixtures("clear_assets")
     def test_register_asset_change_with_alias(

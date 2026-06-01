@@ -42,6 +42,7 @@ from airflow.models.asset import (
     PartitionedAssetKeyLog,
 )
 from airflow.models.log import Log
+from airflow.utils import timezone
 from airflow.utils.helpers import is_container
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.sqlalchemy import get_dialect_name, with_row_locks
@@ -637,8 +638,10 @@ class AssetManager(LoggingMixin):
     def _queue_dagruns_nonpartitioned_slow_path(
         cls, asset_id: int, dags_to_queue: set[DagModel], session: Session
     ) -> None:
+        queued_at = timezone.utcnow()
+
         def _queue_dagrun_if_needed(dag: DagModel) -> str | None:
-            item = AssetDagRunQueue(target_dag_id=dag.dag_id, asset_id=asset_id)
+            item = AssetDagRunQueue(target_dag_id=dag.dag_id, asset_id=asset_id, created_at=queued_at)
             # Don't error whole transaction when a single RunQueue item conflicts.
             # https://docs.sqlalchemy.org/en/14/orm/session_transaction.html#using-savepoint
             try:
@@ -658,8 +661,15 @@ class AssetManager(LoggingMixin):
     ) -> None:
         from sqlalchemy.dialects.postgresql import insert
 
-        values = [{"target_dag_id": dag.dag_id} for dag in dags_to_queue]
-        stmt = insert(AssetDagRunQueue).values(asset_id=asset_id).on_conflict_do_nothing()
+        values = [
+            {"asset_id": asset_id, "target_dag_id": dag.dag_id, "created_at": timezone.utcnow()}
+            for dag in dags_to_queue
+        ]
+        stmt = insert(AssetDagRunQueue)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[AssetDagRunQueue.asset_id, AssetDagRunQueue.target_dag_id],
+            set_={"created_at": stmt.excluded.created_at},
+        )
         session.execute(stmt, values)
 
 
