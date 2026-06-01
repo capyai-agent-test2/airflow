@@ -294,12 +294,16 @@ class TestMetadataEngineHooks:
             patch("airflow.settings.SQL_ALCHEMY_CONN_ASYNC", "postgresql+asyncpg://localhost/airflow"),
             patch("airflow.settings.conf") as mock_conf,
         ):
+            mock_conf.has_option.return_value = False
             mock_conf.getint.side_effect = lambda section, key, fallback=None: {
                 "SQL_ALCHEMY_POOL_SIZE": 10,
                 "SQL_ALCHEMY_POOL_RECYCLE": 900,
                 "SQL_ALCHEMY_MAX_OVERFLOW": 5,
             }.get(key, fallback)
-            mock_conf.getboolean.return_value = True
+            mock_conf.getboolean.side_effect = lambda section, key, fallback=None: {
+                "SQL_ALCHEMY_POOL_ENABLED": True,
+                "SQL_ALCHEMY_POOL_PRE_PING": True,
+            }.get(key, fallback)
 
             settings._configure_async_session()
 
@@ -320,6 +324,7 @@ class TestMetadataEngineHooks:
             patch("airflow.settings.SQL_ALCHEMY_CONN_ASYNC", "postgresql+asyncpg://localhost/airflow"),
             patch("airflow.settings.conf") as mock_conf,
         ):
+            mock_conf.has_option.return_value = False
             mock_conf.getboolean.return_value = False
 
             settings._configure_async_session()
@@ -327,6 +332,57 @@ class TestMetadataEngineHooks:
         engine_args = mock_create_async_engine.call_args[1]["engine_args"]
         assert engine_args["poolclass"] is NullPool
         assert "pool_size" not in engine_args
+
+    @patch("airflow.settings.create_async_metadata_engine")
+    def test_configure_async_session_uses_asyncpg_pgbouncer_transaction_mode(self, mock_create_async_engine):
+        """_configure_async_session() must disable asyncpg statement caching and pooling for PgBouncer."""
+        from airflow import settings
+
+        mock_create_async_engine.return_value = MagicMock()
+
+        with (
+            patch("airflow.settings.SQL_ALCHEMY_CONN_ASYNC", "postgresql+asyncpg://localhost/airflow"),
+            patch("airflow.settings.conf") as mock_conf,
+        ):
+            mock_conf.has_option.return_value = False
+            mock_conf.getboolean.side_effect = lambda section, key, fallback=None: {
+                "SQL_ALCHEMY_POOL_ENABLED": True,
+                "PGBOUNCER_TRANSACTION_MODE": True,
+            }.get(key, fallback)
+
+            settings._configure_async_session()
+
+        call_kwargs = mock_create_async_engine.call_args[1]
+        assert call_kwargs["connect_args"] == {"prepared_statement_cache_size": 0}
+        assert call_kwargs["engine_args"] == {"poolclass": NullPool}
+
+    @patch("airflow.settings.create_async_metadata_engine")
+    def test_configure_async_session_does_not_apply_pgbouncer_transaction_mode_to_mysql(
+        self, mock_create_async_engine
+    ):
+        """_configure_async_session() must not add asyncpg-only args for other async backends."""
+        from airflow import settings
+
+        mock_create_async_engine.return_value = MagicMock()
+
+        with (
+            patch("airflow.settings.SQL_ALCHEMY_CONN_ASYNC", "mysql+aiomysql://localhost/airflow"),
+            patch("airflow.settings.conf") as mock_conf,
+        ):
+            mock_conf.has_option.return_value = False
+            mock_conf.getint.side_effect = lambda section, key, fallback=None: fallback
+            mock_conf.getboolean.side_effect = lambda section, key, fallback=None: {
+                "SQL_ALCHEMY_POOL_ENABLED": True,
+                "PGBOUNCER_TRANSACTION_MODE": True,
+                "SQL_ALCHEMY_POOL_PRE_PING": True,
+            }.get(key, fallback)
+
+            settings._configure_async_session()
+
+        call_kwargs = mock_create_async_engine.call_args[1]
+        assert call_kwargs["connect_args"] == {}
+        assert call_kwargs["engine_args"]["pool_size"] == 5
+        assert "poolclass" not in call_kwargs["engine_args"]
 
     @patch("airflow.settings.create_async_metadata_engine")
     def test_configure_async_session_skips_when_no_async_conn(self, mock_create_async_engine):

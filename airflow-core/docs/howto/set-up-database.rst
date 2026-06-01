@@ -233,6 +233,10 @@ For more information regarding setup of the PostgreSQL connection, see `PostgreS
 
    See also :ref:`Helm Chart production guide <production-guide:pgbouncer>`
 
+   If the async metadata database engine connects to Postgres through PgBouncer in transaction pooling mode,
+   enable ``[database] pgbouncer_transaction_mode``. This configures the ``postgresql+asyncpg`` engine with
+   PgBouncer-safe pooling and prepared statement behavior without changing SQLite or MySQL async engines.
+
 
 .. note::
 
