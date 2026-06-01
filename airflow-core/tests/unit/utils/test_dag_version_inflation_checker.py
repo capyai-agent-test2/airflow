@@ -678,6 +678,26 @@ task1 >> task2
         assert any("Param(default=f'manual_run_{datetime.now().isoformat()}'" in w.code for w in warnings)
         assert any("current_timestamp" in w.code for w in warnings)
 
+    def test_dag_param_default_with_date_today_detected(self):
+        code = """
+import datetime
+
+from airflow import DAG
+from airflow.models.param import Param
+
+dag = DAG(
+    dag_id="date_param_dag",
+    schedule=None,
+    params={
+        "run_date": Param(f"{datetime.date.today()}", type="string", format="date"),
+    },
+)
+"""
+        warnings = self._check_code(code)
+
+        assert len(warnings) == 1
+        assert "datetime.date.today()" in warnings[0].code
+
     def test_dag_decorator_pattern__currently_not_detected(self):
         """
         PATTERN: @dag decorator usage

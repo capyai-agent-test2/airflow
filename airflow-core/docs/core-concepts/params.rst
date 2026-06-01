@@ -265,7 +265,11 @@ The following features are supported in the Trigger UI Form:
             | which are checked before Dag trigger in the backend.
           - ``Param("default", type="string", maxLength=10)``
 
-            ``Param(f"{datetime.date.today()}", type="string", format="date")``
+            ``Param("2024-01-01", type="string", format="date")``
+
+            Use a stable default value here. Runtime-varying values such as
+            ``datetime.date.today()`` make the serialized Dag change on every
+            parse, which can create a new Dag version each day.
 
         * - ``number`` or
 
