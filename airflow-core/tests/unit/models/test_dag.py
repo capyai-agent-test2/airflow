@@ -2344,6 +2344,37 @@ class TestDagModel:
         dag_models = query.all()
         assert dag_models == [dag_model]
 
+    def test_dags_needing_dagruns_skips_dag_without_serialized_dag(
+        self, dag_maker, session, monkeypatch, testing_dag_bundle
+    ):
+        monkeypatch.setattr(DagModel, "NUM_DAGS_PER_DAGRUN_QUERY", 1)
+        missing_serialized_dag_model = DagModel(
+            dag_id="missing_serialized_dag",
+            bundle_name="testing",
+            has_task_concurrency_limits=False,
+            next_dagrun=DEFAULT_DATE,
+            next_dagrun_create_after=DEFAULT_DATE,
+            is_stale=False,
+        )
+        session.add(missing_serialized_dag_model)
+        session.flush()
+
+        with dag_maker(
+            session=session,
+            dag_id="serialized_dag",
+            schedule="@daily",
+            start_date=DEFAULT_DATE,
+        ) as dag:
+            EmptyOperator(task_id="dummy")
+        dag_model = session.scalar(select(DagModel).where(DagModel.dag_id == dag.dag_id))
+        dag_model.next_dagrun = DEFAULT_DATE
+        dag_model.next_dagrun_create_after = DEFAULT_DATE + timedelta(seconds=1)
+        session.flush()
+
+        query, _ = DagModel.dags_needing_dagruns(session)
+        dag_models = query.all()
+        assert dag_models == [dag_model]
+
     def test_dags_needing_dagruns_skips_adrq_when_serialized_dag_missing(
         self, session, caplog, testing_dag_bundle
     ):
