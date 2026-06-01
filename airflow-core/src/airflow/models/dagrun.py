@@ -257,15 +257,13 @@ class DagRun(Base, LoggingMixin):
             postgresql_where=text("state='running'"),
             sqlite_where=text("state='running'"),
         ),
-        # since mysql lacks filtered/partial indices, this creates a
-        # duplicate index on mysql. Not the end of the world
         Index(
             "idx_dag_run_queued_dags",
             "state",
             "dag_id",
             postgresql_where=text("state='queued'"),
             sqlite_where=text("state='queued'"),
-        ),
+        ).ddl_if(dialect=("postgresql", "sqlite")),
     )
 
     task_instances = relationship(
