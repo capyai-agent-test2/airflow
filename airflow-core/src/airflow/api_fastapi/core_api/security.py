@@ -198,7 +198,7 @@ def requires_access_dag(
     return inner
 
 
-class PermittedDagFilter(OrmClause[set[str] | None]):
+class PermittedDagFilter(OrmClause[set[str]]):
     """A parameter that filters the permitted dags for the user."""
 
     def to_orm(self, statement: Select) -> Select:
@@ -298,7 +298,7 @@ def permitted_dag_filter_factory(
     ) -> PermittedDagFilter:
         authorized_dags: set[str] = auth_manager.get_authorized_dag_ids(user=user, method=method)
         dag_count = session.scalar(select(func.count(DagModel.dag_id))) or 0
-        if authorized_dags and len(authorized_dags) == dag_count:
+        if filter_class is not PermittedDagFilter and authorized_dags and len(authorized_dags) == dag_count:
             return filter_class(None)
         return filter_class(authorized_dags)
 
