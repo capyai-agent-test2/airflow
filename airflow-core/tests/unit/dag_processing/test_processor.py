@@ -84,6 +84,7 @@ from airflow.sdk.execution_time.comms import (
     XComSequenceSliceResult,
 )
 from airflow.sdk.execution_time.task_runner import RuntimeTaskInstance
+from airflow.utils.log.logging_mixin import RedirectStdHandler
 from airflow.utils.session import create_session
 from airflow.utils.state import TaskInstanceState
 
@@ -1002,11 +1003,15 @@ class TestExecuteDagCallbacks:
 
     def test_execute_dag_callbacks_forwards_callback_output_to_processor_log(self, spy_agency):
         logger = logging.getLogger("test_execute_dag_callbacks")
-        logger.propagate = True
+        handler = RedirectStdHandler("ext://sys.stdout")
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(handler)
+        logger.propagate = False
         logger.setLevel(logging.INFO)
 
         def on_failure(context):
             print("printed from callback")
+            sys.stderr.write("stderr from callback\n")
             logger.info("logged from callback")
 
         with DAG(dag_id="test_dag", on_failure_callback=on_failure) as dag:
@@ -1031,10 +1036,15 @@ class TestExecuteDagCallbacks:
         )
 
         log = MagicMock(spec=FilteringBoundLogger)
-        _execute_dag_callbacks(dagbag, request, log)
+        try:
+            _execute_dag_callbacks(dagbag, request, log)
+        finally:
+            logger.removeHandler(handler)
 
-        log.info.assert_any_call("printed from callback")
-        log.info.assert_any_call("logged from callback")
+        info_messages = [args[0] for args, kwargs in log.info.call_args_list if args and not kwargs]
+        assert info_messages.count("printed from callback") == 1
+        assert info_messages.count("logged from callback") == 1
+        log.error.assert_called_once_with("stderr from callback")
 
     def test_execute_dag_callbacks_no_callback_defined(self, spy_agency):
         """Test _execute_dag_callbacks when no callback is defined"""

@@ -210,31 +210,6 @@ class _DagCallbackLogWriter:
             self.log.info(message)
 
 
-class _DagCallbackLogHandler(logging.Handler):
-    def __init__(self, log: FilteringBoundLogger):
-        super().__init__()
-        self.log = log
-        self._handling = False
-
-    def emit(self, record: logging.LogRecord) -> None:
-        if self._handling:
-            return
-
-        self._handling = True
-        try:
-            message = self.format(record)
-            if record.levelno >= logging.ERROR:
-                self.log.error(message)
-            elif record.levelno >= logging.WARNING:
-                self.log.warning(message)
-            elif record.levelno <= logging.DEBUG:
-                self.log.debug(message)
-            else:
-                self.log.info(message)
-        finally:
-            self._handling = False
-
-
 def _pre_import_airflow_modules(file_path: str, log: FilteringBoundLogger) -> None:
     """
     Pre-import Airflow modules found in the given file.
@@ -438,10 +413,8 @@ def _execute_dag_callbacks(dagbag: DagBag, request: DagCallbackRequest, log: Fil
             dag_id=request.dag_id,
         )
         try:
-            handler = _DagCallbackLogHandler(log)
             stdout = _DagCallbackLogWriter(log, logging.INFO)
             stderr = _DagCallbackLogWriter(log, logging.ERROR)
-            logging.root.addHandler(handler)
             try:
                 with (
                     contextlib.redirect_stdout(stdout),
@@ -451,7 +424,6 @@ def _execute_dag_callbacks(dagbag: DagBag, request: DagCallbackRequest, log: Fil
             finally:
                 stdout.flush()
                 stderr.flush()
-                logging.root.removeHandler(handler)
         except Exception:
             log.exception("Callback failed", dag_id=request.dag_id)
             stats.incr("dag.callback_exceptions", tags={"dag_id": request.dag_id})
