@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import dataclasses
-import enum
 import functools
 import logging
 import re
@@ -141,7 +140,7 @@ def serialize(o: object, depth: int = 0) -> U | None:
     """
     Serialize an object into a representation consisting only built-in types.
 
-    Primitives (int, float, bool, str) are returned as-is. Built-in collections
+    Exact primitives (int, float, bool, str) are returned as-is. Built-in collections
     are iterated over, where it is assumed that keys in a dict can be represented
     as str.
 
@@ -202,11 +201,7 @@ def serialize(o: object, depth: int = 0) -> U | None:
         if is_serialized:
             return encode(classname or serialized_classname, version, serialize(data, depth + 1))
 
-    # primitive types are returned as is
-    if isinstance(o, _primitives):
-        if isinstance(o, enum.Enum):
-            return o.value
-
+    if cls in _primitives:
         return o
 
     # custom serializers
