@@ -83,6 +83,7 @@ from airflow.models.tasklog import LogTemplate
 from airflow.models.taskmap import TaskMap
 from airflow.serialization.definitions.deadline import SerializedReferenceModels
 from airflow.serialization.definitions.notset import NOTSET, ArgNotSet, is_arg_set
+from airflow.task.trigger_rule import TriggerRule
 from airflow.ti_deps.dep_context import DepContext
 from airflow.ti_deps.dependencies_states import SCHEDULEABLE_STATES
 from airflow.utils.helpers import chunks, is_container, prune_dict
@@ -126,6 +127,16 @@ RUN_ID_REGEX = r"^(?:manual|scheduled|asset_triggered)__(?:\d{4}-\d{2}-\d{2}T\d{
 log = structlog.get_logger(__name__)
 
 tracer = trace.get_tracer(__name__)
+
+
+def _is_dependency_check_skippable(ti: TI, finished_task_ids: set[str]) -> bool:
+    task = ti.task
+    if not task or not task.upstream_task_ids or task.trigger_rule == TriggerRule.ALWAYS:
+        return False
+    setup_task_ids = {setup.task_id for setup in task.get_upstreams_only_setups()}
+    if not setup_task_ids.isdisjoint(finished_task_ids):
+        return False
+    return task.upstream_task_ids.isdisjoint(finished_task_ids)
 
 
 class TISchedulingDecision(NamedTuple):
@@ -1468,6 +1479,7 @@ class DagRun(Base, LoggingMixin):
             ignore_unmapped_tasks=True,  # Ignore this Dep, as we will expand it if we can.
             finished_tis=finished_tis,
         )
+        finished_task_ids = {ti.task_id for ti in finished_tis}
 
         def _expand_mapped_task_if_needed(ti: TI) -> Iterable[TI] | None:
             """
@@ -1510,6 +1522,9 @@ class DagRun(Base, LoggingMixin):
             if TYPE_CHECKING:
                 assert isinstance(schedulable.task, Operator)
             old_state = schedulable.state
+            if _is_dependency_check_skippable(schedulable, finished_task_ids):
+                old_states[schedulable.key] = old_state
+                continue
             if not schedulable.are_dependencies_met(session=session, dep_context=dep_context):
                 old_states[schedulable.key] = old_state
                 continue
@@ -1562,10 +1577,15 @@ class DagRun(Base, LoggingMixin):
             ignore_in_reschedule_period=True,
             finished_tis=finished_tis,
         )
+        finished_task_ids = {ti.task_id for ti in finished_tis}
         # there might be runnable tasks that are up for retry and for some reason(retry delay, etc.) are
         # not ready yet, so we set the flags to count them in
         return (
-            any(ut.are_dependencies_met(dep_context=dep_context, session=session) for ut in unfinished_tis),
+            any(
+                ut.are_dependencies_met(dep_context=dep_context, session=session)
+                for ut in unfinished_tis
+                if not _is_dependency_check_skippable(ut, finished_task_ids)
+            ),
             dep_context.have_changed_ti_states,
         )
 
