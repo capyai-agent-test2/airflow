@@ -1331,6 +1331,100 @@ class TestTIUpdateState:
             assert events[0].asset == AssetModel(name="my-task", uri="s3://bucket/my-task", extra={})
             assert events[0].extra == expected_extra
 
+    def test_ti_update_state_to_success_with_asset_alias_event_creates_active_asset(
+        self, client, session, create_task_instance
+    ):
+        _create_asset_aliases(session, num=1)
+        ti = create_task_instance(
+            task_id="test_ti_update_state_to_success_with_asset_alias_event_creates_active_asset",
+            start_date=DEFAULT_START_DATE,
+            state=State.RUNNING,
+        )
+        session.commit()
+
+        response = client.patch(
+            f"/execution/task-instances/{ti.id}/state",
+            json={
+                "state": "success",
+                "end_date": DEFAULT_END_DATE.isoformat(),
+                "task_outlets": [{"name": "simple1", "type": "AssetAlias"}],
+                "outlet_events": [
+                    {
+                        "dest_asset_key": {"name": "dynamic-asset", "uri": "s3://bucket/dynamic-asset"},
+                        "dest_asset_extra": {"path": "/tmp/dynamic-asset"},
+                        "source_alias_name": "simple1",
+                        "extra": {"timestamp": DEFAULT_END_DATE.isoformat()},
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 204
+        session.expire_all()
+
+        asset = session.scalar(select(AssetModel).where(AssetModel.name == "dynamic-asset"))
+        assert asset == AssetModel(
+            name="dynamic-asset", uri="s3://bucket/dynamic-asset", extra={"path": "/tmp/dynamic-asset"}
+        )
+        assert session.scalar(
+            select(AssetActive).where(
+                AssetActive.name == "dynamic-asset", AssetActive.uri == "s3://bucket/dynamic-asset"
+            )
+        )
+        assert [alias.name for alias in asset.aliases] == ["simple1"]
+        assert session.scalar(select(AssetEvent).where(AssetEvent.asset == asset)).extra == {
+            "timestamp": DEFAULT_END_DATE.isoformat()
+        }
+
+    def test_ti_update_state_to_success_with_asset_alias_event_skips_active_asset_on_collision(
+        self, client, session, create_task_instance
+    ):
+        _create_asset_aliases(session, num=1)
+        active_asset = AssetModel(
+            name="dynamic-asset",
+            uri="s3://bucket/existing-asset",
+            group="asset",
+            extra={},
+        )
+        session.add_all([active_asset, AssetActive.for_asset(active_asset)])
+        ti = create_task_instance(
+            task_id="test_ti_update_state_to_success_with_asset_alias_event_skips_active_asset_on_collision",
+            start_date=DEFAULT_START_DATE,
+            state=State.RUNNING,
+        )
+        session.commit()
+
+        response = client.patch(
+            f"/execution/task-instances/{ti.id}/state",
+            json={
+                "state": "success",
+                "end_date": DEFAULT_END_DATE.isoformat(),
+                "task_outlets": [{"name": "simple1", "type": "AssetAlias"}],
+                "outlet_events": [
+                    {
+                        "dest_asset_key": {"name": "dynamic-asset", "uri": "s3://bucket/dynamic-asset"},
+                        "source_alias_name": "simple1",
+                        "extra": {"timestamp": DEFAULT_END_DATE.isoformat()},
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 204
+        session.expire_all()
+
+        asset = session.scalar(
+            select(AssetModel).where(
+                AssetModel.name == "dynamic-asset", AssetModel.uri == "s3://bucket/dynamic-asset"
+            )
+        )
+        assert asset is not None
+        assert asset.active is None
+        assert [alias.name for alias in asset.aliases] == ["simple1"]
+        assert session.scalar(select(AssetEvent).where(AssetEvent.asset == asset)).extra == {
+            "timestamp": DEFAULT_END_DATE.isoformat()
+        }
+
     def test_ti_update_state_not_found(self, client, session):
         """
         Test that a 404 error is returned when the Task Instance does not exist.

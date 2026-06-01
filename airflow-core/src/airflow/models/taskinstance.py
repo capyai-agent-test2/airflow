@@ -80,7 +80,7 @@ from airflow.configuration import conf
 from airflow.exceptions import RemovedInAirflow4Warning
 from airflow.executors.workloads import BaseWorkload
 from airflow.listeners.listener import get_listener_manager
-from airflow.models.asset import AssetModel
+from airflow.models.asset import AssetActive, AssetModel
 from airflow.models.base import Base, StringID, TaskInstanceDependencies
 from airflow.models.dag_version import DagVersion
 from airflow.models.deadline import Deadline, ReferenceModels
@@ -1655,7 +1655,21 @@ class TaskInstance(Base, LoggingMixin, BaseWorkload):
                 )
                 if event is None:
                     ti.log.info("Dynamically creating AssetModel %s", asset_key)
-                    session.add(AssetModel.from_serialized(asset))
+                    asset_model = AssetModel.from_serialized(asset)
+                    session.add(asset_model)
+                    has_active_name_or_uri = session.scalar(
+                        select(AssetActive).where(
+                            or_(AssetActive.name == asset_model.name, AssetActive.uri == asset_model.uri)
+                        )
+                    )
+                    if has_active_name_or_uri is None:
+                        session.add(AssetActive.for_asset(asset_model))
+                    else:
+                        ti.log.warning(
+                            "Dynamically created AssetModel %s cannot be marked active because another "
+                            "active asset already uses its name or URI.",
+                            asset_key,
+                        )
                     session.flush()  # So event can set up its asset fk.
                     asset_manager.register_asset_change(
                         task_instance=ti,
