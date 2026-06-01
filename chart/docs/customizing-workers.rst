@@ -27,10 +27,15 @@ For example, to set resources on workers for CeleryExecutor:
    workers:
      celery:
        resources:
-         requests:
-           cpu: 1
-         limits:
-           cpu: 1
+          requests:
+            cpu: 1
+          limits:
+            cpu: 1
+
+For ``KubernetesExecutor``, workers are ephemeral task pods. Airflow injects the task execution command into
+each pod when the task is queued. If you customize ``workers.command`` or your image entrypoint, make sure
+it forwards the command and arguments supplied by KubernetesExecutor rather than starting a persistent worker
+process such as ``airflow worker``.
 
 Custom ``pod_template_file``
 ----------------------------

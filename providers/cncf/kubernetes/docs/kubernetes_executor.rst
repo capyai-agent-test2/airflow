@@ -36,7 +36,7 @@ not necessarily need to be running on Kubernetes, but does need access to a Kube
 
 KubernetesExecutor requires a non-sqlite database in the backend.
 
-When a Dag submits a task, the KubernetesExecutor requests a worker pod from the Kubernetes API. The worker pod then runs the task, reports the result, and terminates.
+When a Dag submits a task, the KubernetesExecutor requests a worker pod from the Kubernetes API. The worker pod then runs the task and terminates.
 
 .. image:: img/arch-diag-kubernetes.png
 
@@ -45,14 +45,14 @@ One example of an Airflow deployment running on a distributed set of five nodes 
 
 .. image:: img/arch-diag-kubernetes2.png
 
-Consistent with the regular Airflow architecture, the Workers need access to the Dag files to execute the tasks within those Dags and interact with the Metadata repository. Also, configuration information specific to the Kubernetes Executor, such as the worker namespace and image information, needs to be specified in the Airflow Configuration file.
+Consistent with the regular Airflow architecture, the workers need access to the Dag files to execute the tasks within those Dags. In Airflow 3, task execution uses the Task SDK and communicates through the Execution API rather than requiring a long-running worker process in each pod. Also, configuration information specific to the Kubernetes Executor, such as the worker namespace and image information, needs to be specified in the Airflow Configuration file.
 
 Additionally, the Kubernetes Executor enables specification of additional features on a per-task basis using the Executor config.
 
 .. @startuml
-.. Airflow_Scheduler -> Kubernetes: Request a new pod with command "airflow run..."
-.. Kubernetes -> Airflow_Worker: Create Airflow worker with command "airflow run..."
-.. Airflow_Worker -> Airflow_DB: Report task passing or failure to DB
+.. Airflow_Scheduler -> Kubernetes: Request a new pod with the Task SDK execution command
+.. Kubernetes -> Airflow_Worker: Create Airflow worker pod with the Task SDK execution command
+.. Airflow_Worker -> Execution_API: Report task heartbeat and result
 .. Airflow_Worker -> Kubernetes: Pod completes with state "Succeeded" and k8s records in ETCD
 .. Kubernetes -> Airflow_Scheduler: Airflow scheduler reads "Succeeded" from k8s watcher thread
 .. @enduml
@@ -69,6 +69,11 @@ pod_template_file
 To customize the pod used for k8s executor worker processes, you may create a pod template file. You must provide
 the path to the template file in the ``pod_template_file`` option in the ``kubernetes_executor`` section of ``airflow.cfg``.
 
+KubernetesExecutor worker pods are ephemeral task pods. In Airflow 3, Airflow injects the task execution command into
+the pod when the task is queued, for example ``python -m airflow.sdk.execution_time.execute_workload --json-string ...``.
+Do not configure these pods to start a persistent worker process such as ``airflow worker``. If your image entrypoint
+uses component-specific behavior, make sure it forwards the command and arguments supplied by KubernetesExecutor.
+
 Airflow has two strict requirements for pod template files: base image and pod name.
 
 Base image
@@ -78,7 +83,7 @@ A ``pod_template_file`` must have a container named ``base`` at the ``spec.conta
 its ``image`` must be specified.
 
 You are free to create sidecar containers after this required container, but Airflow assumes that the
-airflow worker container exists at the beginning of the container array, and assumes that the
+base Airflow container exists at the beginning of the container array, and assumes that the
 container is named ``base``.
 
 .. note::
@@ -259,16 +264,16 @@ Handling Worker Pod Crashes
 
 When dealing with distributed systems, we need a system that assumes that any component can crash at any moment for reasons ranging from OOM errors to node upgrades.
 
-In the case where a worker dies before it can report its status to the backend DB, the executor can use a Kubernetes watcher thread to discover the failed pod.
+In the case where a worker pod dies before it can report its status through the Execution API, the executor can use a Kubernetes watcher thread to discover the failed pod.
 
 .. @startuml
 ..
-.. Airflow_Scheduler -> Kubernetes: Request a new pod with command "airflow run..."
-.. Kubernetes -> Airflow_Worker: Create Airflow worker with command "airflow run..."
+.. Airflow_Scheduler -> Kubernetes: Request a new pod with the Task SDK execution command
+.. Kubernetes -> Airflow_Worker: Create Airflow worker pod with the Task SDK execution command
 .. Airflow_Worker -> Airflow_Worker: Pod fails before task can complete
 .. Airflow_Worker -> Kubernetes: Pod completes with state "Failed" and k8s records in ETCD
 .. Kubernetes -> Airflow_Scheduler: Airflow scheduler reads "Failed" from k8s watcher thread
-.. Airflow_Scheduler -> Airflow_DB: Airflow scheduler records "FAILED" state to DB for task
+.. Airflow_Scheduler -> Airflow_DB: Airflow scheduler records "FAILED" state for task
 ..
 .. @enduml
 
@@ -287,4 +292,4 @@ In cases of scheduler crashes, the scheduler will recover its state using the wa
 When monitoring the Kubernetes cluster's watcher thread, each event has a monotonically rising number called a ``resourceVersion``.
 Every time the executor reads a ``resourceVersion``, the executor stores the latest value in the backend database.
 Because the resourceVersion is stored, the scheduler can restart and continue reading the watcher stream from where it left off.
-Since the tasks are run independently of the executor and report results directly to the database, scheduler failures will not lead to task failures or re-runs.
+Since the tasks are run independently of the executor, scheduler failures will not lead to task failures or re-runs.
