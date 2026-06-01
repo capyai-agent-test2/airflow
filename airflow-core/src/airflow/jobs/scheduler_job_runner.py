@@ -28,7 +28,7 @@ import time
 from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Collection, Iterable, Iterator
 from contextlib import ExitStack
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from functools import lru_cache, partial
 from itertools import groupby
 from typing import TYPE_CHECKING, Any, cast
@@ -2191,6 +2191,13 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 if evaluator.run(dag.timetable.asset_condition, statuses=statuses):
                     queued_adrq_batches.append(remaining_adrqs)
 
+            previous_dag_run_run_after = session.scalar(
+                select(func.max(DagRun.run_after)).where(
+                    DagRun.dag_id == dag.dag_id,
+                    DagRun.run_type == DagRunType.ASSET_TRIGGERED,
+                )
+            )
+
             for index, queued_adrq_batch in enumerate(queued_adrq_batches):
                 if active_runs >= dag_model.max_active_runs:
                     self.log.info(
@@ -2208,15 +2215,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     dag.dag_id,
                     len(queued_adrq_batch),
                     triggered_date,
-                )
-                cte = (
-                    select(func.max(DagRun.run_after).label("previous_dag_run_run_after"))
-                    .where(
-                        DagRun.dag_id == dag.dag_id,
-                        DagRun.run_type == DagRunType.ASSET_TRIGGERED,
-                        DagRun.run_after < triggered_date,
-                    )
-                    .cte()
                 )
                 queued_asset_ids = [adrq.asset_id for adrq in queued_adrq_batch]
 
@@ -2238,7 +2236,8 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                                 ),
                             ),
                             AssetEvent.timestamp <= triggered_date,
-                            AssetEvent.timestamp > func.coalesce(cte.c.previous_dag_run_run_after, date.min),
+                            AssetEvent.timestamp
+                            > (previous_dag_run_run_after or timezone.make_aware(datetime.min)),
                         )
                         .order_by(AssetEvent.timestamp.asc(), AssetEvent.id.asc())
                     )
