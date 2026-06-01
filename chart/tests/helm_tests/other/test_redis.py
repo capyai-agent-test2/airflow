@@ -313,7 +313,7 @@ class TestRedis:
 
     def test_default_redis_secrets_created_with_non_celery_executor(self):
         # We want to make sure default redis secrets (if needed) are still
-        # created during install, as they are marked "pre-install".
+        # created during install and upgrade.
         # See note in templates/secrets/redis-secrets.yaml for more.
         docs = render_chart(
             values={"executor": "KubernetesExecutor"}, show_only=["templates/secrets/redis-secrets.yaml"]
@@ -412,15 +412,15 @@ class TestRedis:
         )
         assert jmespath.search("spec.template.spec.containers[0].resources", docs[0]) == {}
 
-    def test_should_set_correct_helm_hooks_weight(self):
+    def test_should_not_add_helm_hooks_to_generated_redis_secrets(self):
         docs = render_chart(
             values={
                 "executor": "CeleryExecutor",
             },
             show_only=["templates/secrets/redis-secrets.yaml"],
         )
-        annotations = jmespath.search("metadata.annotations", docs[0])
-        assert annotations["helm.sh/hook-weight"] == "0"
+        for doc in docs:
+            assert "helm.sh/hook" not in jmespath.search("metadata.annotations || `{}`", doc)
 
     def test_should_add_annotations_to_redis_password_secret(self):
         docs = render_chart(

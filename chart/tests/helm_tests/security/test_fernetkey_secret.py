@@ -57,3 +57,8 @@ class TestFernetKeySecret:
 
         # Verify the key is valid by creating a Fernet instance
         Fernet(fernet_key.encode())  # Raise: Fernet key must be 32 url-safe base64-encoded bytes.
+
+    def test_should_not_add_helm_hooks_to_generated_fernetkey_secret(self):
+        docs = render_chart(show_only=["templates/secrets/fernetkey-secret.yaml"])[0]
+
+        assert "helm.sh/hook" not in jmespath.search("metadata.annotations || `{}`", docs)
