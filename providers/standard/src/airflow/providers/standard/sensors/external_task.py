@@ -27,7 +27,6 @@ from sqlalchemy import select
 
 from airflow.models.dag import DagModel
 from airflow.models.dagrun import DagRun
-from airflow.models.xcom import XComModel
 from airflow.providers.common.compat.sdk import (
     AirflowSkipException,
     BaseOperatorLink,
@@ -52,6 +51,12 @@ from airflow.providers.standard.version_compat import (
     AIRFLOW_V_3_2_PLUS,
     BaseOperator,
 )
+
+if AIRFLOW_V_3_0_PLUS:
+    from airflow.models.xcom import XComModel
+else:
+    from airflow.models.xcom import XCom as XComModel  # type: ignore[attr-defined, no-redef]
+
 from airflow.utils.file import correct_maybe_zipped
 from airflow.utils.session import create_session
 from airflow.utils.state import State, TaskInstanceState
@@ -82,6 +87,9 @@ class ExternalDagLink(BaseOperatorLink):
     def get_link(self, operator: BaseOperator, *, ti_key: TaskInstanceKey) -> str:
         if TYPE_CHECKING:
             assert isinstance(operator, (ExternalTaskMarker, ExternalTaskSensor))
+
+        if self._is_task_runtime():
+            return ""
 
         if stored_link := self._get_stored_link(ti_key):
             return stored_link
@@ -125,6 +133,10 @@ class ExternalDagLink(BaseOperatorLink):
                     XComModel.key == self.xcom_key,
                 )
             )
+
+    @staticmethod
+    def _is_task_runtime() -> bool:
+        return "__AIRFLOW_SUPERVISOR_FD" in os.environ or "_AIRFLOW__STARTUP_MSG" in os.environ
 
     @staticmethod
     def _get_external_dag_run_id(

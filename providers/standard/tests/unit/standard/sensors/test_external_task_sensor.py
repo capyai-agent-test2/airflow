@@ -30,7 +30,6 @@ from airflow import settings
 from airflow.models import DagRun, TaskInstance
 from airflow.models.dag import DAG
 from airflow.models.serialized_dag import SerializedDagModel
-from airflow.models.xcom import XComModel
 from airflow.models.xcom_arg import XComArg
 from airflow.providers.common.compat.sdk import (
     AirflowException,
@@ -67,11 +66,13 @@ from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS, AIRFLOW_V
 
 if AIRFLOW_V_3_0_PLUS:
     from airflow.models.dag_version import DagVersion
+    from airflow.models.xcom import XComModel
     from airflow.sdk import BaseOperator, task as task_deco
     from airflow.utils.types import DagRunTriggeredByType
 else:
     from airflow.decorators import task as task_deco  # type: ignore[attr-defined,no-redef]
     from airflow.models import BaseOperator  # type: ignore[assignment,no-redef]
+    from airflow.models.xcom import XCom as XComModel  # type: ignore[attr-defined, no-redef]
 
 if AIRFLOW_V_3_1_PLUS:
     from airflow.sdk import TaskGroup
@@ -1745,6 +1746,25 @@ def test_external_task_sensor_extra_link_uses_stored_link(create_task_instance_o
     url = task.operator_extra_links[0].get_link(operator=task, ti_key=ti.key)
 
     assert url == stored_url
+
+
+@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Needs Flask app context fixture for AF 2")
+def test_external_task_sensor_extra_link_skips_db_in_task_runtime(
+    create_task_instance_of_operator, monkeypatch
+):
+    ti = create_task_instance_of_operator(
+        ExternalTaskSensor,
+        dag_id="external_task_sensor_extra_links_dag",
+        logical_date=DEFAULT_DATE,
+        task_id="external_task_sensor_extra_links_task",
+        external_dag_id="external_dag",
+    )
+    task = ti.render_templates()
+    monkeypatch.setenv("__AIRFLOW_SUPERVISOR_FD", "1")
+
+    url = task.operator_extra_links[0].get_link(operator=task, ti_key=ti.key)
+
+    assert url == ""
 
 
 class TestExternalTaskMarker:
