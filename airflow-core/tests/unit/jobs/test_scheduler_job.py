@@ -8390,6 +8390,38 @@ class TestSchedulerJob:
         assert call_args.kwargs["msg"] == "timed_out"
         assert call_args.kwargs["dag_run"] == dag_run
 
+    @mock.patch("airflow.models.dagrun.get_listener_manager")
+    def test_dag_timeout_notifies_once_when_already_failed(
+        self, mock_get_listener_manager, dag_maker, session
+    ):
+        """Test that timed-out Dag runs do not emit duplicate failure notifications."""
+        mock_listener_manager = MagicMock()
+        mock_get_listener_manager.return_value = mock_listener_manager
+
+        with dag_maker(
+            dag_id="test_dag_timeout_notify_once",
+            session=session,
+            dagrun_timeout=timedelta(seconds=60),
+        ):
+            EmptyOperator(task_id="test_task")
+
+        dag_run = dag_maker.create_dagrun(run_id="test_run", state=DagRunState.RUNNING)
+        dag_run.start_date = timezone.utcnow() - timedelta(seconds=120)
+        session.merge(dag_run)
+        session.commit()
+
+        mock_executor = MagicMock()
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(scheduler_job, executors=[mock_executor])
+
+        first_callback = self.job_runner._schedule_dag_run(dag_run, session)
+        session.flush()
+        second_callback = self.job_runner._schedule_dag_run(dag_run, session)
+
+        assert isinstance(first_callback, DagCallbackRequest)
+        assert second_callback is None
+        mock_listener_manager.hook.on_dag_run_failed.assert_called_once()
+
     @mock.patch("airflow.models.Deadline.handle_miss")
     def test_process_expired_deadlines(self, mock_handle_miss, session, dag_maker):
         """Verify all expired and unhandled deadlines (and only those) are processed by the scheduler."""
