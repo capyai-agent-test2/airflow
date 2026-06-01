@@ -196,6 +196,50 @@ class TestWorkerStart:
         )
 
 
+@pytest.mark.usefixtures("conf_stale_bundle_cleanup_disabled")
+class TestWorkerLogging:
+    @classmethod
+    def setup_class(cls):
+        with conf_vars({("core", "executor"): "CeleryExecutor"}):
+            importlib.reload(executor_loader)
+            importlib.reload(cli_parser)
+            cls.parser = cli_parser.get_parser()
+
+    @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Test requires Airflow 3+ task-sdk logging")
+    @pytest.mark.parametrize(
+        ("debugpy_running", "expected_output_name"),
+        [
+            pytest.param("true", "stdout", id="debugpy"),
+            pytest.param(None, "stdout_buffer", id="regular"),
+        ],
+    )
+    @mock.patch("airflow.sdk.log.configure_logging")
+    @mock.patch("airflow.providers.celery.cli.celery_command.setup_locations")
+    @mock.patch("airflow.providers.celery.executors.celery_executor.app")
+    def test_worker_uses_text_stdout_when_debugpy_is_running(
+        self,
+        mock_celery_app,
+        mock_locations,
+        mock_configure_logging,
+        monkeypatch,
+        debugpy_running,
+        expected_output_name,
+    ):
+        mock_locations.return_value = ("pid_file", None, None, None)
+        if debugpy_running is None:
+            monkeypatch.delenv("DEBUGPY_RUNNING", raising=False)
+        else:
+            monkeypatch.setenv("DEBUGPY_RUNNING", debugpy_running)
+
+        args = self.parser.parse_args(["celery", "worker", "--skip-serve-logs"])
+
+        celery_command.worker(args)
+
+        expected_output = sys.stdout if expected_output_name == "stdout" else sys.stdout.buffer
+        mock_configure_logging.assert_called_once_with(output=expected_output)
+        mock_celery_app.worker_main.assert_called_once()
+
+
 @pytest.mark.backend("mysql", "postgres")
 @pytest.mark.usefixtures("conf_stale_bundle_cleanup_disabled")
 class TestWorkerMultiTeam:
