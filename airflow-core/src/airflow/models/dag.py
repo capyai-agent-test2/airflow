@@ -36,6 +36,7 @@ from sqlalchemy import (
     Text,
     and_,
     case,
+    exists,
     func,
     or_,
     select,
@@ -741,6 +742,7 @@ class DagModel(Base):
                 cls.is_stale == expression.false(),
                 cls.has_import_errors == expression.false(),
                 cls.exceeds_max_non_backfill == expression.false(),
+                exists(select(SerializedDagModel.dag_id).where(SerializedDagModel.dag_id == cls.dag_id)),
                 or_(
                     cls.next_dagrun_create_after <= func.now(),
                     cls.dag_id.in_(asset_triggered_dag_ids),
