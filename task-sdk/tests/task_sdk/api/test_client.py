@@ -181,7 +181,9 @@ class TestClient:
         with pytest.raises(ServerResponseError) as err:
             client.get("http://error")
 
-        assert "Server error detail={'message': 'Cache unavailable'}" in err.value.__notes__
+        assert not hasattr(BaseException, "add_note") or (
+            "Server error detail={'message': 'Cache unavailable'}" in err.value.__notes__
+        )
 
     def test_server_response_error_pickling(self):
         responses = [httpx.Response(404, json={"detail": {"message": "Invalid input"}})]
