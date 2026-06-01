@@ -30,7 +30,10 @@ from sqlalchemy.orm import Mapped, Session, mapped_column, relationship, selecti
 from sqlalchemy.sql.functions import coalesce
 
 from airflow._shared.timezones import timezone
+from airflow.api_fastapi.execution_api.datamodels.taskinstance import DagRun as DRDataModel, TIRunContext
 from airflow.assets.manager import AssetManager
+from airflow.callbacks.callback_requests import EmailRequest, TaskCallbackRequest
+from airflow.callbacks.database_callback_sink import DatabaseCallbackSink
 from airflow.configuration import conf
 from airflow.models.asset import AssetWatcherModel
 from airflow.models.base import Base
@@ -551,31 +554,76 @@ def _(event: BaseTaskEndEvent, *, task_instance: TaskInstance, session: Session)
     :param task_instance: The task instance to be submitted.
     :param session: The session to be used for the database callback sink.
     """
-    from airflow.callbacks.callback_requests import TaskCallbackRequest
-    from airflow.callbacks.database_callback_sink import DatabaseCallbackSink
     from airflow.utils.state import TaskInstanceState
 
-    # Mark the task with terminal state and prevent it from resuming on worker
-    task_instance.trigger_id = None
-    task_instance.set_state(event.task_instance_state, session=session)
+    def _get_ti_run_context() -> TIRunContext:
+        return TIRunContext(
+            dag_run=DRDataModel.model_validate(task_instance.dag_run, from_attributes=True),
+            max_tries=task_instance.max_tries,
+            variables=[],
+            connections=[],
+            xcom_keys_to_clear=[],
+        )
+
+    def _send_task_callback_request(task_callback_type: TaskInstanceState) -> None:
+        if task_instance.dag_model.relative_fileloc is None:
+            raise RuntimeError("relative_fileloc should not be None for a finished task")
+        bundle_name = (
+            task_instance.dag_version.bundle_name
+            if task_instance.dag_version
+            else task_instance.dag_model.bundle_name
+        )
+        bundle_version = (
+            task_instance.dag_version.bundle_version
+            if task_instance.dag_version and task_instance.dag_run.bundle_version is not None
+            else task_instance.dag_run.bundle_version
+        )
+        request = TaskCallbackRequest(
+            filepath=task_instance.dag_model.relative_fileloc,
+            ti=task_instance,
+            task_callback_type=task_callback_type,
+            bundle_name=bundle_name,
+            bundle_version=bundle_version,
+            context_from_server=_get_ti_run_context(),
+        )
+        log.info("Sending callback: %s", request)
+        try:
+            DatabaseCallbackSink().send(callback=request, session=session)
+        except Exception:
+            log.exception("Failed to send callback.")
+
+    def _send_email_request(email_type: str) -> None:
+        if task_instance.dag_model.relative_fileloc is None:
+            raise RuntimeError("relative_fileloc should not be None for a finished task")
+        bundle_name = (
+            task_instance.dag_version.bundle_name
+            if task_instance.dag_version
+            else task_instance.dag_model.bundle_name
+        )
+        bundle_version = (
+            task_instance.dag_version.bundle_version
+            if task_instance.dag_version
+            else task_instance.dag_run.bundle_version
+        )
+        request = EmailRequest(
+            filepath=task_instance.dag_model.relative_fileloc,
+            ti=task_instance,
+            msg="Task ended from trigger",
+            email_type=email_type,
+            bundle_name=bundle_name,
+            bundle_version=bundle_version,
+            context_from_server=_get_ti_run_context(),
+        )
+        log.info("Sending email request: %s", request)
+        try:
+            DatabaseCallbackSink().send(callback=request, session=session)
+        except Exception:
+            log.exception("Failed to send email request.")
 
     def _submit_callback_if_necessary() -> None:
         """Submit a callback request if the task state is SUCCESS or FAILED."""
         if event.task_instance_state in (TaskInstanceState.SUCCESS, TaskInstanceState.FAILED):
-            if task_instance.dag_model.relative_fileloc is None:
-                raise RuntimeError("relative_fileloc should not be None for a finished task")
-            request = TaskCallbackRequest(
-                filepath=task_instance.dag_model.relative_fileloc,
-                ti=task_instance,
-                task_callback_type=event.task_instance_state,
-                bundle_name=task_instance.dag_model.bundle_name,
-                bundle_version=task_instance.dag_run.bundle_version,
-            )
-            log.info("Sending callback: %s", request)
-            try:
-                DatabaseCallbackSink().send(callback=request, session=session)
-            except Exception:
-                log.exception("Failed to send callback.")
+            _send_task_callback_request(event.task_instance_state)
 
     def _push_xcoms_if_necessary() -> None:
         """Pushes XComs to the database if they are provided."""
@@ -583,6 +631,22 @@ def _(event: BaseTaskEndEvent, *, task_instance: TaskInstance, session: Session)
             for key, value in event.xcoms.items():
                 task_instance.xcom_push(key=key, value=value)
 
-    _submit_callback_if_necessary()
+    # Mark the task with terminal state and prevent it from resuming on worker.
+    task_instance.trigger_id = None
+    if event.task_instance_state == TaskInstanceState.FAILED:
+        task_instance.start_date = task_instance.start_date or timezone.utcnow()
+        session.flush()
+        task_instance.handle_failure(error="Task failed from trigger", session=session)
+        if task_instance.state == TaskInstanceState.UP_FOR_RETRY:
+            task_callback_type = TaskInstanceState.UP_FOR_RETRY
+            email_type = "retry"
+        else:
+            task_callback_type = TaskInstanceState.FAILED
+            email_type = "failure"
+        _send_task_callback_request(task_callback_type)
+        _send_email_request(email_type)
+    else:
+        task_instance.set_state(event.task_instance_state, session=session)
+        _submit_callback_if_necessary()
     _push_xcoms_if_necessary()
     session.flush()

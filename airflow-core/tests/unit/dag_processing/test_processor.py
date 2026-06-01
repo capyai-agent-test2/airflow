@@ -1427,16 +1427,16 @@ class TestExecuteTaskCallbacks:
         assert "dag_run" in context_received
         assert "logical_date" in context_received
 
-    def test_execute_task_callbacks_not_failure_callback(self, spy_agency):
-        """Test _execute_task_callbacks when request is not a failure callback"""
+    def test_execute_task_callbacks_success_callback(self, spy_agency):
+        """Test _execute_task_callbacks executes success callbacks"""
         called = False
 
-        def on_failure(context):
+        def on_success(context):
             nonlocal called
             called = True
 
         with DAG(dag_id="test_dag") as dag:
-            BaseOperator(task_id="test_task", on_failure_callback=on_failure)
+            BaseOperator(task_id="test_task", on_success_callback=on_success)
 
         def fake_collect_dags(self, *args, **kwargs):
             self.dags[dag.dag_id] = dag
@@ -1468,8 +1468,7 @@ class TestExecuteTaskCallbacks:
         log = structlog.get_logger()
         _execute_task_callbacks(dagbag, request, log)
 
-        # Should not call the callback since it's not a failure callback
-        assert called is False
+        assert called is True
 
     def test_execute_task_callbacks_multiple_callbacks(self, spy_agency):
         """Test _execute_task_callbacks with multiple callbacks"""
