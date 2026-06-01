@@ -1376,12 +1376,19 @@ class TestDagRun:
         # Callbacks are not added until handle_callback = False is passed to dag_run.update_state()
         assert callback is None
 
+    @pytest.mark.parametrize(
+        ("task_states", "expected_state"),
+        [
+            ({"task_1": TaskInstanceState.SUCCESS, "task_2": TaskInstanceState.SUCCESS}, DagRunState.SUCCESS),
+            ({"task_1": TaskInstanceState.SUCCESS, "task_2": TaskInstanceState.FAILED}, DagRunState.FAILED),
+        ],
+    )
     @mock.patch.object(Deadline, "prune_deadlines")
     @mock.patch.object(DeadlineAlertModel, "get_by_id")
-    def test_dagrun_success_prunes_dagrun_deadlines(
-        self, mock_get_by_id, mock_prune, session, deadline_test_dag
+    def test_dagrun_finished_prunes_dagrun_deadlines(
+        self, mock_get_by_id, mock_prune, task_states, expected_state, session, deadline_test_dag
     ):
-        mock_deadline_alert = mock.MagicMock()
+        mock_deadline_alert = mock.Mock(spec_set=["reference_class"])
         mock_deadline_alert.reference_class = SerializedReferenceModels.FixedDatetimeDeadline
         mock_get_by_id.return_value = mock_deadline_alert
 
@@ -1392,7 +1399,7 @@ class TestDagRun:
 
         dag_run = self.create_dag_run(
             dag=scheduler_dag,
-            task_states={"task_1": TaskInstanceState.SUCCESS, "task_2": TaskInstanceState.SUCCESS},
+            task_states=task_states,
             session=session,
         )
         dag_run.dag = scheduler_dag
@@ -1403,7 +1410,7 @@ class TestDagRun:
         for deadline_id in deadline_ids:
             mock_get_by_id.assert_any_call(deadline_id, session)
         mock_prune.assert_called_once_with(session=session, conditions={DagRun.id: dag_run.id})
-        assert dag_run.state == DagRunState.SUCCESS
+        assert dag_run.state == expected_state
 
     @mock.patch.object(Deadline, "prune_deadlines")
     @mock.patch.object(DeadlineAlertModel, "get_by_id")
@@ -1494,7 +1501,6 @@ class TestDagRun:
 
     @mock.patch.object(Deadline, "prune_deadlines")
     def test_dagrun_deadline_variable_interval_missing_variable_fails(self, _, session, deadline_test_dag):
-
         mock_err = mock.Mock()
         mock_err.error.value = "MISSING_DEADLINE"
         mock_err.detail = "missing deadline"
