@@ -2191,14 +2191,28 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 if evaluator.run(dag.timetable.asset_condition, statuses=statuses):
                     queued_adrq_batches.append(remaining_adrqs)
 
-            previous_dag_run_run_after = session.scalar(
-                select(func.max(DagRun.run_after)).where(
+            previous_run_afters = session.scalars(
+                select(DagRun.run_after).where(
                     DagRun.dag_id == dag.dag_id,
                     DagRun.run_type == DagRunType.ASSET_TRIGGERED,
+                    DagRun.run_after.is_not(None),
+                )
+            ).all()
+            default_previous_run_after = timezone.make_aware(datetime.min)
+            previous_run_afters_by_batch = (
+                max(
+                    (run_after for run_after in previous_run_afters if run_after < triggered_date),
+                    default=default_previous_run_after,
+                )
+                for triggered_date in (
+                    timezone.coerce_datetime(max(adrq.created_at for adrq in batch))
+                    for batch in queued_adrq_batches
                 )
             )
 
-            for index, queued_adrq_batch in enumerate(queued_adrq_batches):
+            for index, (queued_adrq_batch, previous_run_after) in enumerate(
+                zip(queued_adrq_batches, previous_run_afters_by_batch)
+            ):
                 if active_runs >= dag_model.max_active_runs:
                     self.log.info(
                         "Asset-triggered Dag '%s' reached max_active_runs; leaving %d queued assets.",
@@ -2236,8 +2250,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                                 ),
                             ),
                             AssetEvent.timestamp <= triggered_date,
-                            AssetEvent.timestamp
-                            > (previous_dag_run_run_after or timezone.make_aware(datetime.min)),
+                            AssetEvent.timestamp > previous_run_after,
                         )
                         .order_by(AssetEvent.timestamp.asc(), AssetEvent.id.asc())
                     )
