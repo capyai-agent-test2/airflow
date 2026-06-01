@@ -504,6 +504,7 @@ export type ClearTaskInstancesBody = {
     string,
     number
 ])> | null;
+    task_group_id?: string | null;
     dag_run_id?: string | null;
     include_upstream?: boolean;
     include_downstream?: boolean;
