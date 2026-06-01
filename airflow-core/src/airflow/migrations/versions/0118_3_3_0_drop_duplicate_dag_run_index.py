@@ -27,6 +27,7 @@ Create Date: 2026-06-01 00:00:00.000000
 
 from __future__ import annotations
 
+import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -37,15 +38,21 @@ depends_on = None
 airflow_version = "3.3.0"
 
 
+def _has_index(conn, table_name: str, index_name: str) -> bool:
+    return any(index["name"] == index_name for index in sa.inspect(conn).get_indexes(table_name))
+
+
 def upgrade():
     """Drop duplicate Dag run index on MySQL."""
-    if op.get_bind().dialect.name == "mysql":
+    conn = op.get_bind()
+    if conn.dialect.name == "mysql" and _has_index(conn, "dag_run", "idx_dag_run_queued_dags"):
         with op.batch_alter_table("dag_run") as batch_op:
-            batch_op.drop_index("idx_dag_run_queued_dags", if_exists=True)
+            batch_op.drop_index("idx_dag_run_queued_dags")
 
 
 def downgrade():
     """Restore duplicate Dag run index on MySQL."""
-    if op.get_bind().dialect.name == "mysql":
+    conn = op.get_bind()
+    if conn.dialect.name == "mysql" and not _has_index(conn, "dag_run", "idx_dag_run_queued_dags"):
         with op.batch_alter_table("dag_run") as batch_op:
-            batch_op.create_index("idx_dag_run_queued_dags", ["state", "dag_id"], if_not_exists=True)
+            batch_op.create_index("idx_dag_run_queued_dags", ["state", "dag_id"])
