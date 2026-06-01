@@ -284,7 +284,7 @@ class TriggerRuleDep(BaseTIDep):
                 for x in dep_context.ensure_finished_tis(ti.get_dagrun(session), session)
                 if _is_relevant_upstream(upstream=x, relevant_ids=indirect_setups.keys())
             )
-            upstream_states = _UpstreamTIStates.calculate(finished_upstream_tis)
+            upstream_states = _UpstreamTIStates.calculate(iter(finished_upstream_tis))
 
             # all of these counts reflect indirect setups which are relevant for this ti
             success = upstream_states.success
