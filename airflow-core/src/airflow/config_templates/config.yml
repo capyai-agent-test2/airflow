@@ -682,6 +682,19 @@ database:
       type: string
       example: 'airflow_local_settings.connect_args_async'
       default: ~
+    pgbouncer_transaction_mode:
+      description: |
+        Whether the async metadata database engine connects through PgBouncer in transaction pooling mode.
+        When enabled for ``postgresql+asyncpg`` connections, Airflow disables SQLAlchemy pooling for the
+        async engine and disables asyncpg's prepared statement cache. This is required because transaction
+        pooling can route consecutive statements to different backend connections where server-side
+        prepared statements are not available.
+
+        This setting only affects the async ``postgresql+asyncpg`` metadata database engine.
+      version_added: 3.1.0
+      type: boolean
+      example: ~
+      default: "False"
     sql_alchemy_session_maker:
       description: |
         Important Warning: Use of sql_alchemy_session_maker Highly Discouraged

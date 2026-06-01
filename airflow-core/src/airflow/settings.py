@@ -350,6 +350,19 @@ def _get_connect_args(mode: Literal["sync", "async"]) -> Any:
     return {}
 
 
+def _is_asyncpg_metadata_engine() -> bool:
+    return make_url(SQL_ALCHEMY_CONN_ASYNC).drivername == "postgresql+asyncpg"
+
+
+def _build_async_connect_args() -> dict[str, Any]:
+    connect_args = dict(_get_connect_args("async"))
+    if _is_asyncpg_metadata_engine() and conf.getboolean(
+        "database", "PGBOUNCER_TRANSACTION_MODE", fallback=False
+    ):
+        connect_args["prepared_statement_cache_size"] = 0
+    return connect_args
+
+
 def create_metadata_engine(
     sql_alchemy_conn: str,
     *,
@@ -412,7 +425,10 @@ def _configure_async_session() -> None:
     # pool_pre_ping=False) which means dead connections from PostgreSQL idle
     # timeouts or pgbouncer disconnects are never detected.
     engine_args: dict[str, Any] = {}
-    if not conf.getboolean("database", "SQL_ALCHEMY_POOL_ENABLED"):
+    use_pgbouncer_transaction_mode = _is_asyncpg_metadata_engine() and conf.getboolean(
+        "database", "PGBOUNCER_TRANSACTION_MODE", fallback=False
+    )
+    if not conf.getboolean("database", "SQL_ALCHEMY_POOL_ENABLED") or use_pgbouncer_transaction_mode:
         engine_args["poolclass"] = NullPool
     elif not SQL_ALCHEMY_CONN_ASYNC.startswith("sqlite"):
         engine_args["pool_size"] = conf.getint("database", "SQL_ALCHEMY_POOL_SIZE", fallback=5)
@@ -422,7 +438,7 @@ def _configure_async_session() -> None:
 
     async_engine = create_async_metadata_engine(
         SQL_ALCHEMY_CONN_ASYNC,
-        connect_args=_get_connect_args("async"),
+        connect_args=_build_async_connect_args(),
         engine_args=engine_args,
     )
     AsyncSession = async_sessionmaker(
