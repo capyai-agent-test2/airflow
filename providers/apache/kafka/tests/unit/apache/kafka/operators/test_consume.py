@@ -146,6 +146,7 @@ class TestConsumeFromTopic:
                 apply_function=apply_function,
                 task_id="test",
                 poll_timeout=0.0001,
+                return_results=True,
             )
 
             assert operator.execute(context={}) == ["message", "message", "message"]
@@ -169,9 +170,29 @@ class TestConsumeFromTopic:
                 task_id="test",
                 max_batch_size=2,
                 poll_timeout=0.0001,
+                return_results=True,
             )
 
             assert operator.execute(context={}) == [2, 1]
+
+        mock_consumer.close.assert_called_once()
+
+    def test_operator_discards_apply_function_results_by_default(self):
+        mock_consumer, mock_get_consumer, _ = create_mock_kafka_consumer(
+            message_count=3,
+            message_content=FakeMessage(),
+        )
+
+        with mock_get_consumer:
+            operator = ConsumeFromTopicOperator(
+                kafka_config_id="kafka_d",
+                topics=["test"],
+                apply_function=lambda message: object(),
+                task_id="test",
+                poll_timeout=0.0001,
+            )
+
+            assert operator.execute(context={}) is None
 
         mock_consumer.close.assert_called_once()
 

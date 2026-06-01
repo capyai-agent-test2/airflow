@@ -58,8 +58,8 @@ class ConsumeFromTopicOperator(BaseOperator):
         defaults to 1000
     :param poll_timeout: How long the Kafka consumer should wait before determining no more messages are
         available, defaults to 60
-    :return: A list containing the result of each ``apply_function`` call, or each ``apply_function_batch``
-        call when processing messages in batches.
+    :param return_results: Whether to collect and return the result of each ``apply_function`` call, or
+        each ``apply_function_batch`` call when processing messages in batches. Defaults to False.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -87,6 +87,7 @@ class ConsumeFromTopicOperator(BaseOperator):
         max_messages: int | None = None,
         max_batch_size: int = 1000,
         poll_timeout: float = 60,
+        return_results: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -101,6 +102,7 @@ class ConsumeFromTopicOperator(BaseOperator):
         self.max_messages = max_messages
         self.max_batch_size = max_batch_size
         self.poll_timeout = poll_timeout
+        self.return_results = return_results
 
         self.read_to_end = self.max_messages is None
         self._validate_commit_cadence_on_construct()
@@ -127,7 +129,7 @@ class ConsumeFromTopicOperator(BaseOperator):
     def execute(self, context) -> Any:
         self._validate_commit_cadence_before_execute()
         consumer = self.hook.get_consumer()
-        results = []
+        results = [] if self.return_results else None
 
         if isinstance(self.apply_function, str):
             self.apply_function = import_string(self.apply_function)
@@ -177,10 +179,14 @@ class ConsumeFromTopicOperator(BaseOperator):
 
             if self.apply_function:
                 for m in msgs:
-                    results.append(apply_callable(m))
+                    result = apply_callable(m)
+                    if results is not None:
+                        results.append(result)
 
             if self.apply_function_batch:
-                results.append(apply_callable(msgs))
+                result = apply_callable(msgs)
+                if results is not None:
+                    results.append(result)
 
             if self.commit_cadence == "end_of_batch":
                 self.log.info("committing offset at %s", self.commit_cadence)
