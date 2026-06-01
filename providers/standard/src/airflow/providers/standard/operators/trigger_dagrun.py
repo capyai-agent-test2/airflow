@@ -304,6 +304,15 @@ class TriggerDagRunOperator(BaseOperator):
     def _trigger_dag_af_3(self, context, run_id, parsed_logical_date, parsed_run_after=None):
         from airflow.providers.common.compat.sdk import DagRunTriggerException
 
+        if self._should_trigger_dag_run_directly(context):
+            self._trigger_dag_af_3_directly(
+                context=context,
+                run_id=run_id,
+                parsed_logical_date=parsed_logical_date,
+                parsed_run_after=parsed_run_after,
+            )
+            return
+
         kwargs_accepted = dict(
             trigger_dag_id=self.trigger_dag_id,
             dag_run_id=run_id,
@@ -326,6 +335,83 @@ class TriggerDagRunOperator(BaseOperator):
             kwargs_accepted["run_after"] = parsed_run_after
 
         raise DagRunTriggerException(**kwargs_accepted)
+
+    def _should_trigger_dag_run_directly(self, context) -> bool:
+        if context.get("task") is self:
+            return False
+        try:
+            from airflow.sdk.execution_time import task_runner
+        except ImportError:
+            return False
+        return getattr(task_runner, "SUPERVISOR_COMMS", None) is not None
+
+    def _trigger_dag_af_3_directly(self, context, run_id, parsed_logical_date, parsed_run_after=None):
+        from airflow.sdk.exceptions import ErrorType
+        from airflow.sdk.execution_time import task_runner
+        from airflow.sdk.execution_time.comms import ErrorResponse, GetDagRunState, TriggerDagRun
+
+        self.log.info("Triggering Dag Run.", trigger_dag_id=self.trigger_dag_id)
+        comms_msg = task_runner.SUPERVISOR_COMMS.send(
+            TriggerDagRun(
+                dag_id=self.trigger_dag_id,
+                run_id=run_id,
+                logical_date=parsed_logical_date,
+                run_after=parsed_run_after,
+                conf=self.conf,
+                reset_dag_run=self.reset_dag_run,
+                note=self.note,
+            ),
+        )
+
+        if isinstance(comms_msg, ErrorResponse):
+            if comms_msg.error == ErrorType.DAGRUN_ALREADY_EXISTS:
+                if self.skip_when_already_exists:
+                    raise AirflowSkipException(
+                        "Skipping due to skip_when_already_exists is set to True and DagRunAlreadyExists"
+                    )
+                raise RuntimeError(f"Dag run {run_id} already exists for Dag {self.trigger_dag_id}")
+            raise RuntimeError(f"Failed to trigger dag run {run_id} for Dag {self.trigger_dag_id}")
+
+        self.log.info("Dag Run triggered successfully.", trigger_dag_id=self.trigger_dag_id)
+        ti = context.get("ti") or context.get("task_instance")
+        if ti is not None:
+            ti.xcom_push(key=XCOM_RUN_ID, value=run_id)
+
+        if self.wait_for_completion:
+            if self.deferrable:
+                self.defer(
+                    trigger=DagStateTrigger(
+                        dag_id=self.trigger_dag_id,
+                        states=self.allowed_states + self.failed_states,
+                        execution_dates=None,
+                        run_ids=[run_id],
+                        poll_interval=self.poke_interval,
+                    ),
+                    method_name="execute_complete",
+                )
+            while True:
+                self.log.info(
+                    "Waiting for dag run to complete execution in allowed state.",
+                    dag_id=self.trigger_dag_id,
+                    run_id=run_id,
+                    allowed_state=self.allowed_states,
+                )
+                time.sleep(self.poke_interval)
+
+                dag_run_state = task_runner.SUPERVISOR_COMMS.send(
+                    GetDagRunState(dag_id=self.trigger_dag_id, run_id=run_id)
+                )
+                if isinstance(dag_run_state, ErrorResponse):
+                    raise RuntimeError(f"Failed to fetch dag run state for Dag {self.trigger_dag_id}")
+                if dag_run_state.state in self.failed_states:
+                    raise AirflowException(
+                        f"{self.trigger_dag_id} failed with failed states {dag_run_state.state}"
+                    )
+                if dag_run_state.state in self.allowed_states:
+                    self.log.info(
+                        "%s finished with allowed state %s", self.trigger_dag_id, dag_run_state.state
+                    )
+                    return
 
     def _trigger_dag_af_2(self, context, run_id, parsed_logical_date):
         try:

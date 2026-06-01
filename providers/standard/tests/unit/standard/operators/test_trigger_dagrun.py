@@ -182,6 +182,47 @@ class TestDagRunOperator:
             assert task.trigger_run_id == expected_run_id  # run_id is saved as attribute
 
     @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Implementation is different for Airflow 2 & 3")
+    def test_nested_trigger_dagrun_uses_supervisor_comms(self, monkeypatch):
+        from airflow.sdk.execution_time import task_runner
+        from airflow.sdk.execution_time.comms import OKResponse, TriggerDagRun
+
+        class FakeSupervisorComms:
+            def __init__(self):
+                self.messages = []
+
+            def send(self, msg):
+                self.messages.append(msg)
+                return OKResponse(ok=True)
+
+        comms = FakeSupervisorComms()
+        monkeypatch.setattr(task_runner, "SUPERVISOR_COMMS", comms, raising=False)
+        task_instance = mock.Mock()
+
+        first_task = TriggerDagRunOperator(
+            task_id="test_trigger_dagrun_1",
+            trigger_dag_id=TRIGGERED_DAG_ID,
+            trigger_run_id="manual_run_1",
+            conf={"counter": 1},
+        )
+        second_task = TriggerDagRunOperator(
+            task_id="test_trigger_dagrun_2",
+            trigger_dag_id=TRIGGERED_DAG_ID,
+            trigger_run_id="manual_run_2",
+            conf={"counter": 2},
+        )
+
+        for task in [first_task, second_task]:
+            task.execute(context={"task": mock.Mock(), "ti": task_instance})
+
+        assert [msg.run_id for msg in comms.messages] == ["manual_run_1", "manual_run_2"]
+        assert all(isinstance(msg, TriggerDagRun) for msg in comms.messages)
+        assert [msg.conf for msg in comms.messages] == [{"counter": 1}, {"counter": 2}]
+        assert task_instance.xcom_push.call_args_list == [
+            mock.call(key="trigger_run_id", value="manual_run_1"),
+            mock.call(key="trigger_run_id", value="manual_run_2"),
+        ]
+
+    @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Implementation is different for Airflow 2 & 3")
     @mock.patch(f"{TRIGGER_OP_PATH}.XCom.get_one")
     def test_extra_operator_link(self, mock_xcom_get_one, dag_maker):
         with dag_maker(TEST_DAG_ID, default_args={"start_date": DEFAULT_DATE}, serialized=True):
