@@ -357,7 +357,13 @@ class NodeNotFound(TaskNotFound, KeyError):
         return str(self.args[0]) if self.args else ""
 
 
-class TaskAlreadyRunningError(AirflowException):
+class TaskStartAbortedError(AirflowException):
+    """Raised when a task should not be started by this worker."""
+
+    exit_code = 99
+
+
+class TaskAlreadyRunningError(TaskStartAbortedError):
     """Raised when a task is already running on another worker."""
 
 

@@ -223,14 +223,13 @@ def execute_workload(input: str) -> None:
     try:
         BaseExecutor.run_workload(workload)
     except Exception as e:
-        from airflow.sdk.exceptions import TaskAlreadyRunningError
+        from airflow.sdk.exceptions import TaskStartAbortedError
 
-        if isinstance(e, TaskAlreadyRunningError):
-            log.info("[%s] Task already running elsewhere, ignoring redelivered message", celery_task_id)
-            # Raise Ignore() so Celery does not record a FAILURE result for this duplicate
-            # delivery. Without this, the broker redelivering the message (e.g. after a
-            # visibility timeout) would cause Celery to mark the task as failed, even though
-            # the original worker is still executing it successfully.
+        if isinstance(e, TaskStartAbortedError):
+            log.info("[%s] Task start aborted, ignoring workload", celery_task_id)
+            # Raise Ignore() so Celery does not record a FAILURE result when the
+            # scheduler or another worker has already claimed or resolved this
+            # task instance.
             raise Ignore()
         raise
 
@@ -271,14 +270,13 @@ def _execute_workload_pre_3_3(input: str) -> None:
             raise ValueError(f"CeleryExecutor does not know how to handle {type(workload)}")
     except Exception as e:
         if AIRFLOW_V_3_1_9_PLUS:
-            from airflow.sdk.exceptions import TaskAlreadyRunningError
+            from airflow.sdk.exceptions import TaskStartAbortedError
 
-            if isinstance(e, TaskAlreadyRunningError):
-                log.info("[%s] Task already running elsewhere, ignoring redelivered message", celery_task_id)
-                # Raise Ignore() so Celery does not record a FAILURE result for this duplicate
-                # delivery. Without this, the broker redelivering the message (e.g. after a
-                # visibility timeout) would cause Celery to mark the task as failed, even though
-                # the original worker is still executing it successfully.
+            if isinstance(e, TaskStartAbortedError):
+                log.info("[%s] Task start aborted, ignoring workload", celery_task_id)
+                # Raise Ignore() so Celery does not record a FAILURE result when
+                # the scheduler or another worker has already claimed or
+                # resolved this task instance.
                 raise Ignore()
         raise
 

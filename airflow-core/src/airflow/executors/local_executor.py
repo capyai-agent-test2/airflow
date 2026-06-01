@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from airflow.executors.base_executor import BaseExecutor, get_execution_api_server_url
+from airflow.sdk.exceptions import TaskStartAbortedError
 
 # add logger to parameter of setproctitle to support logging
 if sys.platform == "darwin":
@@ -106,6 +107,9 @@ def _run_worker(
                 subprocess_logs_to_stdout=True,
             )
             output.put((workload.key, workload.success_state, None))
+        except TaskStartAbortedError as e:
+            log.info("Workload start aborted.", workload_type=type(workload).__name__, reason=str(e))
+            output.put((workload.key, None, None))
         except Exception as e:
             log.exception("Workload execution failed.", workload_type=type(workload).__name__)
             output.put((workload.key, workload.failure_state, e))
@@ -241,6 +245,9 @@ class LocalExecutor(BaseExecutor):
         while not self.result_queue.empty():
             key, state, exc = self.result_queue.get()
 
+            if state is None:
+                self.running.discard(key)
+                continue
             self.change_state(key, state)
 
     def end(self) -> None:

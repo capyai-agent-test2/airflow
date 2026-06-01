@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     WorkloadState: TypeAlias = TaskInstanceState | CallbackState
 
     # Type alias for executor workload results (used by executor implementations)
-    WorkloadResultType: TypeAlias = tuple[WorkloadKey, WorkloadState, Exception | None]
+    WorkloadResultType: TypeAlias = tuple[WorkloadKey, WorkloadState | None, Exception | None]
 
 # Type alias for scheduler workloads (ORM models that can be routed to executors)
 # Must be outside TYPE_CHECKING for use in function signatures
