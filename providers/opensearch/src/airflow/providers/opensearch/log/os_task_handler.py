@@ -40,7 +40,6 @@ from sqlalchemy import select
 
 import airflow.logging_config as alc
 from airflow.exceptions import AirflowProviderDeprecationWarning
-from airflow.models import DagRun
 from airflow.providers.common.compat.module_loading import import_string
 from airflow.providers.common.compat.sdk import AirflowException, conf
 from airflow.providers.opensearch.log.os_json_formatter import OpensearchJSONFormatter
@@ -67,7 +66,6 @@ if AIRFLOW_V_3_2_PLUS:
 else:
     from airflow.utils import timezone  # type: ignore[attr-defined,no-redef]
 
-USE_PER_RUN_LOG_ID = hasattr(DagRun, "get_log_template")
 LOG_LINE_DEFAULTS = {"exc_text": "", "stack_info": ""}
 TASK_LOG_FIELDS = ["timestamp", "event", "level", "chan", "logger", "error_detail", "message", "levelname"]
 
@@ -269,8 +267,8 @@ class OpensearchTaskHandler(FileTaskHandler, ExternalLoggingMixin, LoggingMixin)
     feature, set ``json_format`` and ``write_to_opensearch`` to ``True``.
 
     To efficiently query and sort OpenSearch results, this handler assumes each
-    log message has a field `log_id` consists of ti primary keys:
-    `log_id = {dag_id}-{task_id}-{logical_date}-{try_number}`
+    log message has a field `log_id` consisting of ti primary keys:
+    `log_id = {dag_id}-{task_id}-{run_id}-{map_index}-{try_number}`
     Log messages with specific log_id are sorted based on `offset`,
     which is a unique integer indicates log message's order.
     Timestamps here are unreliable because multiple log messages
@@ -513,9 +511,6 @@ class OpensearchTaskHandler(FileTaskHandler, ExternalLoggingMixin, LoggingMixin)
             if isinstance(ti, TaskInstanceKey):
                 ti = _ensure_ti(ti, session)
             dag_run = ti.get_dagrun(session=session)
-            if USE_PER_RUN_LOG_ID:
-                log_id_template = dag_run.get_log_template(session=session).elasticsearch_id
-
         if self.json_format:
             data_interval_start = self._clean_date(dag_run.data_interval_start)
             data_interval_end = self._clean_date(dag_run.data_interval_end)

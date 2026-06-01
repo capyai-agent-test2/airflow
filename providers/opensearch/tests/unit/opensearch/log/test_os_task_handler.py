@@ -149,8 +149,7 @@ class TestOpensearchTaskHandler:
     DAG_ID = "dag_for_testing_os_task_handler"
     TASK_ID = "task_for_testing_os_log_handler"
     LOGICAL_DATE = datetime(2016, 1, 1)
-    LOG_ID = f"{DAG_ID}-{TASK_ID}-2016-01-01T00:00:00+00:00-1"
-    JSON_LOG_ID = f"{DAG_ID}-{TASK_ID}-{OpensearchTaskHandler._clean_date(LOGICAL_DATE)}-1"
+    LOG_ID = f"{DAG_ID}-{TASK_ID}-test--1-1"
     FILENAME_TEMPLATE = "{try_number}.log"
 
     @pytest.fixture(autouse=True)
@@ -465,10 +464,11 @@ class TestOpensearchTaskHandler:
 
     @pytest.mark.db_test
     def test_render_log_id(self, ti):
-        assert self.os_task_handler._render_log_id(ti, 1) == self.LOG_ID
+        expected_log_id = f"{ti.dag_id}-{ti.task_id}-{ti.run_id}-{ti.map_index}-1"
+        assert self.os_task_handler._render_log_id(ti, 1) == expected_log_id
 
         self.os_task_handler.json_format = True
-        assert self.os_task_handler._render_log_id(ti, 1) == self.JSON_LOG_ID
+        assert self.os_task_handler._render_log_id(ti, 1) == expected_log_id
 
     def test_clean_date(self):
         clean_logical_date = OpensearchTaskHandler._clean_date(datetime(2016, 7, 8, 9, 10, 11, 12))
