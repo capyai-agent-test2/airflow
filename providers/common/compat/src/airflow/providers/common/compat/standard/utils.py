@@ -37,6 +37,10 @@ _IMPORT_MAP: dict[str, str | tuple[str, ...]] = {
         "airflow.sdk.bases.skipmixin",
         "airflow.providers.standard.utils.skipmixin",
     ),
+    "XCOM_SKIPMIXIN_BRANCH_TASK_IDS": (
+        "airflow.sdk.bases.skipmixin",
+        "airflow.providers.standard.utils.skipmixin",
+    ),
     "write_python_script": (
         "airflow.providers.standard.utils.python_virtualenv",
         "airflow.utils.python_virtualenv",
