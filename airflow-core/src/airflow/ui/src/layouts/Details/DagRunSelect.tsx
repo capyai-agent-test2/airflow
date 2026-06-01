@@ -62,7 +62,9 @@ export const DagRunSelect = forwardRef<HTMLDivElement, DagRunSelectProps>(({ lim
                 runId: items[0]?.run.run_id ?? "",
                 taskId,
               })
-            : `/dags/${dagId}`,
+            : taskId === undefined
+              ? `/dags/${dagId}`
+              : `/dags/${dagId}/tasks/${taskId}`,
       }),
     );
   };

@@ -50,7 +50,7 @@ const findRunTab = (pathname: string) => {
 
 export const buildDagNavigationPath = ({ dagId, pathname }: { dagId: string; pathname: string }) => {
   const segments = findDagSegments(pathname);
-  const tab = segments[0] === "runs" ? segments[2] : segments[0];
+  const tab = segments[0] === "runs" && segments[1] !== undefined ? segments[2] : segments[0];
 
   return tab !== undefined && DAG_TABS.has(tab) ? `/dags/${dagId}/${tab}` : `/dags/${dagId}`;
 };

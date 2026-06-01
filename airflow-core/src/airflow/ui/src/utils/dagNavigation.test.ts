@@ -23,6 +23,7 @@ import { buildDagNavigationPath, buildRunNavigationPath } from "./dagNavigation"
 describe("buildDagNavigationPath", () => {
   it.each([
     ["/dags/source_dag/code", "/dags/target_dag/code"],
+    ["/dags/source_dag/runs", "/dags/target_dag/runs"],
     ["/dags/source_dag/runs/run_1/events", "/dags/target_dag/events"],
     ["/dags/source_dag/runs/run_1/details", "/dags/target_dag/details"],
     ["/dags/source_dag/runs/run_1/asset_events", "/dags/target_dag"],
