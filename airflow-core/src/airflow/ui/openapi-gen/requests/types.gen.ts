@@ -915,6 +915,7 @@ export type DagRunAssetReference = {
     data_interval_start: string | null;
     data_interval_end: string | null;
     partition_key: string | null;
+    triggered_by_asset_event: boolean;
 };
 
 /**

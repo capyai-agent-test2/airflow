@@ -30,6 +30,7 @@ from airflow.api_fastapi.core_api.datamodels.dag_run import TriggerDAGRunPostBod
 from airflow.utils.types import DagRunType
 
 if TYPE_CHECKING:
+    from airflow.models.asset import AssetEvent
     from airflow.serialization.definitions.dag import SerializedDAG
 
 
@@ -131,6 +132,7 @@ class DagRunAssetReference(StrictBaseModel):
     data_interval_start: datetime | None
     data_interval_end: datetime | None
     partition_key: str | None
+    triggered_by_asset_event: bool = True
 
 
 class AssetEventResponse(BaseModel):
@@ -161,6 +163,18 @@ class AssetEventCollectionResponse(BaseModel):
 
     asset_events: Iterable[AssetEventResponse]
     total_entries: int
+
+
+def build_asset_event_response(asset_event: AssetEvent) -> AssetEventResponse:
+    """Build an asset event response with accurate Dag run trigger attribution."""
+    response = AssetEventResponse.model_validate(asset_event)
+    for dag_run, dag_run_response in zip(asset_event.created_dagruns, response.created_dagruns):
+        latest_consumed_event = max(
+            dag_run.consumed_asset_events,
+            key=lambda event: (event.timestamp, event.id),
+        )
+        dag_run_response.triggered_by_asset_event = latest_consumed_event.id == asset_event.id
+    return response
 
 
 class QueuedEventResponse(BaseModel):

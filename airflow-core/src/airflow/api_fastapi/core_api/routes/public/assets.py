@@ -60,6 +60,7 @@ from airflow.api_fastapi.core_api.datamodels.assets import (
     MaterializeAssetBody,
     QueuedEventCollectionResponse,
     QueuedEventResponse,
+    build_asset_event_response,
 )
 from airflow.api_fastapi.core_api.datamodels.dag_run import DAGRunResponse
 from airflow.api_fastapi.core_api.openapi.exceptions import create_openapi_http_exception_doc
@@ -82,6 +83,7 @@ from airflow.models.asset import (
     AssetWatcherModel,
     TaskOutletAssetReference,
 )
+from airflow.models.dagrun import DagRun
 from airflow.typing_compat import Unpack
 from airflow.utils.state import DagRunState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
@@ -348,12 +350,13 @@ def get_asset_events(
     )
 
     assets_event_select = assets_event_select.options(
-        subqueryload(AssetEvent.created_dagruns), joinedload(AssetEvent.asset)
+        subqueryload(AssetEvent.created_dagruns).subqueryload(DagRun.consumed_asset_events),
+        joinedload(AssetEvent.asset),
     )
     assets_events = session.scalars(assets_event_select)
 
     return AssetEventCollectionResponse(
-        asset_events=assets_events,
+        asset_events=[build_asset_event_response(asset_event) for asset_event in assets_events],
         total_entries=total_entries,
     )
 

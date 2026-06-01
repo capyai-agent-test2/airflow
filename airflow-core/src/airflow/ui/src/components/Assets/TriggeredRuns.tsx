@@ -35,33 +35,50 @@ export const TriggeredRuns = ({ dagRuns }: Props) => {
     return undefined;
   }
 
-  return dagRuns.length === 1 ? (
-    <Flex gap={1}>
-      <Text>{`${translate("triggered")} ${translate("dagRun_one")}`}: </Text>
-      <StateBadge state={dagRuns[0]?.state as DagRunState} />
-      <RouterLink to={`/dags/${dagRuns[0]?.dag_id}/runs/${dagRuns[0]?.run_id}`}>
-        {dagRuns[0]?.dag_id}
-      </RouterLink>
-    </Flex>
-  ) : (
-    // eslint-disable-next-line jsx-a11y/no-autofocus
-    <Popover.Root autoFocus={false} lazyMount unmountOnExit>
-      <Popover.Trigger asChild>
-        <Button variant="outline">
-          {`${dagRuns.length} ${translate("triggered")} ${translate("dagRun_other", { count: dagRuns.length })}`}
-        </Button>
-      </Popover.Trigger>
-      <Popover.Content css={{ "--popover-bg": "colors.bg.emphasized" }} width="fit-content">
-        <Popover.Arrow />
-        <Popover.Body>
-          {dagRuns.map((dagRun) => (
-            <Flex gap={1} key={dagRun.dag_id} my={2}>
-              <StateBadge state={dagRun.state as DagRunState} />
-              <RouterLink to={`/dags/${dagRun.dag_id}/runs/${dagRun.run_id}`}>{dagRun.dag_id}</RouterLink>
-            </Flex>
-          ))}
-        </Popover.Body>
-      </Popover.Content>
-    </Popover.Root>
+  return (
+    <>
+      {[
+        {
+          dagRuns: dagRuns.filter((dagRun) => dagRun.triggered_by_asset_event),
+          label: translate("triggered"),
+        },
+        {
+          dagRuns: dagRuns.filter((dagRun) => !dagRun.triggered_by_asset_event),
+          label: translate("includedIn"),
+        },
+      ].map(({ dagRuns: filteredDagRuns, label }) =>
+        filteredDagRuns.length === 0 ? undefined : filteredDagRuns.length === 1 ? (
+          <Flex gap={1} key={label}>
+            <Text>{`${label} ${translate("dagRun_one")}`}: </Text>
+            <StateBadge state={filteredDagRuns[0]?.state as DagRunState} />
+            <RouterLink to={`/dags/${filteredDagRuns[0]?.dag_id}/runs/${filteredDagRuns[0]?.run_id}`}>
+              {filteredDagRuns[0]?.dag_id}
+            </RouterLink>
+          </Flex>
+        ) : (
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          <Popover.Root autoFocus={false} key={label} lazyMount unmountOnExit>
+            <Popover.Trigger asChild>
+              <Button variant="outline">
+                {`${filteredDagRuns.length} ${label} ${translate("dagRun_other", { count: filteredDagRuns.length })}`}
+              </Button>
+            </Popover.Trigger>
+            <Popover.Content css={{ "--popover-bg": "colors.bg.emphasized" }} width="fit-content">
+              <Popover.Arrow />
+              <Popover.Body>
+                {filteredDagRuns.map((dagRun) => (
+                  <Flex gap={1} key={dagRun.dag_id} my={2}>
+                    <StateBadge state={dagRun.state as DagRunState} />
+                    <RouterLink to={`/dags/${dagRun.dag_id}/runs/${dagRun.run_id}`}>
+                      {dagRun.dag_id}
+                    </RouterLink>
+                  </Flex>
+                ))}
+              </Popover.Body>
+            </Popover.Content>
+          </Popover.Root>
+        ),
+      )}
+    </>
   );
 };

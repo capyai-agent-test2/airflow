@@ -3635,6 +3635,11 @@ export const $DagRunAssetReference = {
                 }
             ],
             title: 'Partition Key'
+        },
+        triggered_by_asset_event: {
+            type: 'boolean',
+            title: 'Triggered By Asset Event',
+            default: true
         }
     },
     additionalProperties: false,
