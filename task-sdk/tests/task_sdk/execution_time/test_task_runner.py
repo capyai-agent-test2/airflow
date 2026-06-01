@@ -983,6 +983,26 @@ def test_run_emits_post_execute_group_before_xcom_push(create_runtime_ti, mock_s
     assert call_order.index("::group::Post Execute") < call_order.index("Pushing xcom")
 
 
+def test_run_passes_execute_result_to_post_execute(create_runtime_ti, mock_supervisor_comms):
+    class ReturningOperator(BaseOperator):
+        post_execute_result = None
+
+        def execute(self, context):
+            return {"some": "value"}
+
+        def post_execute(self, context, result=None):
+            self.post_execute_result = result
+
+    task = ReturningOperator(task_id="returning_task")
+    ti = create_runtime_ti(task=task)
+
+    log = mock.MagicMock(spec=["info", "debug", "warning", "error", "exception", "bind"])
+
+    run(ti, context=ti.get_template_context(), log=log)
+
+    assert ti.task.post_execute_result == {"some": "value"}
+
+
 def test_finalize_emits_endgroup(create_runtime_ti, mock_supervisor_comms):
     """finalize() closes the post-execute log group but does not open it."""
     task = BaseOperator(task_id="some_task")
