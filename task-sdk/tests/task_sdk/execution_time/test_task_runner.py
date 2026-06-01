@@ -1350,6 +1350,7 @@ def test_task_run_with_user_impersonation(
             pool_slots=1,
             queue="default",
             priority_weight=1,
+            run_as_user="airflowuser",
         ),
         dag_rel_path="",
         bundle_info=FAKE_BUNDLE,
@@ -1371,6 +1372,7 @@ def test_task_run_with_user_impersonation(
         assert "_AIRFLOW__STARTUP_MSG" in os.environ
 
         mock_set_inheritable.assert_called_once_with(42, True)
+        assert not parse.spy.calls
         actual_cmd = mock_execvp.call_args.args[1]
 
         assert actual_cmd[:5] == ["sudo", "-E", "-H", "-u", "airflowuser"]
