@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from airflow._shared.timezones import timezone
+from airflow.api_fastapi.core_api.services.ui.structure import get_upstream_assets
 from airflow.models.asset import AssetAliasModel, AssetEvent, AssetModel
 from airflow.models.dagbag import DBDagBag
 from airflow.providers.standard.operators.empty import EmptyOperator
@@ -228,6 +229,61 @@ def _fetch_asset_id(asset: Asset, session: Session) -> str:
             select(AssetModel.id).where(AssetModel.name == asset.name, AssetModel.uri == asset.uri)
         )
     )
+
+
+def test_get_upstream_assets_with_multiple_nested_conditions():
+    asset_expression = {
+        "any": [
+            {
+                "all": [
+                    {"asset": {"id": 1, "name": "asset1"}},
+                    {"asset": {"id": 2, "name": "asset2"}},
+                ]
+            },
+            {
+                "all": [
+                    {"asset": {"id": 3, "name": "asset3"}},
+                    {"asset": {"id": 4, "name": "asset4"}},
+                ]
+            },
+        ]
+    }
+
+    nodes, edges = get_upstream_assets(asset_expression, "task_1")
+
+    assert nodes == [
+        {
+            "id": "or-gate-0",
+            "label": "or-gate-0",
+            "type": "asset-condition",
+            "asset_condition_type": "or-gate",
+        },
+        {
+            "id": "and-gate-1",
+            "label": "and-gate-1",
+            "type": "asset-condition",
+            "asset_condition_type": "and-gate",
+        },
+        {"id": "1", "label": "asset1", "type": "asset"},
+        {"id": "2", "label": "asset2", "type": "asset"},
+        {
+            "id": "and-gate-2",
+            "label": "and-gate-2",
+            "type": "asset-condition",
+            "asset_condition_type": "and-gate",
+        },
+        {"id": "3", "label": "asset3", "type": "asset"},
+        {"id": "4", "label": "asset4", "type": "asset"},
+    ]
+    assert edges == [
+        {"source_id": "or-gate-0", "target_id": "task_1", "is_source_asset": True},
+        {"source_id": "and-gate-1", "target_id": "or-gate-0", "is_source_asset": False},
+        {"source_id": "1", "target_id": "and-gate-1"},
+        {"source_id": "2", "target_id": "and-gate-1"},
+        {"source_id": "and-gate-2", "target_id": "or-gate-0", "is_source_asset": False},
+        {"source_id": "3", "target_id": "and-gate-2"},
+        {"source_id": "4", "target_id": "and-gate-2"},
+    ]
 
 
 @pytest.fixture
