@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime
 from typing import TYPE_CHECKING
 from unittest import mock
@@ -1244,6 +1245,7 @@ class TestTIUpdateState:
 
         response = client.patch(
             f"/execution/task-instances/{ti.id}/state",
+            headers={"airflow-api-version": "2026-06-30"},
             json={
                 "state": "success",
                 "end_date": DEFAULT_END_DATE.isoformat(),
@@ -1260,6 +1262,34 @@ class TestTIUpdateState:
         assert len(event) == 1
         assert event[0].asset == AssetModel(name="my-task", uri="s3://bucket/my-task", extra={})
         assert event[0].extra == expected_extra
+
+    def test_ti_update_state_to_success_returns_asset_listener_logs(
+        self, client, session, create_task_instance, mocker
+    ):
+        ti = create_task_instance(
+            task_id="test_ti_update_state_to_success_returns_asset_listener_logs",
+            start_date=DEFAULT_START_DATE,
+            state=State.RUNNING,
+        )
+        session.commit()
+
+        def register_asset_changes_in_db(*args, **kwargs):
+            print("asset listener stdout")
+            print("asset listener stderr", file=sys.stderr)
+
+        mocker.patch.object(TaskInstance, "register_asset_changes_in_db", register_asset_changes_in_db)
+
+        response = client.patch(
+            f"/execution/task-instances/{ti.id}/state",
+            json={
+                "state": "success",
+                "end_date": DEFAULT_END_DATE.isoformat(),
+                "task_outlets": [{"name": "my-task", "uri": "s3://bucket/my-task", "type": "Asset"}],
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"listener_logs": ["asset listener stdout", "asset listener stderr"]}
 
     @pytest.mark.parametrize(
         ("outlet_events", "expected_extra"),

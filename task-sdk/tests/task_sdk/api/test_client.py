@@ -425,6 +425,42 @@ class TestTaskInstanceOperations:
             ti_id, state=state, when="2024-10-31T12:00:00Z", rendered_map_index="test"
         )
 
+    @pytest.mark.parametrize(
+        ("response", "expected_listener_logs"),
+        [
+            pytest.param(httpx.Response(status_code=204), [], id="no-listener-logs"),
+            pytest.param(
+                httpx.Response(status_code=200, json={"listener_logs": ["asset listener output"]}),
+                ["asset listener output"],
+                id="listener-logs",
+            ),
+        ],
+    )
+    def test_task_instance_succeed(self, response, expected_listener_logs):
+        ti_id = uuid6.uuid7()
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            if request.url.path == f"/task-instances/{ti_id}/state":
+                actual_body = json.loads(request.read())
+                assert actual_body["end_date"] == "2024-10-31T12:00:00Z"
+                assert actual_body["state"] == "success"
+                assert actual_body["rendered_map_index"] == "test"
+                assert actual_body["task_outlets"] == []
+                assert actual_body["outlet_events"] == []
+                return response
+            return httpx.Response(status_code=400, json={"detail": "Bad Request"})
+
+        client = make_client(transport=httpx.MockTransport(handle_request))
+        listener_logs = client.task_instances.succeed(
+            ti_id,
+            when=timezone.parse("2024-10-31T12:00:00Z"),
+            task_outlets=[],
+            outlet_events=[],
+            rendered_map_index="test",
+        )
+
+        assert listener_logs == expected_listener_logs
+
     def test_task_instance_heartbeat(self):
         # Simulate a successful response from the server that sends a heartbeat for a ti
         ti_id = uuid6.uuid7()

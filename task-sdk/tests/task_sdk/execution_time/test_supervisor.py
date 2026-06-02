@@ -3271,6 +3271,21 @@ class TestHandleRequest:
         # Pending msg preserved so the recovery dispatcher can re-issue.
         assert watched_subprocess._pending_terminal_state_msg is msg
 
+    def test_succeed_task_writes_asset_listener_logs_to_task_log(self, watched_subprocess, mocker):
+        watched_subprocess, _ = watched_subprocess
+        watched_subprocess.client.task_instances.succeed = mocker.Mock(
+            return_value=["asset listener stdout", "asset listener stderr"]
+        )
+
+        watched_subprocess._handle_request(
+            SucceedTask(end_date=timezone.parse("2024-10-31T12:00:00Z")),
+            mocker.Mock(),
+            req_id=1,
+        )
+
+        watched_subprocess.process_log.info.assert_any_call("asset listener stdout")
+        watched_subprocess.process_log.info.assert_any_call("asset listener stderr")
+
     @pytest.mark.parametrize(
         ("msg", "api_method", "expected_state"),
         [

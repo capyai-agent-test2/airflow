@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import itertools
 import json
 from collections import defaultdict
@@ -63,6 +64,7 @@ from airflow.api_fastapi.execution_api.datamodels.taskinstance import (
     TIRunContext,
     TISkippedDownstreamTasksStatePayload,
     TIStateUpdate,
+    TIStateUpdateResponse,
     TISuccessStatePayload,
     TITerminalStatePayload,
 )
@@ -325,7 +327,6 @@ def ti_run(
 
 @ti_id_router.patch(
     "/{task_instance_id}/state",
-    status_code=status.HTTP_204_NO_CONTENT,
     responses=create_openapi_http_exception_doc(
         [
             (status.HTTP_404_NOT_FOUND, "Task Instance not found"),
@@ -340,6 +341,7 @@ def ti_run(
 def ti_update_state(
     task_instance_id: UUID,
     ti_patch_payload: Annotated[TIStateUpdate, Body()],
+    response: Response,
     session: SessionDep,
     dag_bag: DagBagDep,
 ):
@@ -423,8 +425,9 @@ def ti_update_state(
         data["_rendered_map_index"] = data.pop("rendered_map_index")
     query = update(TI).where(TI.id == task_instance_id).values(data)
 
+    listener_logs: list[str] = []
     try:
-        query, updated_state = _create_ti_state_update_query_and_update_state(
+        query, updated_state, listener_logs = _create_ti_state_update_query_and_update_state(
             ti_patch_payload=ti_patch_payload,
             task_instance_id=task_instance_id,
             session=session,
@@ -498,6 +501,13 @@ def ti_update_state(
                     task_id=task_id,
                 )
 
+    if listener_logs:
+        response.status_code = status.HTTP_200_OK
+        return TIStateUpdateResponse(listener_logs=listener_logs)
+
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return None
+
 
 def _emit_task_span(ti, state):
     # just to be safe
@@ -564,7 +574,8 @@ def _create_ti_state_update_query_and_update_state(
     session: SessionDep,
     dag_bag: DagBagDep,
     dag_id: str,
-) -> tuple[Update, TaskInstanceState]:
+) -> tuple[Update, TaskInstanceState, list[str]]:
+    listener_logs: list[str] = []
     if isinstance(ti_patch_payload, (TITerminalStatePayload, TIRetryStatePayload, TISuccessStatePayload)):
         ti = session.get(TI, task_instance_id, with_for_update={"of": TI})
         updated_state = TaskInstanceState(ti_patch_payload.state.value)
@@ -587,12 +598,15 @@ def _create_ti_state_update_query_and_update_state(
             )
         elif isinstance(ti_patch_payload, TISuccessStatePayload):
             if ti is not None:
-                TI.register_asset_changes_in_db(
-                    ti,
-                    ti_patch_payload.task_outlets,
-                    ti_patch_payload.outlet_events,
-                    session=session,
-                )
+                listener_output = io.StringIO()
+                with contextlib.redirect_stdout(listener_output), contextlib.redirect_stderr(listener_output):
+                    TI.register_asset_changes_in_db(
+                        ti,
+                        ti_patch_payload.task_outlets,
+                        ti_patch_payload.outlet_events,
+                        session=session,
+                    )
+                listener_logs = listener_output.getvalue().splitlines()
         try:
             _emit_task_span(ti, state=updated_state)
         except Exception:
@@ -655,7 +669,7 @@ def _create_ti_state_update_query_and_update_state(
                 ti = session.get(TI, task_instance_id, with_for_update={"of": TI})
                 if ti is not None:
                     _handle_fail_fast_for_dag(ti=ti, dag_id=dag_id, session=session, dag_bag=dag_bag)
-                return query, TaskInstanceState.FAILED
+                return query, TaskInstanceState.FAILED, listener_logs
 
         actual_start_date = timezone.utcnow()
         session.add(
@@ -677,7 +691,7 @@ def _create_ti_state_update_query_and_update_state(
     else:
         raise ValueError(f"Unexpected Payload Type {type(ti_patch_payload)}")
 
-    return query, updated_state
+    return query, updated_state, listener_logs
 
 
 @ti_id_router.patch(
