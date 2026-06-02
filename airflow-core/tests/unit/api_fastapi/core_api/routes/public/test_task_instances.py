@@ -814,6 +814,21 @@ class TestGetMappedTaskInstances:
         assert response.json()["total_entries"] == 110
         assert len(response.json()["task_instances"]) == 50
 
+    def test_should_respond_200_with_null_executor_config(
+        self, one_task_with_mapped_tis, test_client, session
+    ):
+        session.execute(update(TaskInstance).values(executor_config=None))
+        session.commit()
+
+        response = test_client.get(
+            "/dags/mapped_tis/dagRuns/run_mapped_tis/taskInstances/task_2/listMapped",
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_entries"] == 3
+        assert {ti["executor_config"] for ti in body["task_instances"]} == {"{}"}
+
     def test_offset_limit(self, test_client, one_task_with_many_mapped_tis):
         response = test_client.get(
             "/dags/mapped_tis/dagRuns/run_mapped_tis/taskInstances/task_2/listMapped",

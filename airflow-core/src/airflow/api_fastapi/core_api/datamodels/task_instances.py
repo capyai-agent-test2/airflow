@@ -42,6 +42,10 @@ from airflow.api_fastapi.core_api.datamodels.trigger import TriggerResponse
 from airflow.utils.state import TaskInstanceState
 
 
+def stringify_executor_config(value: Any) -> str:
+    return "{}" if value is None else str(value)
+
+
 class NewTaskResponse(BaseModel):
     """Lightweight response for new tasks that don't have TaskInstances yet."""
 
@@ -79,7 +83,7 @@ class TaskInstanceResponse(BaseModel):
     scheduled_dttm: datetime | None = Field(alias="scheduled_when")
     pid: int | None
     executor: str | None
-    executor_config: Annotated[str, BeforeValidator(str)]
+    executor_config: Annotated[str, BeforeValidator(stringify_executor_config)]
     note: str | None
     rendered_map_index: str | None
     rendered_fields: dict = Field(
