@@ -185,6 +185,13 @@ def _defined(**kwargs: Any) -> dict[str, Any]:
     return result
 
 
+def _is_stat_allowed_by_backend(backend: StatsLogger | NoStatsLogger, stat: str) -> bool:
+    metrics_validator = getattr(backend, "metrics_validator", None)
+    if metrics_validator is None:
+        return True
+    return metrics_validator.test(stat)
+
+
 def incr(
     stat: str,
     count: int | None = None,
@@ -194,6 +201,8 @@ def incr(
 ) -> None:
     """Increment a counter metric."""
     backend = _get_backend()
+    if not _is_stat_allowed_by_backend(backend, stat):
+        return
     legacy_name, extra_tags = _get_legacy_stat_name_and_tags(stat, tags)
     if legacy_name is not None:
         backend.incr(legacy_name, **_defined(count=count, rate=rate, tags=extra_tags))
@@ -209,6 +218,8 @@ def decr(
 ) -> None:
     """Decrement a counter metric."""
     backend = _get_backend()
+    if not _is_stat_allowed_by_backend(backend, stat):
+        return
     legacy_name, extra_tags = _get_legacy_stat_name_and_tags(stat, tags)
     if legacy_name is not None:
         backend.decr(legacy_name, **_defined(count=count, rate=rate, tags=extra_tags))
@@ -225,6 +236,8 @@ def gauge(
 ) -> None:
     """Set a gauge metric."""
     backend = _get_backend()
+    if not _is_stat_allowed_by_backend(backend, stat):
+        return
     legacy_name, extra_tags = _get_legacy_stat_name_and_tags(stat, tags)
     if legacy_name is not None:
         backend.gauge(legacy_name, value, **_defined(rate=rate, delta=delta, tags=extra_tags))
@@ -239,6 +252,8 @@ def timing(
 ) -> None:
     """Record a timing metric."""
     backend = _get_backend()
+    if not _is_stat_allowed_by_backend(backend, stat):
+        return
     legacy_name, extra_tags = _get_legacy_stat_name_and_tags(stat, tags)
     if legacy_name is not None:
         backend.timing(legacy_name, dt, **_defined(tags=extra_tags))
@@ -264,6 +279,8 @@ def timer(
     backend = _get_backend()
 
     if stat is None:
+        return backend.timer()
+    if not _is_stat_allowed_by_backend(backend, stat):
         return backend.timer()
 
     regular_kw: dict[str, Any] = {**kwargs}
