@@ -37,8 +37,31 @@ def _convert_from_dict(obj, new_class):
         return obj
     if isinstance(obj, dict):
         api_client = ApiClient()
-        return api_client._ApiClient__deserialize_model(obj, new_class)
+        return api_client._ApiClient__deserialize_model(_convert_model_dict_keys(obj, new_class), new_class)
     raise AirflowException(f"Expected dict or {new_class}, got {type(obj)}")
+
+
+def _convert_model_dict_keys(obj: dict, new_class):
+    converted = {}
+    for key, value in obj.items():
+        model_attr = key
+        if key not in new_class.attribute_map:
+            model_attr = next(
+                (attr for attr, json_key in new_class.attribute_map.items() if json_key == key),
+                key,
+            )
+        json_key = new_class.attribute_map.get(model_attr, key)
+        converted[json_key] = _convert_model_value(value, new_class.openapi_types.get(model_attr))
+    return converted
+
+
+def _convert_model_value(value, type_name):
+    if not isinstance(value, dict) or not type_name:
+        return value
+    nested_class = getattr(k8s, type_name.removeprefix("list[").removesuffix("]"), None)
+    if not nested_class or not hasattr(nested_class, "attribute_map"):
+        return value
+    return _convert_model_dict_keys(value, nested_class)
 
 
 def convert_volume(volume) -> k8s.V1Volume:
@@ -47,6 +70,8 @@ def convert_volume(volume) -> k8s.V1Volume:
 
     :param volume:
     """
+    if isinstance(volume, dict):
+        return _convert_from_dict(volume, k8s.V1Volume)
     return _convert_kube_model_object(volume, k8s.V1Volume)
 
 
@@ -56,6 +81,8 @@ def convert_volume_mount(volume_mount) -> k8s.V1VolumeMount:
 
     :param volume_mount:
     """
+    if isinstance(volume_mount, dict):
+        return _convert_from_dict(volume_mount, k8s.V1VolumeMount)
     return _convert_kube_model_object(volume_mount, k8s.V1VolumeMount)
 
 

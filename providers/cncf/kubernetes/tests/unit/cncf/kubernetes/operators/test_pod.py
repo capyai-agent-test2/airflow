@@ -68,6 +68,11 @@ if AIRFLOW_V_3_0_PLUS or AIRFLOW_V_3_1_PLUS:
 else:
     from airflow.models.xcom import XCom  # type: ignore[no-redef]
 
+if AIRFLOW_V_3_0_PLUS:
+    from airflow.sdk import task
+else:
+    from airflow.decorators import task  # type: ignore[attr-defined,no-redef]
+
 if TYPE_CHECKING:
     from airflow.sdk import Context
 
@@ -260,6 +265,53 @@ class TestKubernetesPodOperator:
         assert dag_id == rendered.env_from[0].config_map_ref.name
         assert dag_id == rendered.volumes[0].name
         assert dag_id == rendered.volumes[0].config_map.name
+
+    def test_volume_mounts_and_volumes_allow_taskflow_xcom_args(self):
+        with self.dag_maker(dag_id="dag"):
+
+            @task(multiple_outputs=True)
+            def generate_mount_config():
+                return {
+                    "volume_mounts": [{"name": "example-volume", "mountPath": "/example"}],
+                    "volumes": [
+                        {
+                            "name": "example-volume",
+                            "persistent_volume_claim": {"claim_name": "example-claim"},
+                        }
+                    ],
+                }
+
+            mount_config = generate_mount_config()
+
+            operator = KubernetesPodOperator(
+                task_id="run_pod",
+                image="alpine",
+                volume_mounts=mount_config["volume_mounts"],
+                volumes=mount_config["volumes"],
+            )
+
+        assert operator.volume_mounts == mount_config["volume_mounts"]
+        assert operator.volumes == mount_config["volumes"]
+
+    def test_build_pod_request_obj_converts_rendered_volume_mounts_and_volumes_from_dict(self):
+        operator = KubernetesPodOperator(
+            task_id="run_pod",
+            image="alpine",
+            volume_mounts=[{"name": "example-volume", "mountPath": "/example"}],
+            volumes=[
+                {
+                    "name": "example-volume",
+                    "persistent_volume_claim": {"claim_name": "example-claim"},
+                }
+            ],
+        )
+
+        pod = operator.build_pod_request_obj(create_context(operator))
+
+        assert pod.spec.containers[0].volume_mounts[0].name == "example-volume"
+        assert pod.spec.containers[0].volume_mounts[0].mount_path == "/example"
+        assert pod.spec.volumes[0].name == "example-volume"
+        assert pod.spec.volumes[0].persistent_volume_claim.claim_name == "example-claim"
 
     def run_pod(self, operator: KubernetesPodOperator, map_index: int = -1) -> tuple[k8s.V1Pod, Context]:
         with self.dag_maker(dag_id="dag") as dag:

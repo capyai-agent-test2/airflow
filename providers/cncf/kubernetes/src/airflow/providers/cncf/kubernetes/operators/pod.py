@@ -399,10 +399,8 @@ class KubernetesPodOperator(BaseOperator):
         if configmaps:
             self.env_from.extend([convert_configmap(c) for c in configmaps])
         self.ports = [convert_port(p) for p in ports] if ports else []
-        volume_mounts = [convert_volume_mount(v) for v in volume_mounts] if volume_mounts else []
-        self.volume_mounts = volume_mounts
-        volumes = [convert_volume(volume) for volume in volumes] if volumes else []
-        self.volumes = volumes
+        self.volume_mounts = volume_mounts if volume_mounts is not None else []
+        self.volumes = volumes if volumes is not None else []
         self.secrets = secrets or []
         self.in_cluster = in_cluster
         self.cluster_context = cluster_context
@@ -1465,6 +1463,9 @@ class KubernetesPodOperator(BaseOperator):
         if self.pod_runtime_info_envs:
             self.env_vars.extend(self.pod_runtime_info_envs)
 
+        volume_mounts = [convert_volume_mount(v) for v in self.volume_mounts] if self.volume_mounts else []
+        volumes = [convert_volume(volume) for volume in self.volumes] if self.volumes else []
+
         if self.pod_template_file:
             self.log.debug("Pod template file found, will parse for base pod")
             pod_template = pod_generator.PodGenerator.deserialize_model_file(self.pod_template_file)
@@ -1504,7 +1505,7 @@ class KubernetesPodOperator(BaseOperator):
                         ports=self.ports,
                         image_pull_policy=self.image_pull_policy,
                         resources=self.container_resources,
-                        volume_mounts=self.volume_mounts,
+                        volume_mounts=volume_mounts,
                         args=self.arguments,
                         env=self.env_vars,
                         env_from=self.env_from,
@@ -1524,7 +1525,7 @@ class KubernetesPodOperator(BaseOperator):
                 scheduler_name=self.schedulername,
                 restart_policy="Never",
                 priority_class_name=self.priority_class_name,
-                volumes=self.volumes,
+                volumes=volumes,
                 active_deadline_seconds=self.active_deadline_seconds,
                 termination_grace_period_seconds=self.termination_grace_period,
             ),
