@@ -18,10 +18,12 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pendulum
 import pytest
 
+from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.sdk import dag, task, task_group
 from airflow.sdk.definitions._internal.expandinput import (
@@ -271,6 +273,41 @@ def test_expand_kwargs_create_mapped():
     assert tg._expand_input == ListOfDictsExpandInput([{"b": "x"}, {"b": None}])
 
     assert saved == {"a": 1, "b": MappedArgument(input=tg._expand_input, key="b")}
+
+
+def test_expand_kwargs_argument_in_classic_operator_template_field():
+    @dag(schedule=None, start_date=pendulum.datetime(2022, 1, 1))
+    def pipeline():
+        @task_group()
+        def tg(project, dataset):
+            BashOperator(
+                task_id="bash_task",
+                bash_command=f"echo {project}.{dataset}",
+            )
+
+        tg.expand_kwargs(
+            [
+                {"project": "my_project", "dataset": "dataset_0"},
+                {"project": "my_project", "dataset": "dataset_1"},
+            ]
+        )
+
+    d = pipeline()
+    task = d.task_group_dict["tg"].children["tg.bash_task"]
+
+    fake_ti = SimpleNamespace(map_index=1)
+    context = {
+        "dag": d,
+        "dag_run": SimpleNamespace(conf={}),
+        "task": task,
+        "task_instance": fake_ti,
+        "ti": fake_ti,
+    }
+    fake_ti.get_template_context = lambda: context
+
+    task.render_template_fields(context)
+
+    assert task.bash_command == "echo my_project.dataset_1"
 
 
 def test_expand_kwargs_invalid_xcomarg_return_value():
