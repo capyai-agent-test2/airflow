@@ -781,6 +781,12 @@ class DagModel(Base):
         last_run_info = None
         if last_automated_run:
             last_run_info = dag.timetable.run_info_from_dag_run(dag_run=last_automated_run)
+        elif (
+            dag.timetable.can_be_scheduled
+            and self.next_dagrun_create_after is not None
+            and self.next_dagrun_create_after > timezone.utcnow()
+        ):
+            return
         next_dagrun_info = dag.next_dagrun_info(last_automated_run_info=last_run_info)
         if next_dagrun_info is None:
             # there is no next dag run after the last dag run; set everything to None
