@@ -197,6 +197,25 @@ class TestClient:
         assert unpickled.response.status_code == 404
         assert unpickled.request.url == "http://error"
 
+    def test_redirect_response_error_pickling(self):
+        responses = [httpx.Response(301, headers={"Location": "http://proxy.example/redirect"})]
+        client = make_client_w_responses(responses)
+
+        with pytest.raises(ServerResponseError) as exc_info:
+            client.get("http://error")
+
+        err = exc_info.value
+        assert err.detail is None
+        assert "301 Moved Permanently" in str(err)
+
+        pickled = pickle.dumps(err)
+        unpickled = pickle.loads(pickled)
+
+        assert isinstance(unpickled, ServerResponseError)
+        assert unpickled.detail is None
+        assert unpickled.response.status_code == 301
+        assert unpickled.request.url == "http://error"
+
     def test_retry_handling_unrecoverable_error(self):
         with time_machine.travel("2023-01-01T00:00:00Z", tick=False):
             responses: list[httpx.Response] = [
@@ -276,7 +295,6 @@ class TestClient:
         ("status_code", "description"),
         [
             (399, "status code < 400"),
-            (301, "3xx redirect status code"),
             (600, "status code >= 600"),
         ],
     )
