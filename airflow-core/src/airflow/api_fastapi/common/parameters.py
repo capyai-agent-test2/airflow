@@ -51,7 +51,9 @@ from airflow.models.asset import (
     AssetEvent,
     AssetModel,
     AssetPartitionDagRun,
+    DagScheduleAssetNameReference,
     DagScheduleAssetReference,
+    DagScheduleAssetUriReference,
     TaskInletAssetReference,
     TaskOutletAssetReference,
     association_table,
@@ -911,6 +913,24 @@ class _DagIdAssetReferenceFilter(BaseParam[list[str]]):
         dag_ids = self.value or []
         return select.where(
             (AssetModel.scheduled_dags.any(DagScheduleAssetReference.dag_id.in_(dag_ids)))
+            | (
+                sql_select(DagScheduleAssetNameReference.name)
+                .where(
+                    AssetModel.active.has(),
+                    DagScheduleAssetNameReference.name == AssetModel.name,
+                    DagScheduleAssetNameReference.dag_id.in_(dag_ids),
+                )
+                .exists()
+            )
+            | (
+                sql_select(DagScheduleAssetUriReference.uri)
+                .where(
+                    AssetModel.active.has(),
+                    DagScheduleAssetUriReference.uri == AssetModel.uri,
+                    DagScheduleAssetUriReference.dag_id.in_(dag_ids),
+                )
+                .exists()
+            )
             | (AssetModel.producing_tasks.any(TaskOutletAssetReference.dag_id.in_(dag_ids)))
             | (AssetModel.consuming_tasks.any(TaskInletAssetReference.dag_id.in_(dag_ids)))
         )
