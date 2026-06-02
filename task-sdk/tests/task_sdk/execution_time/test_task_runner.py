@@ -1024,6 +1024,52 @@ def test_resume_from_deferred(time_machine, create_runtime_ti, mock_supervisor_c
     spy_agency.assert_spy_called_with(spy, mock.ANY, event=instant)
 
 
+def test_resume_from_deferred_skips_pre_execute(create_runtime_ti, mock_supervisor_comms):
+    calls = []
+
+    class DeferredOperator(BaseOperator):
+        def pre_execute(self, context):
+            calls.append("pre_execute")
+
+        def execute(self, context):
+            calls.append("execute")
+            self.defer(trigger=SuccessTrigger(), method_name="execute_complete")
+
+        def execute_complete(self, context):
+            calls.append("execute_complete")
+            return "done"
+
+        def post_execute(self, context, result=None):
+            calls.append(("post_execute", result))
+
+    def on_execute_callback(context):
+        calls.append("on_execute_callback")
+
+    task = DeferredOperator(task_id="deferred", on_execute_callback=on_execute_callback)
+    ti = create_runtime_ti(dag_id="deferred_run", task=task)
+
+    state, _, err = run(ti, context=ti.get_template_context(), log=mock.MagicMock())
+
+    assert err is None
+    assert state == TaskInstanceState.DEFERRED
+    assert calls == ["pre_execute", "on_execute_callback", "execute"]
+
+    ti._ti_context_from_server.next_method = "execute_complete"
+    ti._ti_context_from_server.next_kwargs = {"__type": "dict", "__var": {}}
+
+    state, _, err = run(ti, context=ti.get_template_context(), log=mock.MagicMock())
+
+    assert err is None
+    assert state == TaskInstanceState.SUCCESS
+    assert calls == [
+        "pre_execute",
+        "on_execute_callback",
+        "execute",
+        "execute_complete",
+        ("post_execute", None),
+    ]
+
+
 def test_run_basic_skipped(time_machine, create_runtime_ti, mock_supervisor_comms):
     """Test running a basic task that marks itself skipped."""
 
