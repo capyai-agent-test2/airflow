@@ -1,0 +1,1 @@
+Fix downstream scheduling after a mapped task shrinks and extra mapped task instances are removed.
