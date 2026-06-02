@@ -1218,3 +1218,25 @@ class TestUpdateDagTags:
         session.commit()
 
         assert {t.name for t in dag_model.tags} == expected_tags
+
+    def test_update_dag_tags_flushes_mysql_case_only_changes(self, testing_dag_bundle, monkeypatch, session):
+        dag_model = DagModel(dag_id="test_dag", bundle_name="testing")
+        dag_model.tags = [DagTag(name="PACMAN", dag_id="test_dag"), DagTag(name="pu", dag_id="test_dag")]
+        session.add(dag_model)
+        session.commit()
+
+        flush_calls = []
+        original_flush = session.flush
+
+        def record_flush(*args, **kwargs):
+            flush_calls.append({tag.name for tag in dag_model.tags})
+            return original_flush(*args, **kwargs)
+
+        monkeypatch.setattr(airflow.dag_processing.collection, "get_dialect_name", lambda session: "mysql")
+        monkeypatch.setattr(session, "flush", record_flush)
+
+        _update_dag_tags({"pacman", "pu"}, dag_model, session=session)
+        session.commit()
+
+        assert flush_calls[0] == {"pu"}
+        assert {t.name for t in dag_model.tags} == {"pacman", "pu"}
