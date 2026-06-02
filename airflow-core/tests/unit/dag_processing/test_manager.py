@@ -1086,6 +1086,21 @@ class TestDagFileProcessorManager:
         _, kwargs = mock_start.call_args
         assert kwargs["subprocess_logs_to_stdout"] is expected_subprocess_logs_to_stdout
 
+    def test_get_logger_for_dag_file_stdout_does_not_create_log_file(self):
+        with conf_vars({("logging", "dag_processor_log_target"): "stdout"}):
+            manager = DagFileProcessorManager(max_runs=1, processor_timeout=60)
+            dag_file = DagFileInfo(
+                bundle_name="testing", rel_path=Path("my_dag.py"), bundle_path=Path("/tmp")
+            )
+            with mock.patch.object(manager, "_render_log_filename") as mock_render_log_filename:
+                logger, logger_filehandle = manager._get_logger_for_dag_file(dag_file)
+
+        mock_render_log_filename.assert_not_called()
+        try:
+            logger.info("message")
+        finally:
+            logger_filehandle.close()
+
     def test_kill_timed_out_processors_kill(self):
         manager = DagFileProcessorManager(max_runs=1, processor_timeout=5)
         # Set start_time to ensure timeout occurs: start_time = current_time - (timeout + 1) = always (timeout + 1) seconds

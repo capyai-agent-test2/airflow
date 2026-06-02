@@ -604,8 +604,10 @@ class DagFileProcessorProcess(WatchedSubprocess):
         base = super()._get_target_loggers()
         if not self.subprocess_logs_to_stdout:
             return base
+        _, *stdout_loggers = base
         return tuple(
-            logger.bind(dag_file=self.dag_file_rel_path, bundle_name=self.bundle_name) for logger in base
+            logger.bind(dag_file=self.dag_file_rel_path, bundle_name=self.bundle_name)
+            for logger in stdout_loggers
         )
 
     def _create_log_forwarder(
