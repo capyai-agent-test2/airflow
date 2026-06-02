@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Annotated, cast
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.engine import CursorResult
-from sqlalchemy.orm import joinedload, subqueryload
+from sqlalchemy.orm import Session, joinedload, subqueryload
 
 from airflow._shared.timezones import timezone
 from airflow.api_fastapi.app import get_auth_manager
@@ -80,17 +80,72 @@ from airflow.models.asset import (
     AssetEvent,
     AssetModel,
     AssetWatcherModel,
+    DagScheduleAssetNameReference,
+    DagScheduleAssetUriReference,
     TaskOutletAssetReference,
 )
-from airflow.typing_compat import Unpack
 from airflow.utils.state import DagRunState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
 
 if TYPE_CHECKING:
-    from sqlalchemy.engine import Result
     from sqlalchemy.sql import Select
 
 assets_router = AirflowRouter(tags=["Asset"])
+
+
+def _get_schedule_asset_ref_rows(
+    assets: list[AssetModel], *, session: Session
+) -> dict[int, list[dict[str, str | datetime]]]:
+    asset_ref_rows = {asset.id: [] for asset in assets}
+    if not assets:
+        return asset_ref_rows
+
+    name_to_asset_ids: dict[str, list[int]] = {}
+    uri_to_asset_ids: dict[str, list[int]] = {}
+    for asset in assets:
+        if asset.active is None:
+            continue
+        name_to_asset_ids.setdefault(asset.name, []).append(asset.id)
+        uri_to_asset_ids.setdefault(asset.uri, []).append(asset.id)
+
+    for name, dag_id, created_at in session.execute(
+        select(
+            DagScheduleAssetNameReference.name,
+            DagScheduleAssetNameReference.dag_id,
+            DagScheduleAssetNameReference.created_at,
+        ).where(DagScheduleAssetNameReference.name.in_(name_to_asset_ids.keys()))
+    ):
+        for asset_id in name_to_asset_ids[name]:
+            asset_ref_rows[asset_id].append(
+                {"dag_id": dag_id, "created_at": created_at, "updated_at": created_at}
+            )
+
+    for uri, dag_id, created_at in session.execute(
+        select(
+            DagScheduleAssetUriReference.uri,
+            DagScheduleAssetUriReference.dag_id,
+            DagScheduleAssetUriReference.created_at,
+        ).where(DagScheduleAssetUriReference.uri.in_(uri_to_asset_ids.keys()))
+    ):
+        for asset_id in uri_to_asset_ids[uri]:
+            asset_ref_rows[asset_id].append(
+                {"dag_id": dag_id, "created_at": created_at, "updated_at": created_at}
+            )
+
+    return asset_ref_rows
+
+
+def _get_scheduled_dags_for_asset(
+    asset: AssetModel, asset_ref_rows: dict[int, list[dict[str, str | datetime]]]
+) -> list:
+    scheduled_dags = list(asset.scheduled_dags)
+    scheduled_dag_ids = {ref.dag_id for ref in scheduled_dags}
+    for ref in asset_ref_rows[asset.id]:
+        dag_id = cast("str", ref["dag_id"])
+        if dag_id not in scheduled_dag_ids:
+            scheduled_dags.append(ref)
+            scheduled_dag_ids.add(dag_id)
+    return scheduled_dags
 
 
 def _generate_queued_event_where_clause(
@@ -191,9 +246,9 @@ def get_assets(
         session=session,
     )
 
-    # The below type annotation is acceptable on SQLA2.1, but not on 2.0
-    assets_rows: Result[Unpack[tuple[AssetModel, int, datetime]]] = session.execute(  # type: ignore[type-arg]
+    assets_rows = session.execute(
         assets_select.options(
+            subqueryload(AssetModel.active),
             subqueryload(AssetModel.scheduled_dags),
             subqueryload(AssetModel.producing_tasks),
             subqueryload(AssetModel.consuming_tasks),
@@ -201,8 +256,11 @@ def get_assets(
             subqueryload(AssetModel.watchers).joinedload(AssetWatcherModel.trigger),
         )
     )
+    assets_rows = assets_rows.all()
 
     assets = []
+    asset_models = [asset for asset, _, _ in assets_rows]
+    asset_ref_rows = _get_schedule_asset_ref_rows(asset_models, session=session)
 
     for asset, last_asset_event_id, last_asset_event_timestamp in assets_rows:
         watchers_data = [
@@ -217,6 +275,7 @@ def get_assets(
         asset_response = AssetResponse.model_validate(
             {
                 **asset.__dict__,
+                "scheduled_dags": _get_scheduled_dags_for_asset(asset, asset_ref_rows),
                 "aliases": asset.aliases,
                 "watchers": watchers_data,
                 "last_asset_event": {
@@ -529,6 +588,7 @@ def get_asset(
         select(AssetModel)
         .where(AssetModel.id == asset_id)
         .options(
+            joinedload(AssetModel.active),
             joinedload(AssetModel.scheduled_dags),
             joinedload(AssetModel.producing_tasks),
             joinedload(AssetModel.consuming_tasks),
@@ -550,10 +610,12 @@ def get_asset(
         }
         for watcher in asset.watchers
     ]
+    asset_ref_rows = _get_schedule_asset_ref_rows([asset], session=session)
 
     return AssetResponse.model_validate(
         {
             **asset.__dict__,
+            "scheduled_dags": _get_scheduled_dags_for_asset(asset, asset_ref_rows),
             "aliases": asset.aliases,
             "watchers": watchers_data,
             "last_asset_event": {

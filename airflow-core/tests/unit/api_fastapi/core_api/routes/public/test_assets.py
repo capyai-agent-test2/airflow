@@ -34,7 +34,9 @@ from airflow.models.asset import (
     AssetEvent,
     AssetModel,
     AssetWatcherModel,
+    DagScheduleAssetNameReference,
     DagScheduleAssetReference,
+    DagScheduleAssetUriReference,
     TaskOutletAssetReference,
 )
 from airflow.models.dagrun import DagRun
@@ -306,7 +308,7 @@ class TestGetAssets(TestAssets):
         assert len(session.scalars(select(AssetModel)).all()) == 3
         assert len(session.scalars(select(AssetActive)).all()) == 2
 
-        with assert_queries_count(7):
+        with assert_queries_count(10):
             response = test_client.get("/assets")
 
         assert response.status_code == 200
@@ -353,7 +355,7 @@ class TestGetAssets(TestAssets):
         """Test that assets with watchers return the watcher information in the API response."""
         asset1, asset2 = self.create_assets_with_watchers(session=session, num=2)
 
-        response = test_client.get("/assets")
+        response = test_client.get("/assets?only_active=0")
         assert response.status_code == 200
         response_data = response.json()
         tz_datetime_format = from_datetime_to_zulu_without_ms(DEFAULT_DATE)
@@ -405,6 +407,63 @@ class TestGetAssets(TestAssets):
             ],
             "total_entries": 2,
         }
+
+    def test_should_include_asset_ref_scheduled_dags(self, test_client, session, testing_dag_bundle):
+        asset1, asset2 = self.create_assets(session=session, num=2)
+        inactive_with_same_name = AssetModel(name=asset1.name, uri="s3://bucket/inactive-name")
+        inactive_with_same_uri = AssetModel(name="inactive-uri", uri=asset1.uri)
+        session.add_all(
+            [
+                inactive_with_same_name,
+                inactive_with_same_uri,
+                DagModel(dag_id="name_ref_dag", bundle_name="testing"),
+                DagModel(dag_id="uri_ref_dag", bundle_name="testing"),
+                DagScheduleAssetNameReference(dag_id="name_ref_dag", name=asset1.name),
+                DagScheduleAssetUriReference(dag_id="uri_ref_dag", uri=asset1.uri),
+            ]
+        )
+        session.commit()
+
+        response = test_client.get("/assets?only_active=0")
+
+        assert response.status_code == 200
+        response_data = response.json()
+        asset_by_id = {asset["id"]: asset for asset in response_data["assets"]}
+        assert {ref["dag_id"] for ref in asset_by_id[asset1.id]["scheduled_dags"]} == {
+            "name_ref_dag",
+            "uri_ref_dag",
+        }
+        assert asset_by_id[asset2.id]["scheduled_dags"] == []
+        assert asset_by_id[inactive_with_same_name.id]["scheduled_dags"] == []
+        assert asset_by_id[inactive_with_same_uri.id]["scheduled_dags"] == []
+
+    def test_filter_assets_by_asset_ref_dag_ids(self, test_client, session, testing_dag_bundle):
+        asset1, asset2 = self.create_assets(session=session, num=2)
+        inactive_with_same_name = AssetModel(name=asset1.name, uri="s3://bucket/inactive-name")
+        inactive_with_same_uri = AssetModel(name="inactive-uri", uri=asset2.uri)
+        session.add_all(
+            [
+                inactive_with_same_name,
+                inactive_with_same_uri,
+                DagModel(dag_id="name_ref_dag", bundle_name="testing"),
+                DagModel(dag_id="uri_ref_dag", bundle_name="testing"),
+                DagScheduleAssetNameReference(dag_id="name_ref_dag", name=asset1.name),
+                DagScheduleAssetUriReference(dag_id="uri_ref_dag", uri=asset2.uri),
+            ]
+        )
+        session.commit()
+
+        response = test_client.get("/assets?dag_ids=name_ref_dag")
+
+        assert response.status_code == 200
+        response_data = response.json()
+        assert [asset["id"] for asset in response_data["assets"]] == [asset1.id]
+
+        response = test_client.get("/assets?dag_ids=uri_ref_dag&only_active=0")
+
+        assert response.status_code == 200
+        response_data = response.json()
+        assert [asset["id"] for asset in response_data["assets"]] == [asset2.id]
 
     def test_should_show_inactive(self, test_client, session):
         asset1, asset2 = self.create_assets(session=session)
@@ -1082,7 +1141,7 @@ class TestGetAssetEndpoint(TestAssets):
         self.create_assets(num=1)
         assert session.scalars(select(func.count(AssetModel.id))).one() == 1
         tz_datetime_format = from_datetime_to_zulu_without_ms(DEFAULT_DATE)
-        with assert_queries_count(6):
+        with assert_queries_count(8):
             response = test_client.get("/assets/1")
         assert response.status_code == 200
         assert response.json() == {
@@ -1100,6 +1159,33 @@ class TestGetAssetEndpoint(TestAssets):
             "watchers": [],
             "last_asset_event": {"id": None, "timestamp": None},
         }
+
+    def test_should_include_asset_ref_scheduled_dags(self, test_client, session, testing_dag_bundle):
+        asset = self.create_assets(session=session, num=1)[0]
+        inactive_with_same_name = AssetModel(name=asset.name, uri="s3://bucket/inactive-name")
+        session.add_all(
+            [
+                inactive_with_same_name,
+                DagModel(dag_id="name_ref_dag", bundle_name="testing"),
+                DagModel(dag_id="uri_ref_dag", bundle_name="testing"),
+                DagScheduleAssetNameReference(dag_id="name_ref_dag", name=asset.name),
+                DagScheduleAssetUriReference(dag_id="uri_ref_dag", uri=asset.uri),
+            ]
+        )
+        session.commit()
+
+        response = test_client.get(f"/assets/{asset.id}")
+
+        assert response.status_code == 200
+        assert {ref["dag_id"] for ref in response.json()["scheduled_dags"]} == {
+            "name_ref_dag",
+            "uri_ref_dag",
+        }
+
+        response = test_client.get(f"/assets/{inactive_with_same_name.id}")
+
+        assert response.status_code == 200
+        assert response.json()["scheduled_dags"] == []
 
     @provide_session
     def test_should_respond_200_with_watchers(self, test_client, *, session):
