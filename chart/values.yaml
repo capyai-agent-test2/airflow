@@ -529,6 +529,8 @@ data:
 
 # Fernet key settings
 # Note: `fernetKey` can only be set during 'helm install', not 'helm upgrade' command
+# Keep this key or the fernet key Kubernetes Secret when reusing a database across installs.
+# Airflow cannot decrypt existing encrypted variables or connections without the original key.
 fernetKey: ~
 
 # If set, the secret must contain a 'fernet-key' key with a base64-encoded key value

@@ -662,6 +662,13 @@ The Helm Chart by default uses Kubernetes Secrets to store secrets that are need
 The contents of those secrets are by default turned into environment variables that are read by
 Airflow.
 
+The fernet key is required to decrypt Airflow variables and connections stored in the metadata database.
+If you reuse an existing metadata database after recreating a namespace or installing a new release, you
+must also reuse the same fernet key. Back up the generated ``<RELEASE_NAME>-fernet-key`` Kubernetes
+Secret, set ``.Values.fernetKey`` to the original key during installation, or provide an existing
+Kubernetes Secret with ``.Values.fernetKeySecretName``. Without the original key, encrypted values in the
+database cannot be recovered by the chart.
+
 .. note::
 
    Some of the environment variables have several variants to support older versions of Airflow.
