@@ -223,6 +223,47 @@ class TestDag:
         assert session.scalar(select(DagRun).where(DagRun.dag_id == dag_id)) is not None
 
     @conf_vars({("core", "load_examples"): "false"})
+    def test_dag_test_activates_outlet_assets_when_not_serialized(
+        self, configure_dag_bundles, tmp_path, session
+    ):
+        dag_id = "test_dag_test_asset_outlet"
+        asset_name = "test_dag_test_asset"
+        dag_file = tmp_path / "test_dag_test_asset_outlet.py"
+        dag_file.write_text(
+            f"""
+from datetime import datetime
+
+from airflow.sdk import DAG, Asset
+from airflow.providers.standard.operators.empty import EmptyOperator
+
+asset = Asset("{asset_name}")
+
+with DAG("{dag_id}", start_date=datetime(2023, 4, 20)) as dag:
+    EmptyOperator(task_id="start_task", outlets=[asset])
+""",
+        )
+
+        with configure_dag_bundles({"testing": tmp_path}):
+            dagbag = DagBag(dag_folder=os.fspath(tmp_path), include_examples=False)
+            dag = dagbag.dags.get(dag_id)
+            assert dag is not None
+            assert DBDagBag().get_latest_version_of_dag(dag_id, session=session) is None
+
+            dr = dag.test()
+
+        assert dr.state == DagRunState.SUCCESS
+        asset = session.scalar(select(AssetModel).where(AssetModel.name == asset_name))
+        assert asset is not None
+        assert asset.active is not None
+        assert session.scalar(
+            select(TaskOutletAssetReference).where(
+                TaskOutletAssetReference.dag_id == dag_id,
+                TaskOutletAssetReference.task_id == "start_task",
+                TaskOutletAssetReference.asset_id == asset.id,
+            )
+        )
+
+    @conf_vars({("core", "load_examples"): "false"})
     def test_dag_test_syncs_sibling_for_trigger_dagrun(self, test_dags_bundle, session):
         """
         Regression test for #64884.
