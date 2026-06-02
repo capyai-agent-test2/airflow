@@ -1339,6 +1339,32 @@ class TestGitDagBundle:
             assert kwargs["env"] == EXPECTED_ENV
 
     @mock.patch("airflow.providers.git.bundles.git.GitHook")
+    def test_fetch_bare_repo_uses_full_githook_env(self, mock_githook):
+        expected_env = {
+            "GIT_SSH_COMMAND": "ssh -i /id_rsa -o IdentitiesOnly=yes",
+            "SSH_ASKPASS": "/tmp/askpass.sh",
+            "SSH_ASKPASS_REQUIRE": "force",
+            "DISPLAY": ":",
+        }
+        mock_githook.return_value.repo_url = "git@github.com:apache/airflow.git"
+        mock_githook.return_value.env = expected_env
+
+        bundle = GitDagBundle(
+            name="my_repo",
+            git_conn_id="git_default",
+            repo_url="git@github.com:apache/airflow.git",
+            tracking_ref="main",
+        )
+        bundle.bare_repo = mock.MagicMock()
+
+        bundle._fetch_bare_repo()
+
+        bundle.bare_repo.git.custom_environment.assert_called_once_with(**expected_env)
+        bundle.bare_repo.remotes.origin.fetch.assert_called_once_with(
+            ["+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"]
+        )
+
+    @mock.patch("airflow.providers.git.bundles.git.GitHook")
     @mock.patch("airflow.providers.git.bundles.git.shutil.rmtree")
     @mock.patch("airflow.providers.git.bundles.git.os.path.exists")
     def test_clone_bare_repo_invalid_repository_error_retry(self, mock_exists, mock_rmtree, mock_githook):
