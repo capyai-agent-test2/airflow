@@ -29,14 +29,15 @@ This is similar, but more powerful than the *Dags folder* in Airflow 2 or earlie
 be in one place on the local disk, and getting the Dags there was solely the responsibility of the deployment
 manager.
 
-Since Dag bundles support versioning, they also allow Airflow to run a task using a specific version of the
+Versioned Dag bundles also allow Airflow to run a task using a specific version of the
 Dag bundle, allowing for a Dag run to use the same code for the whole run, even if the Dag is updated mid-way
-through the run.
+through the run. Non-versioned Dag bundles, such as ``LocalDagBundle``, always use the latest code available
+from the bundle source.
 
 Why are Dag bundles important?
 ------------------------------
 
-- **Version Control**: By supporting versioning, Dag bundles allow Dag runs to use the same code for the whole run, even if the Dag is updated mid way through the run.
+- **Version Control**: Versioned Dag bundles allow Dag runs to use the same code for the whole run, even if the Dag is updated mid way through the run.
 - **Scalability**: With Dag bundles, Airflow can efficiently manage large numbers of Dags by organizing them into logical units.
 - **Flexibility**: Dag bundles enable seamless integration with external systems, such as Git repositories, to source Dags.
 
