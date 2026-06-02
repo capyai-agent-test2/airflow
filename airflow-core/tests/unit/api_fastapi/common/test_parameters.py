@@ -249,18 +249,38 @@ class TestEscapeLikePattern:
 
 
 class TestNonSearchFilterEscaping:
-    """``_OwnersFilter`` / ``_AssetDependencyFilter`` / ``_ConsumingAssetFilter`` escape ``%`` and ``_``.
+    """Non-search filters escape ``%`` and ``_``.
 
-    Compile-time check: the rendered SQL must wrap the *escaped* user value in ``%...%`` and
-    declare an ``ESCAPE`` clause so the database treats user-supplied wildcards literally.
+    Compile-time check: the rendered SQL must contain the *escaped* user value and declare an
+    ``ESCAPE`` clause so the database treats user-supplied wildcards literally.
     """
 
     def test_owners_filter_escapes_user_wildcards(self):
         param = _OwnersFilter().set_value(["100%_alice"])
         statement = param.to_orm(select(DagModel))
         sql = _compile(statement)
-        assert r"'%100\%\_alice%'" in sql
+        assert r"'100\%\_alice, %'" in sql
+        assert r"'100\%\_alice,%'" in sql
+        assert r"'%, 100\%\_alice'" in sql
+        assert r"'%,100\%\_alice'" in sql
+        assert r"'%, 100\%\_alice, %'" in sql
+        assert r"'%, 100\%\_alice,%'" in sql
+        assert r"'%,100\%\_alice, %'" in sql
+        assert r"'%,100\%\_alice,%'" in sql
         assert "escape" in sql
+
+    def test_owners_filter_matches_owner_values_not_substrings(self):
+        param = _OwnersFilter().set_value(["admin"])
+        statement = param.to_orm(select(DagModel))
+        sql = _compile(statement)
+
+        assert "lower(dag.owners) = 'admin'" in sql
+        assert "lower(dag.owners) like 'admin,%'" in sql
+        assert "lower(dag.owners) like '%,admin'" in sql
+        assert "lower(dag.owners) like '%,admin,%'" in sql
+        assert "lower(dag.owners) like '%, admin,%'" in sql
+        assert "lower(dag.owners) like '%,admin, %'" in sql
+        assert "'%admin%'" not in sql
 
     def test_asset_dependency_filter_escapes_user_wildcards(self):
         param = _AssetDependencyFilter().set_value("ledger_%")

@@ -842,10 +842,24 @@ class _OwnersFilter(BaseParam[list[str]]):
         if not self.value:
             return select
 
-        conditions = [
-            DagModel.owners.ilike(f"%{_escape_like_pattern(owner)}%", escape=_LIKE_ESCAPE_CHAR)
-            for owner in self.value
-        ]
+        owners = func.lower(DagModel.owners)
+        conditions = []
+        for owner in self.value:
+            lower_owner = owner.lower()
+            escaped_owner = _escape_like_pattern(lower_owner)
+            conditions.append(
+                or_(
+                    owners == lower_owner,
+                    owners.like(f"{escaped_owner}, %", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"{escaped_owner},%", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%, {escaped_owner}", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%,{escaped_owner}", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%, {escaped_owner}, %", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%, {escaped_owner},%", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%,{escaped_owner}, %", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%,{escaped_owner},%", escape=_LIKE_ESCAPE_CHAR),
+                )
+            )
         return select.where(or_(*conditions))
 
     @classmethod
