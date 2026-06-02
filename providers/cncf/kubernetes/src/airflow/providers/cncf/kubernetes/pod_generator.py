@@ -186,6 +186,14 @@ class PodGenerator:
         if obj is None:
             return None
 
+        invalid_keys = obj.keys() - {"pod_override", "pod_template_file", "KubernetesExecutor"}
+        if invalid_keys:
+            raise AirflowConfigException(
+                "Invalid executor_config keys for KubernetesExecutor: "
+                f"{', '.join(sorted(invalid_keys))}. "
+                "Only pod_override and pod_template_file are supported."
+            )
+
         k8s_legacy_object = obj.get("KubernetesExecutor", None)
         k8s_object = obj.get("pod_override", None)
 
