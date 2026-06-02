@@ -673,6 +673,10 @@ class MappedOperator(AbstractOperator):
     def executor_config(self) -> dict:
         return self.partial_kwargs.get("executor_config", {})
 
+    @executor_config.setter
+    def executor_config(self, value: dict) -> None:
+        self.partial_kwargs["executor_config"] = value
+
     @property
     def inlets(self) -> list[Any]:
         return self.partial_kwargs.get("inlets", [])
