@@ -270,9 +270,10 @@ class TestGitSyncSchedulerTest:
             "secret": {"secretName": "release-name-ssh-secret", "defaultMode": 288},
         } in jmespath.search("spec.template.spec.volumes", docs[0])
 
-    def test_validate_sshkeysecret_not_added_when_persistence_is_enabled(self):
+    def test_validate_sshkeysecret_added_when_persistence_is_enabled(self):
         docs = render_chart(
             values={
+                "executor": "LocalExecutor",  # needed to have git sync added to the scheduler
                 "dags": {
                     "gitSync": {
                         "enabled": True,
@@ -282,11 +283,14 @@ class TestGitSyncSchedulerTest:
                         "branch": "test-branch",
                     },
                     "persistence": {"enabled": True},
-                }
+                },
             },
             show_only=["templates/scheduler/scheduler-deployment.yaml"],
         )
-        assert "git-sync-ssh-key" not in jmespath.search("spec.template.spec.volumes[].name", docs[0])
+        assert {
+            "name": "git-sync-ssh-key",
+            "secret": {"secretName": "ssh-secret", "defaultMode": 288},
+        } in jmespath.search("spec.template.spec.volumes", docs[0])
 
     def test_should_set_username_and_pass_env_variables(self):
         docs = render_chart(
