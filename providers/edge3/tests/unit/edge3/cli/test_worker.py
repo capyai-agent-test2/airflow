@@ -43,7 +43,7 @@ from airflow.providers.common.compat.sdk import timezone
 from airflow.providers.edge3.cli import edge_command
 from airflow.providers.edge3.cli.dataclasses import Job
 from airflow.providers.edge3.cli.signalling import SIG_STATUS
-from airflow.providers.edge3.cli.worker import EdgeWorker
+from airflow.providers.edge3.cli.worker import EdgeWorker, _add_signal_handler
 from airflow.providers.edge3.models.edge_worker import (
     EdgeWorkerModel,
     EdgeWorkerState,
@@ -915,6 +915,20 @@ class TestEdgeWorker:
         assert register_args[4] is None  # team_name should be None
         mock_loop.assert_called_once()
         assert mock_set_state.call_count == 1
+
+    @patch("airflow.providers.edge3.cli.worker.signal.signal")
+    def test_add_signal_handler_falls_back_when_asyncio_signal_handlers_are_unsupported(self, mock_signal):
+        loop = mock.Mock(spec=["add_signal_handler"])
+        callback = mock.Mock(spec=[])
+        loop.add_signal_handler.side_effect = NotImplementedError
+
+        _add_signal_handler(loop, signal.SIGINT, callback)
+
+        loop.add_signal_handler.assert_called_once_with(signal.SIGINT, callback)
+        mock_signal.assert_called_once()
+        assert mock_signal.call_args.args[0] == signal.SIGINT
+        mock_signal.call_args.args[1](signal.SIGINT, None)
+        callback.assert_called_once_with()
 
     @pytest.mark.parametrize(
         ("automatic_maintenance_on", "sysinfo_status", "expected_maintenance_mode"),

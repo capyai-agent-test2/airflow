@@ -108,6 +108,14 @@ def _reset_parent_signal_state() -> None:
         signal.signal(SIG_STATUS, signal.SIG_DFL)
 
 
+def _add_signal_handler(loop, sig: signal.Signals, callback: Callable[[], None]) -> None:
+    """Register an asyncio signal handler with a ``signal.signal`` fallback for Windows."""
+    try:
+        loop.add_signal_handler(sig, callback)
+    except NotImplementedError:
+        signal.signal(sig, lambda signum, frame: callback())
+
+
 class EdgeWorker:
     """Runner instance which executes the Edge Worker."""
 
@@ -605,9 +613,9 @@ class EdgeWorker:
         if not self.daemon:
             write_pid_to_pidfile(self.pid_file_path)
         loop = get_running_loop()
-        loop.add_signal_handler(signal.SIGINT, self.signal_drain)
-        loop.add_signal_handler(SIG_STATUS, self.signal_status)
-        loop.add_signal_handler(signal.SIGTERM, self.shutdown_handler)
+        _add_signal_handler(loop, signal.SIGINT, self.signal_drain)
+        _add_signal_handler(loop, SIG_STATUS, self.signal_status)
+        _add_signal_handler(loop, signal.SIGTERM, self.shutdown_handler)
         setproctitle(f"airflow edge worker: {self.hostname}")
         os.environ["HOSTNAME"] = self.hostname
         os.environ["AIRFLOW__CORE__HOSTNAME_CALLABLE"] = f"{_edge_hostname.__module__}._edge_hostname"
