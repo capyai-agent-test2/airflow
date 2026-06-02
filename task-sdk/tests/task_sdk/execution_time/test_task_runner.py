@@ -4568,6 +4568,15 @@ class TestTaskRunnerCallsCallbacks:
             log_url = runtime_ti.log_url
             assert log_url == expected_url
 
+    def test_runtime_task_instance_queue_property(self, create_runtime_ti):
+        task = BaseOperator(task_id="test_task", queue="custom_queue")
+        runtime_ti = create_runtime_ti(task=task)
+        context = runtime_ti.get_template_context()
+
+        assert runtime_ti.queue == "custom_queue"
+        assert context["ti"].queue == "custom_queue"
+        assert context["task_instance"].queue == "custom_queue"
+
     def test_task_runner_on_failure_callback_context(self, create_runtime_ti):
         """Test that on_failure_callback context has end_date and duration."""
 
