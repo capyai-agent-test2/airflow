@@ -260,8 +260,11 @@ class TestNonSearchFilterEscaping:
         statement = param.to_orm(select(DagModel))
         sql = _compile(statement)
         assert r"'100\%\_alice, %'" in sql
+        assert r"'100\%\_alice,%'" in sql
         assert r"'%, 100\%\_alice'" in sql
+        assert r"'%,100\%\_alice'" in sql
         assert r"'%, 100\%\_alice, %'" in sql
+        assert r"'%,100\%\_alice,%'" in sql
         assert "escape" in sql
 
     def test_owners_filter_matches_owner_values_not_substrings(self):
@@ -270,6 +273,9 @@ class TestNonSearchFilterEscaping:
         sql = _compile(statement)
 
         assert "lower(dag.owners) = 'admin'" in sql
+        assert "lower(dag.owners) like 'admin,%'" in sql
+        assert "lower(dag.owners) like '%,admin'" in sql
+        assert "lower(dag.owners) like '%,admin,%'" in sql
         assert "'%admin%'" not in sql
 
     def test_asset_dependency_filter_escapes_user_wildcards(self):

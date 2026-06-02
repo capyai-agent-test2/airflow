@@ -851,8 +851,11 @@ class _OwnersFilter(BaseParam[list[str]]):
                 or_(
                     owners == lower_owner,
                     owners.like(f"{escaped_owner}, %", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"{escaped_owner},%", escape=_LIKE_ESCAPE_CHAR),
                     owners.like(f"%, {escaped_owner}", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%,{escaped_owner}", escape=_LIKE_ESCAPE_CHAR),
                     owners.like(f"%, {escaped_owner}, %", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%,{escaped_owner},%", escape=_LIKE_ESCAPE_CHAR),
                 )
             )
         return select.where(or_(*conditions))
