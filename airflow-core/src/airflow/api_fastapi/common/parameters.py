@@ -855,6 +855,8 @@ class _OwnersFilter(BaseParam[list[str]]):
                     owners.like(f"%, {escaped_owner}", escape=_LIKE_ESCAPE_CHAR),
                     owners.like(f"%,{escaped_owner}", escape=_LIKE_ESCAPE_CHAR),
                     owners.like(f"%, {escaped_owner}, %", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%, {escaped_owner},%", escape=_LIKE_ESCAPE_CHAR),
+                    owners.like(f"%,{escaped_owner}, %", escape=_LIKE_ESCAPE_CHAR),
                     owners.like(f"%,{escaped_owner},%", escape=_LIKE_ESCAPE_CHAR),
                 )
             )
