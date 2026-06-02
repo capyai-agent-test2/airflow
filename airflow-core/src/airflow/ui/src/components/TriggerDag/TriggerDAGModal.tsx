@@ -81,7 +81,7 @@ const TriggerDAGModal: React.FC<TriggerDAGModalProps> = ({
 
   return (
     <Dialog.Root lazyMount onOpenChange={onClose} open={open} unmountOnExit>
-      <Dialog.Content backdrop>
+      <Dialog.Content backdrop maxWidth="90vw" width="min(960px, 90vw)">
         <Dialog.Header paddingBottom={0}>
           <VStack align="start" gap={2} width="100%" wordBreak="break-all">
             <Heading size="xl">

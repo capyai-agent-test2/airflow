@@ -18,24 +18,39 @@
  */
 import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ParamsSpec } from "src/queries/useDagParams";
 import { Wrapper } from "src/utils/Wrapper";
 
 import TriggerDAGForm from "./TriggerDAGForm";
 
-const dagParams = vi.hoisted(() => ({
+const dagParams = vi.hoisted<{ paramsDict: ParamsSpec }>(() => ({
   paramsDict: {
     message: {
       description: "Message",
       schema: {
+        const: undefined,
+        description_md: undefined,
+        enum: undefined,
+        examples: undefined,
+        format: undefined,
+        items: undefined,
+        maximum: undefined,
+        maxLength: undefined,
+        minimum: undefined,
+        minLength: undefined,
+        section: undefined,
         title: "Message",
         type: "string",
+        values_display: undefined,
       },
       value: "Hello",
     },
   },
 }));
+
+const defaultDagParams = structuredClone(dagParams.paramsDict);
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -83,6 +98,10 @@ vi.mock("../JsonEditor", () => ({
 }));
 
 describe("TriggerDAGForm", () => {
+  beforeEach(() => {
+    dagParams.paramsDict = structuredClone(defaultDagParams);
+  });
+
   it("syncs Advanced Options JSON after Run Parameters edits in prefilled re-trigger mode", async () => {
     const { container } = render(
       <TriggerDAGForm
@@ -127,5 +146,52 @@ describe("TriggerDAGForm", () => {
 
       expect(configJson.value).toContain('"Updated message"');
     });
+  });
+
+  it("wraps long Run Parameters labels within the form column", async () => {
+    const longParamName =
+      "lorem_ipsum_dolor_sit_amet_consectetur_adipiscing_elit_sed_do_eiusmod_tempor_incididunt";
+
+    dagParams.paramsDict = {
+      [longParamName]: {
+        description: null,
+        schema: {
+          const: undefined,
+          description_md: undefined,
+          enum: undefined,
+          examples: undefined,
+          format: undefined,
+          items: undefined,
+          maximum: undefined,
+          maxLength: undefined,
+          minimum: undefined,
+          minLength: undefined,
+          section: undefined,
+          title: longParamName,
+          type: "boolean",
+          values_display: undefined,
+        },
+        value: false,
+      },
+    };
+
+    render(
+      <TriggerDAGForm
+        dagDisplayName="Params Trigger UI"
+        dagId="example_params_trigger_ui"
+        error={undefined}
+        hasSchedule={false}
+        isPartitioned={false}
+        isPaused={false}
+        isPending={false}
+        onSubmitTrigger={vi.fn()}
+        open
+      />,
+      { wrapper: Wrapper },
+    );
+
+    const label = await screen.findByText(longParamName);
+
+    expect(label).toHaveStyle({ overflowWrap: "anywhere" });
   });
 });
