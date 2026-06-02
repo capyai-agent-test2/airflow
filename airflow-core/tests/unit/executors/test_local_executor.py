@@ -352,6 +352,41 @@ class TestLocalExecutor:
         assert worker.terminated
         assert worker.closed
 
+    def test_end_uses_team_scoped_shutdown_timeout(self):
+        class Worker:
+            pid = 123
+
+            def __init__(self):
+                self.terminated = False
+                self.closed = False
+
+            def is_alive(self):
+                return not self.terminated
+
+            def join(self, timeout=None):
+                pass
+
+            def close(self):
+                self.closed = True
+
+            def terminate(self):
+                self.terminated = True
+
+            def kill(self):
+                raise AssertionError("worker should not be killed after terminate succeeds")
+
+        executor = LocalExecutor(parallelism=1, team_name="ml_team")
+        worker = Worker()
+        executor.workers = {worker.pid: worker}
+        executor.activity_queue = EmptyQueue()
+        executor.result_queue = EmptyQueue()
+
+        with mock.patch.dict(os.environ, {"AIRFLOW__ML_TEAM___CORE__KILLED_TASK_CLEANUP_TIME": "0"}):
+            executor.end()
+
+        assert worker.terminated
+        assert worker.closed
+
     def test_read_results_handles_broken_queue(self):
         class BrokenQueue:
             def empty(self):

@@ -36,7 +36,6 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from airflow.configuration import conf
 from airflow.executors.base_executor import BaseExecutor, get_execution_api_server_url
 
 _WORKER_JOIN_POLL_INTERVAL = 0.1
@@ -264,7 +263,7 @@ class LocalExecutor(BaseExecutor):
         return not self.workers
 
     def _join_workers(self) -> None:
-        wait_time = conf.getint("core", "killed_task_cleanup_time")
+        wait_time = self.conf.getint("core", "killed_task_cleanup_time")
         end_time = time.monotonic() + wait_time
 
         while not self._close_finished_workers():
