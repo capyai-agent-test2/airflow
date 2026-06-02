@@ -357,12 +357,11 @@ class MetricsMap:
         Return the counter; creates a new one if it did not exist.
 
         :param name: The name of the counter to fetch or create.
-        :param attributes:  Counter attributes, used to generate a unique key to store the counter.
+        :param attributes:  Counter attributes, accepted for API compatibility.
         """
-        key = _generate_key_name(name, attributes)
-        if key not in self.map:
-            self.map[key] = self._create_counter(name)
-        return self.map[key]
+        if name not in self.map:
+            self.map[name] = self._create_counter(name)
+        return self.map[name]
 
     def del_counter(self, name: str, attributes: Attributes = None) -> None:
         """
