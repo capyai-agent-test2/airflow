@@ -1277,6 +1277,18 @@ class ServerResponseError(httpx.HTTPStatusError):
     def from_response(cls, response: httpx.Response) -> ServerResponseError | None:
         if response.is_success:
             return None
+        if 300 <= response.status_code < 400:
+            try:
+                request = response.request
+            except RuntimeError:
+                return None
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as err:
+                self = cls(str(err), request=request, response=response)
+                self.detail = None
+                return self
+
         # 4xx or 5xx error?
         if not (400 <= response.status_code < 600):
             return None
