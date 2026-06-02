@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import func, select, tuple_, union_all
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, undefer
 from sqlalchemy.orm.interfaces import LoaderOption
 
 from airflow.models.dag import DagModel
@@ -61,6 +61,7 @@ def eager_load_dag_run_for_list() -> tuple[LoaderOption, ...]:
     :func:`attach_dag_versions_to_runs` using a single DISTINCT query.
     """
     return (
+        undefer(DagRun.conf),
         joinedload(DagRun.dag_model),
         joinedload(DagRun.dag_run_note),
         joinedload(DagRun.created_dag_version).joinedload(DagVersion.bundle),

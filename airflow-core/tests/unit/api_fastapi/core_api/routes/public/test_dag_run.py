@@ -25,10 +25,11 @@ from unittest import mock
 import pytest
 import time_machine
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import func, inspect as sa_inspect, select, update
 
 from airflow._shared.timezones import timezone
 from airflow.api_fastapi.auth.managers.simple.user import SimpleAuthManagerUser
+from airflow.api_fastapi.common.db.dag_runs import eager_load_dag_run_for_list
 from airflow.api_fastapi.core_api.datamodels.dag_versions import DagVersionResponse
 from airflow.api_fastapi.core_api.services.public.common import resolve_run_on_latest_version
 from airflow.models import DagModel, DagRun, Log
@@ -379,6 +380,15 @@ class TestGetDagRuns:
                 select(DagRun).where(DagRun.dag_id == each["dag_id"], DagRun.run_id == each["dag_run_id"])
             ).one()
             assert each == get_dag_run_dict(run)
+
+    def test_eager_load_dag_run_for_list_loads_conf(self, session):
+        dag_run = session.scalars(
+            select(DagRun)
+            .where(DagRun.dag_id == DAG1_ID, DagRun.run_id == DAG1_RUN1_ID)
+            .options(*eager_load_dag_run_for_list())
+        ).one()
+
+        assert "conf" not in sa_inspect(dag_run).unloaded
 
     @pytest.mark.usefixtures("configure_git_connection_for_dag_bundle")
     def test_get_dag_runs_not_found(self, test_client):
