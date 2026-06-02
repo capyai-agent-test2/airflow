@@ -99,7 +99,7 @@ class MappedArgument(ResolveMixin):
                     raise ValueError("Nested Mapped TaskGroups are not yet supported")
 
     def iter_references(self) -> Iterable[tuple[Operator, str]]:
-        yield from self._input.iter_references()
+        return iter(())
 
     def resolve(self, context: Mapping[str, Any]) -> Any:
         data, _ = self._input.resolve(context)

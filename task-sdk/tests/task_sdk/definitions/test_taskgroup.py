@@ -158,6 +158,40 @@ def test_task_group_dependencies_between_tasks_if_task_group_is_empty_3():
     assert task2.downstream_task_ids == {"group5.task3"}
 
 
+def test_mapped_task_group_argument_only_depends_on_roots():
+    with DAG(
+        dag_id="test_mapped_task_group_dependencies", schedule=None, start_date=pendulum.parse("20200101")
+    ):
+
+        @task_decorator
+        def get_config_data():
+            return [19, 23, 42]
+
+        @task_group_decorator(group_id="mapped_group")
+        def mapped_group(value):
+            @task_decorator
+            def fetch_data(num):
+                return num
+
+            @task_decorator
+            def process_data(num):
+                return num
+
+            @task_decorator
+            def copy_data(num):
+                return num
+
+            fetch_data(value) >> process_data(value) >> copy_data(value)
+
+        config_data = get_config_data()
+        expanded_group = mapped_group.expand(value=config_data)
+
+    assert config_data.operator.downstream_task_ids == {"mapped_group.fetch_data"}
+    assert expanded_group.upstream_task_ids == {"get_config_data"}
+    assert expanded_group["process_data"].upstream_task_ids == {"mapped_group.fetch_data"}
+    assert expanded_group["copy_data"].upstream_task_ids == {"mapped_group.process_data"}
+
+
 def test_build_task_group_context_manager():
     """Test basic TaskGroup functionality using context manager."""
     logical_date = pendulum.parse("20200101")
