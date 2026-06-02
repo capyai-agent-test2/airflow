@@ -35,7 +35,8 @@ from airflow_shared.observability.traces import (
 
 
 @pytest.fixture
-def traces_conf():
+def traces_conf(monkeypatch):
+    monkeypatch.delenv("OTEL_SERVICE_NAME", raising=False)
     conf = ConfigParser()
     conf.add_section("traces")
     conf.set("traces", "otel_service", "Airflow")
