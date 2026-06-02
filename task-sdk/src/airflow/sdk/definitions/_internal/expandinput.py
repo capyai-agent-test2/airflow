@@ -105,6 +105,12 @@ class MappedArgument(ResolveMixin):
         data, _ = self._input.resolve(context)
         return data[self._key]
 
+    def __str__(self) -> str:
+        return (
+            "{{ task.get_closest_mapped_task_group()._expand_input"
+            f".resolve(ti.get_template_context())[0][{self._key!r}] }}}}"
+        )
+
 
 @attrs.define()
 class DictOfListsExpandInput(ResolveMixin):
