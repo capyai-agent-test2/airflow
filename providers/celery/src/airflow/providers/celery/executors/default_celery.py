@@ -124,6 +124,12 @@ def get_default_celery_config(team_conf) -> dict[str, Any]:
         "worker_enable_remote_control": team_conf.getboolean(
             "celery", "worker_enable_remote_control", fallback=True
         ),
+        "worker_soft_shutdown_timeout": team_conf.getfloat(
+            "celery", "worker_soft_shutdown_timeout", fallback=0.0
+        ),
+        "worker_enable_soft_shutdown_on_idle": team_conf.getboolean(
+            "celery", "worker_enable_soft_shutdown_on_idle", fallback=False
+        ),
         **(extra_celery_config if isinstance(extra_celery_config, dict) else {}),
     }
 

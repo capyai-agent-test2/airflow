@@ -587,6 +587,21 @@ def test_celery_task_acks_late_loaded_from_string():
     assert default_celery.DEFAULT_CELERY_CONFIG["task_acks_late"] is False
 
 
+@conf_vars(
+    {
+        ("celery", "worker_soft_shutdown_timeout"): "30.5",
+        ("celery", "worker_enable_soft_shutdown_on_idle"): "True",
+    }
+)
+def test_celery_soft_shutdown_loaded_from_string():
+    import importlib
+
+    # Reload celery conf to apply the new config.
+    importlib.reload(default_celery)
+    assert default_celery.DEFAULT_CELERY_CONFIG["worker_soft_shutdown_timeout"] == 30.5
+    assert default_celery.DEFAULT_CELERY_CONFIG["worker_enable_soft_shutdown_on_idle"] is True
+
+
 @conf_vars({("celery", "BROKER_URL"): "redis://localhost:6379/0"})
 def test_visibility_timeout_default_warns_when_not_configured(caplog):
     """Test that a warning is logged when visibility_timeout defaults to 86400 (24h)."""
