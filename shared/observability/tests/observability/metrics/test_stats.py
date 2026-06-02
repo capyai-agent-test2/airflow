@@ -704,7 +704,7 @@ class TestLegacyExport:
                 tags={"dag_id": "test_dag", "task_id": "test_task"},
             )
 
-        statsd_client.assert_not_called()
+        statsd_client.timing.assert_not_called()
 
     def test_timer_times_both_when_legacy_name_exists(self, mock_backend):
         with airflow_shared.observability.metrics.stats.timer(
