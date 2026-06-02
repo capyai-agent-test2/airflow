@@ -50,6 +50,7 @@ TIMESTAMP3 = datetime(2024, 6, 15, 3, 0, tzinfo=timezone.utc)
 IMPORT_ERROR_NON_EXISTED_ID = 9999
 IMPORT_ERROR_NON_EXISTED_KEY = "non_existed_key"
 BUNDLE_NAME = "testing"
+OTHER_BUNDLE_NAME = "other_testing"
 
 
 @pytest.fixture
@@ -526,6 +527,81 @@ class TestGetImportErrors:
             FILENAME2: STACKTRACE2,
             FILENAME3: STACKTRACE3,
         }
+
+    @mock.patch("airflow.api_fastapi.core_api.routes.public.import_error.get_auth_manager")
+    def test_get_import_errors_deduplicates_same_file_and_stacktrace(
+        self, mock_get_auth_manager, test_client, import_errors, session
+    ):
+        session.add(
+            ParseImportError(
+                bundle_name=OTHER_BUNDLE_NAME,
+                filename=FILENAME1,
+                stacktrace=STACKTRACE1,
+                timestamp=TIMESTAMP1,
+            )
+        )
+        session.commit()
+        set_mock_auth_manager__get_authorized_dag_ids(mock_get_auth_manager, set())
+
+        response = test_client.get("/importErrors")
+
+        assert response.status_code == 200
+        response_json = response.json()
+        assert response_json["total_entries"] == 3
+        assert [error["filename"] for error in response_json["import_errors"]].count(FILENAME1) == 1
+
+    @mock.patch("airflow.api_fastapi.core_api.routes.public.import_error.get_auth_manager")
+    def test_get_import_errors_with_zero_limit(
+        self, mock_get_auth_manager, test_client, permitted_dag_model_all
+    ):
+        set_mock_auth_manager__get_authorized_dag_ids(mock_get_auth_manager, permitted_dag_model_all)
+        set_mock_auth_manager__batch_is_authorized_dag(mock_get_auth_manager, True)
+
+        response = test_client.get("/importErrors", params={"limit": 0})
+
+        assert response.status_code == 200
+        response_json = response.json()
+        assert response_json["total_entries"] == 3
+        assert response_json["import_errors"] == []
+
+    @mock.patch("airflow.api_fastapi.core_api.routes.public.import_error.get_auth_manager")
+    def test_get_import_errors_deduplicate_redaction_does_not_update_stored_stacktrace(
+        self, mock_get_auth_manager, test_client, permitted_dag_model_all, import_errors, session
+    ):
+        other_dag = DagModel(
+            fileloc=FILENAME1,
+            relative_fileloc=FILENAME1,
+            dag_id="other_dag",
+            is_paused=False,
+            bundle_name=OTHER_BUNDLE_NAME,
+        )
+        duplicate_error = ParseImportError(
+            bundle_name=OTHER_BUNDLE_NAME,
+            filename=FILENAME1,
+            stacktrace=STACKTRACE1,
+            timestamp=TIMESTAMP1,
+        )
+        session.add(DagBundleModel(name=OTHER_BUNDLE_NAME))
+        session.flush()
+        session.add_all([other_dag, duplicate_error])
+        session.commit()
+        set_mock_auth_manager__get_authorized_dag_ids(
+            mock_get_auth_manager, {*permitted_dag_model_all, other_dag.dag_id}
+        )
+        set_mock_auth_manager__batch_is_authorized_dag(mock_get_auth_manager, False)
+
+        response = test_client.get("/importErrors")
+
+        assert response.status_code == 200
+        response_json = response.json()
+        matching_errors = [
+            error for error in response_json["import_errors"] if error["filename"] == FILENAME1
+        ]
+        assert len(matching_errors) == 1
+        assert matching_errors[0]["stack_trace"] == REDACTED_STACKTRACE
+        session.expire_all()
+        assert session.get(ParseImportError, import_errors[0].id).stacktrace == STACKTRACE1
+        assert session.get(ParseImportError, duplicate_error.id).stacktrace == STACKTRACE1
 
 
 class TestImportErrorFileAuthorization:

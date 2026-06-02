@@ -31,7 +31,7 @@ from airflow.api_fastapi.auth.managers.models.resource_details import (
 )
 from airflow.api_fastapi.common.db.common import (
     SessionDep,
-    paginated_select,
+    apply_filters_to_select,
 )
 from airflow.api_fastapi.common.parameters import (
     QueryLimit,
@@ -208,21 +208,19 @@ def get_import_errors(
         .order_by(ParseImportError.id)
     )
 
-    # Paginate the import errors query
-    import_errors_select, total_entries = paginated_select(
+    import_errors_select = apply_filters_to_select(
         statement=import_errors_stmt,
         filters=[filename_pattern, filename_prefix_pattern],
-        order_by=order_by,
-        offset=offset,
-        limit=limit,
-        session=session,
     )
+    import_errors_select = apply_filters_to_select(statement=import_errors_select, filters=[order_by])
     import_errors_result: Iterable[tuple[ParseImportError, Iterable]] = groupby(
         session.execute(import_errors_select), itemgetter(0)
     )
 
     import_errors = []
+    import_error_by_fingerprint: dict[tuple[str | None, str | None], ParseImportError] = {}
     for import_error, file_dag_ids_iter in import_errors_result:
+        import_error_fingerprint = (import_error.filename, import_error.stacktrace)
         dag_ids = [dag_id for _, dag_id in file_dag_ids_iter if dag_id is not None]
 
         # No Dags matched for this file -- either the file genuinely has
@@ -232,7 +230,10 @@ def get_import_errors(
         # a follow-up issue
         # (see https://github.com/apache/airflow/issues/67461).
         if not dag_ids:
-            import_errors.append(import_error)
+            if import_error_fingerprint not in import_error_by_fingerprint:
+                session.expunge(import_error)
+                import_error_by_fingerprint[import_error_fingerprint] = import_error
+                import_errors.append(import_error)
             continue
 
         dag_id_to_team = DagModel.get_dag_id_to_team_name_mapping(dag_ids, session=session)
@@ -244,10 +245,24 @@ def get_import_errors(
             }
             for dag_id in dag_ids
         ]
+        is_detached = False
         if not auth_manager.batch_is_authorized_dag(requests, user=user):
             session.expunge(import_error)
+            is_detached = True
             import_error.stacktrace = REDACTED_STACKTRACE
-        import_errors.append(import_error)
+            if existing_import_error := import_error_by_fingerprint.get(import_error_fingerprint):
+                existing_import_error.stacktrace = REDACTED_STACKTRACE
+                continue
+        if import_error_fingerprint not in import_error_by_fingerprint:
+            if not is_detached:
+                session.expunge(import_error)
+            import_error_by_fingerprint[import_error_fingerprint] = import_error
+            import_errors.append(import_error)
+
+    offset_value = offset.value if offset.value is not None else 0
+    limit_value = limit.value if limit.value is not None else len(import_errors)
+    total_entries = len(import_errors)
+    import_errors = import_errors[offset_value : offset_value + limit_value]
 
     return ImportErrorCollectionResponse(
         import_errors=import_errors,
