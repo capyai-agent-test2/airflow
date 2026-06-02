@@ -253,6 +253,7 @@ class TestWorker:
     def test_logs_mount_on_wait_for_migrations_initcontainer(self, logs_values, expect_sub_path):
         docs = render_chart(
             values={
+                "airflowHome": "/usr/local/airflow",
                 "executor": "CeleryExecutor",
                 "logs": logs_values,
             },
@@ -266,11 +267,13 @@ class TestWorker:
         assert mounts is not None, (
             "wait-for-airflow-migrations initContainer not found or has no volumeMounts"
         )
-        assert any(m.get("name") == "logs" and m.get("mountPath") == "/opt/airflow/logs" for m in mounts)
+        assert any(
+            m.get("name") == "logs" and m.get("mountPath") == "/usr/local/airflow/logs" for m in mounts
+        )
         if expect_sub_path is not None:
             assert any(
                 m.get("name") == "logs"
-                and m.get("mountPath") == "/opt/airflow/logs"
+                and m.get("mountPath") == "/usr/local/airflow/logs"
                 and m.get("subPath") == expect_sub_path
                 for m in mounts
             )
