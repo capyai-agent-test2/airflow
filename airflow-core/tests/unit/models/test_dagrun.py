@@ -903,6 +903,39 @@ class TestDagRun:
             f"task_instance_mutation_hook was called with run_id=None. Observed run_ids: {observed_run_ids}"
         )
 
+    def test_schedulable_retry_refreshes_task_policy_queue(self, dag_maker, session):
+        with dag_maker(
+            dag_id="test_schedulable_retry_refreshes_task_policy_queue",
+            schedule=None,
+            session=session,
+        ):
+            BashOperator(
+                task_id="task_to_retry",
+                bash_command="echo hi",
+                owner="test",
+                queue="kubernetes",
+                retries=1,
+                retry_delay=datetime.timedelta(seconds=0),
+            )
+
+        dagrun = dag_maker.create_dagrun(run_type=DagRunType.MANUAL, state=DagRunState.RUNNING)
+        task = dagrun.get_task_instance("task_to_retry", session=session)
+        task.queue = "default"
+        task.try_number = 1
+        task.state = TaskInstanceState.UP_FOR_RETRY
+        task.end_date = timezone.utcnow() - datetime.timedelta(minutes=1)
+        session.merge(task)
+        session.flush()
+
+        schedulable_tis, _ = dagrun.update_state(session=session)
+        dagrun.schedule_tis(schedulable_tis, session=session)
+        session.flush()
+        task.refresh_from_db(session=session)
+
+        assert schedulable_tis == [task]
+        assert task.queue == "kubernetes"
+        assert task.state == TaskInstanceState.SCHEDULED
+
     @pytest.mark.parametrize(
         ("prev_ti_state", "is_ti_schedulable"),
         [

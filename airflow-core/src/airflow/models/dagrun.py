@@ -1540,6 +1540,7 @@ class DagRun(Base, LoggingMixin):
                 # after calculating mapped task length, so we need to re-check
                 # the task state to ensure it's still schedulable
                 if schedulable.state in SCHEDULEABLE_STATES:
+                    schedulable.refresh_from_task(schedulable.task)
                     ready_tis.append(schedulable)
 
         # Check if any ti changed state
