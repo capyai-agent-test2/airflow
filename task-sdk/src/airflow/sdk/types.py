@@ -146,6 +146,9 @@ class RuntimeTaskInstanceProtocol(Protocol):
     rendered_map_index: str | None = None
 
     @property
+    def queue(self) -> str: ...
+
+    @property
     def log_url(self) -> str: ...
 
     @property

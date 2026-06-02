@@ -766,6 +766,10 @@ class RuntimeTaskInstance(TaskInstance):
         return _log_uri
 
     @property
+    def queue(self) -> str:
+        return self.task.queue
+
+    @property
     def mark_success_url(self) -> str:
         """URL to mark TI success."""
         return self.log_url
