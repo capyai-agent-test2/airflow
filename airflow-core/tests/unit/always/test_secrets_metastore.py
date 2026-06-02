@@ -69,6 +69,28 @@ class TestMetastoreBackendSessionSafety:
             # detach the queried Connection, not wipe unrelated pending objects.
             assert pending in session.new
 
+    @pytest.mark.parametrize("conn_exists", [True, False], ids=["found", "not_found"])
+    def test_get_connection_without_session_preserves_active_scoped_session(self, conn_exists):
+        """get_connection must not close an active scoped session when it creates its own session."""
+        if conn_exists:
+            with create_session() as session:
+                session.add(Connection(conn_id="target_conn", conn_type="mysql"))
+                session.commit()
+
+        with create_session() as session:
+            pending = Connection(conn_id="pending_conn", conn_type="http")
+            session.add(pending)
+
+            backend = MetastoreBackend()
+            result = backend.get_connection("target_conn")
+
+            if conn_exists:
+                assert result is not None
+                assert result.conn_id == "target_conn"
+            else:
+                assert result is None
+            assert pending in session.new
+
     @pytest.mark.parametrize("var_exists", [True, False], ids=["found", "not_found"])
     def test_get_variable_preserves_pending_session_objects(self, var_exists):
         """get_variable must not remove unrelated pending objects from session.new."""
@@ -89,6 +111,36 @@ class TestMetastoreBackendSessionSafety:
                 assert result is None
             # The pending object must still be in session.new — expunge(var_value) should only
             # detach the queried Variable, not wipe unrelated pending objects.
+            assert pending in session.new
+
+    @pytest.mark.parametrize("var_exists", [True, False], ids=["found", "not_found"])
+    def test_get_variable_without_session_preserves_active_scoped_session(self, var_exists):
+        """get_variable must not close an active scoped session when it creates its own session."""
+        if var_exists:
+            Variable.set(key="test_key", value="test_value")
+
+        with create_session() as session:
+            pending = Connection(conn_id="pending_conn", conn_type="http")
+            session.add(pending)
+
+            backend = MetastoreBackend()
+            result = backend.get_variable("test_key")
+
+            if var_exists:
+                assert result == "test_value"
+            else:
+                assert result is None
+            assert pending in session.new
+
+    def test_variable_get_preserves_active_scoped_session(self):
+        """Variable.get must not close an active scoped session while reading from the metastore."""
+        Variable.set(key="test_key", value="test_value")
+
+        with create_session() as session:
+            pending = Connection(conn_id="pending_conn", conn_type="http")
+            session.add(pending)
+
+            assert Variable.get("test_key") == "test_value"
             assert pending in session.new
 
     def test_get_connection_returns_detached_object(self):
