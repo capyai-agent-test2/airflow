@@ -804,7 +804,20 @@ class TestKubernetesExecutor:
 
     @mock.patch("airflow.providers.cncf.kubernetes.executors.kubernetes_executor_utils.KubernetesJobWatcher")
     @mock.patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
-    def test_invalid_executor_config(self, mock_get_kube_client, mock_kubernetes_job_watcher):
+    @pytest.mark.parametrize(
+        "executor_config",
+        [
+            {"key": "value"},
+            k8s.V1Pod(
+                spec=k8s.V1PodSpec(
+                    containers=[k8s.V1Container(name="base", image="myimage", image_pull_policy="Always")]
+                )
+            ),
+        ],
+    )
+    def test_invalid_executor_config(
+        self, mock_get_kube_client, mock_kubernetes_job_watcher, executor_config
+    ):
         executor = self.kubernetes_executor
         executor.start()
         try:
@@ -813,11 +826,7 @@ class TestKubernetesExecutor:
                 key=TaskInstanceKey("dag", "task", "run_id", 1, -1),
                 queue=None,
                 command=["airflow", "tasks", "run", "true", "some_parameter"],
-                executor_config=k8s.V1Pod(
-                    spec=k8s.V1PodSpec(
-                        containers=[k8s.V1Container(name="base", image="myimage", image_pull_policy="Always")]
-                    )
-                ),
+                executor_config=executor_config,
             )
 
             assert next(iter(executor.event_buffer.values()))[1] == "Invalid executor_config passed"

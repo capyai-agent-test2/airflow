@@ -281,6 +281,13 @@ class TestPodGenerator:
         with pytest.raises(AirflowConfigException, match="Can not have both a legacy and new"):
             PodGenerator.from_obj(obj)
 
+    def test_from_obj_invalid_key(self):
+        with pytest.raises(
+            AirflowConfigException,
+            match="Invalid executor_config keys for KubernetesExecutor: key",
+        ):
+            PodGenerator.from_obj({"key": "value"})
+
     def test_reconcile_pods_empty_mutator_pod(self, data_file):
         template_file = data_file("pods/generator_base_with_secrets.yaml").as_posix()
         pod_generator = PodGenerator(pod_template_file=template_file, extract_xcom=True)
