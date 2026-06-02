@@ -113,6 +113,22 @@ def test_convert_volume_normal_value(mock_convert_kube_model_object):
     assert result.name == "test_convert_volume"
 
 
+def test_convert_volume_from_dict_normalizes_nested_list_values():
+    volume = {
+        "name": "config-volume",
+        "config_map": {
+            "name": "config-name",
+            "items": [{"key": "config-key", "path": "config-path"}],
+        },
+    }
+
+    result = convert_volume(volume)
+
+    assert result.config_map.name == "config-name"
+    assert result.config_map.items[0].key == "config-key"
+    assert result.config_map.items[0].path == "config-path"
+
+
 # testcase of convert_volume_mount() function
 @patch("airflow.providers.cncf.kubernetes.backcompat.backwards_compat_converters._convert_kube_model_object")
 def test_convert_volume_mount_normal_value(mock_convert_kube_model_object):
