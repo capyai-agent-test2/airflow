@@ -5099,6 +5099,10 @@ class TestTaskInstanceMetrics:
                 "ti.start",
                 tags={"dag_id": ti.dag_id, "task_id": ti.task_id},
             )
+            backend.incr.assert_any_call(
+                "task_instance.started",
+                tags={"dag_id": ti.dag_id, "task_id": ti.task_id},
+            )
 
     @pytest.mark.parametrize(
         ("task_callable", "expected_state"),
@@ -5126,6 +5130,10 @@ class TestTaskInstanceMetrics:
             # verify ti.finish was called in tagged format
             backend.incr.assert_any_call(
                 "ti.finish",
+                tags={"dag_id": ti.dag_id, "task_id": ti.task_id, "state": expected_state},
+            )
+            backend.incr.assert_any_call(
+                "task_instance.finished",
                 tags={"dag_id": ti.dag_id, "task_id": ti.task_id, "state": expected_state},
             )
 
