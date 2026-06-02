@@ -600,9 +600,8 @@ def get_task_map_length(
 def _(xcom_arg: PlainXComArg, resolved_val: Sized, upstream_map_indexes: dict[str, int]):
     task_id = xcom_arg.operator.task_id
 
-    if xcom_arg.operator.is_mapped:
-        # TODO: How to tell if all the upstream TIs finished?
-        pass
+    if xcom_arg.operator.is_mapped and hasattr(resolved_val, "get_task_map_length"):
+        return resolved_val.get_task_map_length()
     return (upstream_map_indexes.get(task_id) or 1) * len(resolved_val)
 
 

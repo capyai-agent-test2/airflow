@@ -109,6 +109,25 @@ class LazyXComSequence(Sequence[T]):
             self._len = msg.len
         return self._len
 
+    def get_task_map_length(self) -> int:
+        from airflow.sdk.execution_time.task_mapping import get_ti_count_for_task
+
+        task = self._xcom_arg.operator
+        return get_ti_count_for_task(
+            task.task_id,
+            task.dag_id,
+            self._ti.run_id,
+            states=["success", "failed", "skipped", "upstream_failed"],
+        )
+
+    def get_value_at_map_index(self, map_index: int) -> T | None:
+        task = self._xcom_arg.operator
+        return self._ti.xcom_pull(
+            task_ids=task.task_id,
+            key=self._xcom_arg.key,
+            map_indexes=map_index,
+        )
+
     @overload
     def __getitem__(self, key: int) -> T: ...
 

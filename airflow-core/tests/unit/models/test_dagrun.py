@@ -3134,6 +3134,8 @@ def test_xcom_map_skip_raised(dag_maker, session):
 def test_mapped_task_all_done_after_mixed_mapped_upstream_states(dag_maker, session):
     from airflow.models.xcom import XCOM_RETURN_KEY, XComModel
 
+    results = set()
+
     with dag_maker(session=session) as dag:
 
         @dag.task
@@ -3146,6 +3148,7 @@ def test_mapped_task_all_done_after_mixed_mapped_upstream_states(dag_maker, sess
 
         @dag.task(trigger_rule=TriggerRule.ALL_DONE)
         def add_one(value):
+            results.add((get_current_context()["ti"].map_index, value))
             return value
 
         add_one.expand(value=double.expand(value=make_list()))
@@ -3182,6 +3185,10 @@ def test_mapped_task_all_done_after_mixed_mapped_upstream_states(dag_maker, sess
 
     decision = dr.task_instance_scheduling_decisions(session=session)
     assert _task_ids(decision.schedulable_tis) == [("add_one", 0), ("add_one", 1), ("add_one", 2)]
+    for ti in decision.schedulable_tis:
+        dag_maker.run_ti(task_id=ti.task_id, map_index=ti.map_index, dag_run=dr, session=session)
+
+    assert results == {(0, "2"), (1, None), (2, None)}
 
 
 def test_clearing_task_and_moving_from_non_mapped_to_mapped(dag_maker, session):

@@ -168,6 +168,8 @@ class DictOfListsExpandInput(ResolveMixin):
         found_index = _find_index_for_this_field(map_index)
         if found_index < 0:
             return value
+        if get_value_at_map_index := getattr(value, "get_value_at_map_index", None):
+            return get_value_at_map_index(found_index)
         if isinstance(value, Sequence):
             return value[found_index]
         if not isinstance(value, dict):
