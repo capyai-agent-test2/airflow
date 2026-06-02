@@ -154,7 +154,7 @@ class TestOtelMetrics:
         self.stats.metrics_map.get_counter(full_name(name), tags)
         self.stats.metrics_map.del_counter(full_name(name), tags)
 
-        assert full_name(name) not in self.map
+        assert not self.map
 
     def test_incr_existing_metric(self, name):
         # Create the metric and set value to 1
