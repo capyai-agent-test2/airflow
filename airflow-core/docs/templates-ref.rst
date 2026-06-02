@@ -90,10 +90,12 @@ Variable                                    Type                  Description
 ``{{ var.value }}``                                               Airflow variables. See `Airflow Variables in Templates`_ below.
 ``{{ var.json }}``                                                Airflow variables. See `Airflow Variables in Templates`_ below.
 ``{{ conn }}``                                                    Airflow connections. See `Airflow Connections in Templates`_ below.
-``{{ task_instance_key_str }}``             str                   | A human-readable key to the task instance.
+``{{ task_instance_key_str }}``             str                   | A human-readable task instance identifier that is not guaranteed to be unique.
+                                                                  | For uniqueness, use ``run_id`` or ``task_instance`` properties instead.
                                                                   |
                                                                   | For time-based DAGs, the format is
-                                                                  | ``{dag_id}__{task_id}__{ds_nodash}``.
+                                                                  | ``{dag_id}__{task_id}__{ds_nodash}``, which means different runs on the same date
+                                                                  | have the same value.
                                                                   |
                                                                   | For asset-triggered DAGs, the format uses the DAG run identifier instead:
                                                                   | ``{dag_id}__{task_id}__{dag_run.run_id}``.
