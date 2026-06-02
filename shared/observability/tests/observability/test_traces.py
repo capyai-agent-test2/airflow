@@ -17,16 +17,59 @@
 # under the License.
 from __future__ import annotations
 
+from configparser import ConfigParser
+
+import pytest
+from opentelemetry.sdk.resources import SERVICE_NAME
 from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags, TraceState
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from airflow_shared.observability.traces import (
     DEFAULT_TASK_SPAN_DETAIL_LEVEL,
     TASK_SPAN_DETAIL_LEVEL_KEY,
+    _get_backcompat_config,
     build_trace_state_entries,
     get_task_span_detail_level,
     new_dagrun_trace_carrier,
 )
+
+
+@pytest.fixture
+def traces_conf(monkeypatch):
+    monkeypatch.delenv("OTEL_SERVICE_NAME", raising=False)
+    conf = ConfigParser()
+    conf.add_section("traces")
+    conf.set("traces", "otel_service", "Airflow")
+    return conf
+
+
+class TestGetBackcompatConfig:
+    def test_merges_deprecated_service_with_resource_attributes(self, monkeypatch, traces_conf):
+        monkeypatch.setenv(
+            "OTEL_RESOURCE_ATTRIBUTES", "deployment.environment.name=prd,service.version=v0.0.7"
+        )
+
+        _, resource = _get_backcompat_config(traces_conf)
+
+        assert resource is not None
+        assert resource.attributes[SERVICE_NAME] == "Airflow"
+        assert resource.attributes["deployment.environment.name"] == "prd"
+        assert resource.attributes["service.version"] == "v0.0.7"
+
+    def test_resource_attribute_service_name_takes_precedence(self, monkeypatch, traces_conf):
+        monkeypatch.setenv("OTEL_RESOURCE_ATTRIBUTES", "service.name=CustomService")
+
+        _, resource = _get_backcompat_config(traces_conf)
+
+        assert resource is not None
+        assert resource.attributes[SERVICE_NAME] == "CustomService"
+
+    def test_otel_service_name_env_takes_precedence(self, monkeypatch, traces_conf):
+        monkeypatch.setenv("OTEL_SERVICE_NAME", "CustomService")
+
+        _, resource = _get_backcompat_config(traces_conf)
+
+        assert resource is None
 
 
 class TestBuildTraceStateEntries:

@@ -24,12 +24,14 @@ from importlib.metadata import entry_points
 from typing import TYPE_CHECKING
 
 from opentelemetry import context, trace
-from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.trace import NonRecordingSpan, Span, SpanContext, TraceFlags, TraceState
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+from airflow_shared.observability.otel_env_config import load_traces_env_config
 
 if TYPE_CHECKING:
     from configparser import ConfigParser
@@ -132,10 +134,13 @@ def _get_backcompat_config(conf: ConfigParser) -> tuple[str | None, Resource | N
     then we will use it.
     """
     resource = None
-    if not os.environ.get("OTEL_SERVICE_NAME") and not os.environ.get("OTEL_RESOURCE_ATTRIBUTES"):
+    traces_env_config = load_traces_env_config()
+    if not traces_env_config.service_name:
         service_name = conf.get("traces", "otel_service", fallback=None)
         if service_name:
-            resource = Resource({"service.name": service_name})
+            resource = Resource.create({})
+            if SERVICE_NAME not in traces_env_config.resource_attributes:
+                resource = resource.merge(Resource({SERVICE_NAME: service_name}))
 
     endpoint = None
     if not os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") and not os.environ.get(
