@@ -2065,6 +2065,7 @@ class TestDagFileProcessorProcess:
     def test_get_target_loggers_stdout_mode_binds_dag_file_context(self, proc):
         proc.subprocess_logs_to_stdout = True
         loggers = proc._get_target_loggers()
+        assert len(loggers) == 1
         with structlog.testing.capture_logs() as cap:
             for bound_logger in loggers:
                 bound_logger.info("test")
