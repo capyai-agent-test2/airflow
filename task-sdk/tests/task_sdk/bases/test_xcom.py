@@ -22,10 +22,22 @@ from unittest import mock
 import pytest
 
 from airflow.sdk.bases.xcom import BaseXCom
-from airflow.sdk.execution_time.comms import DeleteXCom, XComResult
+from airflow.sdk.execution_time.comms import DeleteXCom, XComResult, XComSequenceSliceResult
 
 
 class TestBaseXCom:
+    def test_get_all_returns_empty_list_for_empty_sequence(self, mock_supervisor_comms):
+        mock_supervisor_comms.send.return_value = XComSequenceSliceResult(root=[])
+
+        result = BaseXCom.get_all(
+            key="return_value",
+            dag_id="test_dag",
+            task_id="mapped_task",
+            run_id="test_run",
+        )
+
+        assert result == []
+
     @pytest.mark.parametrize(
         "map_index",
         [
