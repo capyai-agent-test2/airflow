@@ -61,6 +61,38 @@ log = logging.getLogger(__name__)
 RE_SANITIZE_CONN_ID = re.compile(r"^[\w#!()\-.:/\\]{1,}$")
 # the conn ID max len should be 250
 CONN_ID_MAX_LEN: int = 250
+_LEGACY_UNDERSCORED_CONN_TYPES = {
+    "adb_spark",
+    "alibaba_cloud",
+    "azure_batch",
+    "azure_compute",
+    "azure_container_instance",
+    "azure_container_registry",
+    "azure_container_volume",
+    "azure_cosmos",
+    "azure_data_explorer",
+    "azure_data_factory",
+    "azure_data_lake",
+    "azure_fileshare",
+    "azure_service_bus",
+    "azure_synapse",
+    "dbt_cloud",
+    "facebook_social",
+    "gcp_looker",
+    "google_ads",
+    "google_cloud_platform",
+    "hive_cli",
+    "hive_metastore",
+    "informatica_edc",
+    "jupyter_kernel",
+    "package_index",
+    "pagerduty_events",
+    "pig_cli",
+    "pinot_admin",
+    "spark_connect",
+    "spark_jdbc",
+    "spark_sql",
+}
 
 
 def sanitize_conn_id(conn_id: str | None, max_length=CONN_ID_MAX_LEN) -> str | None:
@@ -233,7 +265,16 @@ class Connection(Base, LoggingMixin):
         if conn_type == "postgresql":
             conn_type = "postgres"
         elif "-" in conn_type:
-            conn_type = conn_type.replace("-", "_")
+            normalized_conn_type = conn_type.replace("-", "_")
+            if normalized_conn_type in _LEGACY_UNDERSCORED_CONN_TYPES:
+                return normalized_conn_type
+            with suppress(Exception):
+                from airflow.providers_manager import ProvidersManager
+
+                providers_manager = ProvidersManager()
+                providers_manager.initialize_providers_hooks()
+                if normalized_conn_type in providers_manager._hooks_lazy_dict:
+                    return normalized_conn_type
         return conn_type
 
     def _parse_from_uri(self, uri: str):

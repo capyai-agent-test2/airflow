@@ -568,14 +568,19 @@ class TestConnection:
     @pytest.mark.parametrize(
         ("val", "expected"),
         [
-            ('{"conn_type": "abc-abc"}', "abc_abc"),
+            ('{"conn_type": "abc-abc"}', "abc-abc"),
             ('{"conn_type": "abc_abc"}', "abc_abc"),
             ('{"conn_type": "postgresql"}', "postgres"),
         ],
     )
     def test_from_json_conn_type(self, val, expected):
-        """Two conn_type normalizations are applied: replace - with _ and postgresql with postgres"""
+        """PostgreSQL is normalized, while custom hyphenated connection types are preserved."""
         assert Connection.from_json(val).conn_type == expected
+
+    def test_from_uri_preserves_unknown_hyphenated_conn_type(self):
+        connection = Connection(uri="datahub-rest://test:test@test")
+
+        assert connection.conn_type == "datahub-rest"
 
     @pytest.mark.parametrize(
         ("val", "expected"),
