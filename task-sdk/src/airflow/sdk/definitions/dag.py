@@ -406,7 +406,7 @@ class DAG:
     :param render_template_as_native_obj: If True, uses a Jinja ``NativeEnvironment``
         to render templates as native Python types. If False, a Jinja
         ``Environment`` is used to render templates as string values.
-    :param tags: List of tags to help filtering Dags in the UI.
+    :param tags: List of tags to help filtering Dags in the UI. Each tag may contain up to 100 characters.
     :param owner_links: Dict of owners and their links, that will be clickable on the Dags view UI.
         Can be used as an HTTP link (for example the link to your Slack channel), or a mailto link.
         e.g: ``{"dag_owner": "https://airflow.apache.org/"}``
@@ -616,8 +616,13 @@ class DAG:
 
     @tags.validator
     def _validate_tags(self, _, tags: Collection[str]):
-        if tags and any(len(tag) > TAG_MAX_LEN for tag in tags):
-            raise ValueError(f"tag cannot be longer than {TAG_MAX_LEN} characters")
+        if not tags:
+            return
+        if long_tag := next((tag for tag in tags if len(tag) > TAG_MAX_LEN), None):
+            raise ValueError(
+                f"Dag tag {long_tag!r} is {len(long_tag)} characters long; "
+                f"each tag must be at most {TAG_MAX_LEN} characters"
+            )
 
     @allowed_run_types.validator
     def _validate_allowed_run_types(self, _, allowed_run_types):

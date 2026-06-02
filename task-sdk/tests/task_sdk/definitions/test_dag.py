@@ -507,20 +507,25 @@ def test_invalid_type_for_args(attr: str, value: Any):
 
 
 @pytest.mark.parametrize(
-    ("tags", "should_pass"),
+    ("tags", "error_match"),
     [
-        pytest.param([], True, id="empty tags"),
-        pytest.param(["a normal tag"], True, id="one tag"),
-        pytest.param(["a normal tag", "another normal tag"], True, id="two tags"),
-        pytest.param(["a" * 100], True, id="a tag that's of just length 100"),
-        pytest.param(["a normal tag", "a" * 101], False, id="two tags and one of them is of length > 100"),
+        pytest.param([], None, id="empty tags"),
+        pytest.param(["a normal tag"], None, id="one tag"),
+        pytest.param(["a normal tag", "another normal tag"], None, id="two tags"),
+        pytest.param(["a" * 100], None, id="a tag that's of just length 100"),
+        pytest.param(["a" * 60, "b" * 60], None, id="combined tag length can be more than 100"),
+        pytest.param(
+            ["a normal tag", "b" * 101],
+            "Dag tag 'bbbb.*' is 101 characters long; each tag must be at most 100 characters",
+            id="two tags and one of them is of length > 100",
+        ),
     ],
 )
-def test__tags_length(tags: list[str], should_pass: bool):
-    if should_pass:
+def test__tags_length(tags: list[str], error_match: str | None):
+    if error_match is None:
         DAG("test-dag", schedule=None, tags=tags)
     else:
-        with pytest.raises(ValueError, match="tag cannot be longer than 100 characters"):
+        with pytest.raises(ValueError, match=error_match):
             DAG("test-dag", schedule=None, tags=tags)
 
 
