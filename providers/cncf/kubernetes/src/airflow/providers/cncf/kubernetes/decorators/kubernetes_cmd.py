@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 class _KubernetesCmdDecoratedOperator(DecoratedOperator, KubernetesPodOperator):
     custom_operator_name = "@task.kubernetes_cmd"
 
-    template_fields: Sequence[str] = tuple({"op_args", "op_kwargs", *KubernetesPodOperator.template_fields})
+    template_fields: Sequence[str] = ("op_args", "op_kwargs", *KubernetesPodOperator.template_fields)
 
     overwrite_rtif_after_execution: bool = True
 

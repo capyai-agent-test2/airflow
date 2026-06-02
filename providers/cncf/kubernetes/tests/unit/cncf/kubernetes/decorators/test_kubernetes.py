@@ -21,6 +21,9 @@ import pickle
 
 import pytest
 
+from airflow.providers.cncf.kubernetes.decorators.kubernetes import _KubernetesDecoratedOperator
+from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+
 from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS
 
 if AIRFLOW_V_3_0_PLUS:
@@ -31,6 +34,14 @@ else:
 from unit.cncf.kubernetes.decorators.test_kubernetes_commons import TestKubernetesDecoratorsBase
 
 XCOM_IMAGE = "XCOM_IMAGE"
+
+
+def test_kubernetes_decorator_template_fields_are_deterministic():
+    assert _KubernetesDecoratedOperator.template_fields == (
+        "op_args",
+        "op_kwargs",
+        *(field for field in KubernetesPodOperator.template_fields if field not in {"cmds", "arguments"}),
+    )
 
 
 class TestKubernetesDecorator(TestKubernetesDecoratorsBase):

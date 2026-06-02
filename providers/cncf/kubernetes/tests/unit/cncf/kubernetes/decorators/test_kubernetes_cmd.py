@@ -20,6 +20,8 @@ import contextlib
 
 import pytest
 
+from airflow.providers.cncf.kubernetes.decorators.kubernetes_cmd import _KubernetesCmdDecoratedOperator
+from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.common.compat.sdk import AirflowSkipException
 
 from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS
@@ -31,6 +33,14 @@ else:
 from unit.cncf.kubernetes.decorators.test_kubernetes_commons import DAG_ID, TestKubernetesDecoratorsBase
 
 XCOM_IMAGE = "XCOM_IMAGE"
+
+
+def test_kubernetes_cmd_decorator_template_fields_are_deterministic():
+    assert _KubernetesCmdDecoratedOperator.template_fields == (
+        "op_args",
+        "op_kwargs",
+        *KubernetesPodOperator.template_fields,
+    )
 
 
 class TestKubernetesCmdDecorator(TestKubernetesDecoratorsBase):

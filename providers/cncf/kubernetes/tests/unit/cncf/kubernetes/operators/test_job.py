@@ -34,6 +34,7 @@ from airflow.providers.cncf.kubernetes.operators.job import (
     KubernetesJobOperator,
     KubernetesPatchJobOperator,
 )
+from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.cncf.kubernetes.triggers.job import KubernetesJobTrigger
 from airflow.providers.cncf.kubernetes.utils.pod_manager import PodManager
 from airflow.providers.common.compat.sdk import AirflowException, TaskDeferred
@@ -58,6 +59,13 @@ POD_NAMESPACE = "test-namespace"
 TEST_XCOM_RESULT = '{"result": "test-xcom-result"}'
 POD_MANAGER_CLASS = "airflow.providers.cncf.kubernetes.utils.pod_manager.PodManager"
 ON_KILL_PROPAGATION_POLICY = "Foreground"
+
+
+def test_kubernetes_job_operator_template_fields_are_deterministic():
+    assert KubernetesJobOperator.template_fields == (
+        "job_template_file",
+        *KubernetesPodOperator.template_fields,
+    )
 
 
 def create_context(task, persist_to_db=False, map_index=None):
