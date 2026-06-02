@@ -2430,6 +2430,17 @@ class TestRuntimeTaskInstance:
             ),
         )
 
+    def test_xcom_pull_with_no_map_index_returns_empty_list_for_empty_sequence(
+        self, create_runtime_ti, mock_supervisor_comms
+    ):
+        task = BaseOperator(task_id="pull_task")
+        runtime_ti = create_runtime_ti(task=task)
+        mock_supervisor_comms.send.return_value = XComSequenceSliceResult(root=[])
+
+        result = runtime_ti.xcom_pull(key="test_key", task_ids="mapped_task")
+
+        assert result == []
+
     def test_get_param_from_context(
         self, mocked_parse, make_ti_context, mock_supervisor_comms, create_runtime_ti
     ):

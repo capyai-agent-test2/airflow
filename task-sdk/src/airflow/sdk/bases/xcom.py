@@ -319,9 +319,6 @@ class BaseXCom:
         if not isinstance(msg, XComSequenceSliceResult):
             raise TypeError(f"Expected XComSequenceSliceResult, received: {type(msg)} {msg}")
 
-        if not msg.root:
-            return None
-
         return [cls.deserialize_value(_XComValueWrapper(value)) for value in msg.root]
 
     @staticmethod
