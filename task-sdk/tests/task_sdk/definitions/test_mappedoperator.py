@@ -25,6 +25,7 @@ from unittest import mock
 import pendulum
 import pytest
 
+from airflow.decorators import task as task_decorator
 from airflow.sdk import TaskInstanceState, TriggerRule
 from airflow.sdk.bases.operator import BaseOperator
 from airflow.sdk.bases.xcom import BaseXCom
@@ -113,6 +114,32 @@ def test_task_mapping_override_default_args():
     assert mapped.start_date == pendulum.instance(default_args["start_date"])
     # owner should be equal to Airflow default owner (airflow) because it is not provided at all
     assert mapped.owner == "airflow"
+
+
+def test_mapped_task_executor_config_can_be_updated():
+    with DAG("test-dag"):
+        mapped = MockOperator.partial(task_id="task").expand(arg2=[1])
+
+    executor_config = {"pod_override": "value"}
+    mapped.executor_config = executor_config
+
+    assert mapped.executor_config == executor_config
+    assert mapped.partial_kwargs["executor_config"] == executor_config
+
+
+def test_decorated_mapped_task_executor_config_can_be_updated():
+    @task_decorator
+    def print_value(value):
+        print(value)
+
+    with DAG("test-dag"):
+        mapped = print_value.expand(value=[1]).operator
+
+    executor_config = {"pod_override": "value"}
+    mapped.executor_config = executor_config
+
+    assert mapped.executor_config == executor_config
+    assert mapped.partial_kwargs["executor_config"] == executor_config
 
 
 def test_map_unknown_arg_raises():
