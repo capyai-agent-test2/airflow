@@ -127,12 +127,34 @@ class TestOtelMetrics:
 
     def test_incr_new_metric_with_tags(self, name):
         tags = {"hello": "world"}
-        key = _generate_key_name(full_name(name), tags)
 
         self.stats.incr(name, tags=tags)
 
         self.meter.get_meter().create_counter.assert_called_once_with(name=full_name(name))
-        self.map[key].add.assert_called_once_with(1, attributes=tags)
+        self.map[full_name(name)].add.assert_called_once_with(1, attributes=tags)
+
+    def test_incr_existing_metric_with_different_tags_reuses_counter(self, name):
+        first_tags = {"dag_id": "first_dag"}
+        second_tags = {"dag_id": "second_dag"}
+
+        self.stats.incr(name, tags=first_tags)
+        self.stats.incr(name, tags=second_tags)
+
+        self.meter.get_meter().create_counter.assert_called_once_with(name=full_name(name))
+        self.map[full_name(name)].add.assert_has_calls(
+            [
+                mock.call(1, attributes=first_tags),
+                mock.call(1, attributes=second_tags),
+            ]
+        )
+
+    def test_del_counter_accepts_attributes(self, name):
+        tags = {"dag_id": "test_dag"}
+
+        self.stats.metrics_map.get_counter(full_name(name), tags)
+        self.stats.metrics_map.del_counter(full_name(name), tags)
+
+        assert not self.map
 
     def test_incr_existing_metric(self, name):
         # Create the metric and set value to 1
