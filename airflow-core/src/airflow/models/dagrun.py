@@ -180,7 +180,7 @@ class DagRun(Base, LoggingMixin):
         nullable=True,
     )  # The user that triggered the DagRun, if applicable
     conf: Mapped[dict[str, Any] | None] = mapped_column(
-        JSON().with_variant(postgresql.JSONB, "postgresql"), nullable=True
+        JSON().with_variant(postgresql.JSONB, "postgresql"), nullable=True, deferred=True
     )
     # These two must be either both NULL or both datetime.
     data_interval_start: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
