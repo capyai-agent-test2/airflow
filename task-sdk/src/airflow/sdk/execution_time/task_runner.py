@@ -1363,6 +1363,7 @@ def run(
 
     stats_tags = {"dag_id": ti.dag_id, "task_id": ti.task_id}
     stats.incr("ti.start", tags=stats_tags)
+    stats.incr("task_instance.started", tags=stats_tags)
 
     try:
         # First, clear the xcom data sent from server
@@ -1486,6 +1487,7 @@ def run(
         error = e
     finally:
         stats.incr("ti.finish", tags={**stats_tags, "state": state.value})
+        stats.incr("task_instance.finished", tags={**stats_tags, "state": state.value})
 
         if msg:
             # If the supervisor rejects the terminal-state report

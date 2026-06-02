@@ -177,12 +177,26 @@ metrics:
     legacy_name: "ti.start.{dag_id}.{task_id}"
     name_variables: ["dag_id", "task_id"]
 
+  - name: "task_instance.started"
+    description: "Number of started task instances in a given Dag.
+    Metric with dag_id and task_id tagging."
+    type: "counter"
+    legacy_name: "-"
+    name_variables: []
+
   - name: "ti.finish"
     description: "Number of completed task in a given Dag. Similar to {job_name}_end but for task.
     Metric with dag_id and task_id tagging."
     type: "counter"
     legacy_name: "ti.finish.{dag_id}.{task_id}.{state}"
     name_variables: ["dag_id", "task_id", "state"]
+
+  - name: "task_instance.finished"
+    description: "Number of completed task instances in a given Dag.
+    Metric with dag_id, task_id, and state tagging."
+    type: "counter"
+    legacy_name: "-"
+    name_variables: []
 
   - name: "dag.callback_exceptions"
     description: "Number of exceptions raised from Dag callbacks. When this happens,
