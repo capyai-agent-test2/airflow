@@ -187,6 +187,15 @@ JOB_CLUSTERS: list[dict[str, Any]] = [
         },
     },
 ]
+ENVIRONMENTS: list[dict[str, Any]] = [
+    {
+        "environment_key": "default",
+        "spec": {
+            "client": "1",
+            "dependencies": ["simplejson==3.19.3"],
+        },
+    }
+]
 
 JOB_CLUSTERS_REPAIR_AWS_INSUFFICIENT_INSTANCE_CAPACITY_FAILURE: list[dict[str, Any]] = [
     {
@@ -794,6 +803,73 @@ class TestDatabricksSubmitRunOperator:
         op = DatabricksSubmitRunOperator(task_id=TASK_ID, tasks=tasks)
         expected = utils.normalise_json_content({"run_name": TASK_ID, "tasks": tasks})
         assert expected == utils.normalise_json_content(op.json)
+
+    def test_init_with_environments(self):
+        op = DatabricksSubmitRunOperator(
+            task_id=TASK_ID,
+            tasks=[{"task_key": "notebook", "environment_key": "default", "notebook_task": NOTEBOOK_TASK}],
+            environments=ENVIRONMENTS,
+        )
+        expected = utils.normalise_json_content(
+            {
+                "run_name": TASK_ID,
+                "tasks": [
+                    {"task_key": "notebook", "environment_key": "default", "notebook_task": NOTEBOOK_TASK}
+                ],
+                "environments": ENVIRONMENTS,
+            }
+        )
+        assert expected == utils.normalise_json_content(op.json)
+
+    @mock.patch("airflow.providers.databricks.operators.databricks.DatabricksHook")
+    def test_serverless_task_without_environment_key_raises_error(self, db_mock_class):
+        op = DatabricksSubmitRunOperator(
+            task_id=TASK_ID,
+            tasks=[{"task_key": "notebook", "notebook_task": NOTEBOOK_TASK}],
+            environments=ENVIRONMENTS,
+        )
+
+        with pytest.raises(ValueError, match="environment_key is required for serverless Databricks tasks"):
+            op.execute(None)
+
+        db_mock_class.return_value.submit_run.assert_not_called()
+
+    @mock.patch("airflow.providers.databricks.operators.databricks.DatabricksHook")
+    def test_serverless_task_with_environment_key_submits_run(self, db_mock_class):
+        op = DatabricksSubmitRunOperator(
+            task_id=TASK_ID,
+            tasks=[{"task_key": "notebook", "environment_key": "default", "notebook_task": NOTEBOOK_TASK}],
+            environments=ENVIRONMENTS,
+        )
+        db_mock = db_mock_class.return_value
+        db_mock.submit_run.return_value = RUN_ID
+        db_mock.get_run = make_run_with_state_mock("TERMINATED", "SUCCESS")
+
+        op.execute(None)
+
+        actual = db_mock.submit_run.call_args.args[0]
+        assert actual["tasks"][0]["environment_key"] == "default"
+
+    @mock.patch("airflow.providers.databricks.operators.databricks.DatabricksHook")
+    def test_cluster_task_with_environments_does_not_require_environment_key(self, db_mock_class):
+        op = DatabricksSubmitRunOperator(
+            task_id=TASK_ID,
+            tasks=[
+                {
+                    "task_key": "notebook",
+                    "existing_cluster_id": EXISTING_CLUSTER_ID,
+                    "notebook_task": NOTEBOOK_TASK,
+                }
+            ],
+            environments=ENVIRONMENTS,
+        )
+        db_mock = db_mock_class.return_value
+        db_mock.submit_run.return_value = RUN_ID
+        db_mock.get_run = make_run_with_state_mock("TERMINATED", "SUCCESS")
+
+        op.execute(None)
+
+        assert db_mock.submit_run.call_args.args[0]["tasks"][0]["existing_cluster_id"] == EXISTING_CLUSTER_ID
 
     def test_init_with_specified_run_name(self):
         """

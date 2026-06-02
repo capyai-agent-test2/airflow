@@ -47,6 +47,7 @@ from airflow.providers.databricks.triggers.databricks import (
 from airflow.providers.databricks.utils.databricks import (
     extract_failed_task_errors,
     normalise_json_content,
+    validate_serverless_task_settings,
     validate_trigger_event,
 )
 from airflow.providers.databricks.utils.mixins import DatabricksSQLStatementsMixin
@@ -556,6 +557,7 @@ class DatabricksSubmitRunOperator(BaseOperator):
     :param do_xcom_push: Whether we should push run_id and run_page_url to xcom.
     :param git_source: Optional specification of a remote git repository from which
         supported task types are retrieved.
+    :param environments: Optional serverless environment specifications for this run.
     :param deferrable: Run operator in the deferrable mode.
 
         .. seealso::
@@ -605,6 +607,7 @@ class DatabricksSubmitRunOperator(BaseOperator):
         access_control_list: list[dict[str, str]] | None = None,
         wait_for_termination: bool = True,
         git_source: dict[str, str] | None = None,
+        environments: list[dict[str, Any]] | None = None,
         deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
         **kwargs,
     ) -> None:
@@ -650,6 +653,8 @@ class DatabricksSubmitRunOperator(BaseOperator):
             self.json["access_control_list"] = access_control_list
         if git_source is not None:
             self.json["git_source"] = git_source
+        if environments is not None:
+            self.json["environments"] = environments
 
         if "dbt_task" in self.json and "git_source" not in self.json:
             raise AirflowException("git_source is required for dbt_task")
@@ -694,6 +699,7 @@ class DatabricksSubmitRunOperator(BaseOperator):
             else:
                 _inject_airflow_params_into_task(self.json, params_dump)
 
+        validate_serverless_task_settings(self.json)
         json_normalised = normalise_json_content(self.json)
         self.run_id = self._hook.submit_run(json_normalised)
         if self.deferrable:
