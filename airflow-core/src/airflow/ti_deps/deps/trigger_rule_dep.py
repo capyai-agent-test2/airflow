@@ -502,8 +502,7 @@ class TriggerRuleDep(BaseTIDep):
                     )
             elif trigger_rule == TR.ALL_SUCCESS:
                 num_failures = upstream - success
-                if ti.map_index > -1:
-                    num_failures -= removed
+                num_failures -= removed
                 if num_failures > 0:
                     yield self._failing_status(
                         reason=(

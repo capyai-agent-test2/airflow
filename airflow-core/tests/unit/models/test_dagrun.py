@@ -1665,6 +1665,33 @@ def test_mapped_literal_verify_integrity(dag_maker, session):
     assert indices == [(0, None), (1, None), (2, TaskInstanceState.REMOVED), (3, TaskInstanceState.REMOVED)]
 
 
+def test_unmapped_downstream_runs_after_mapped_upstream_reduced(dag_maker, session):
+    with dag_maker(session=session) as dag:
+        upstream = EmptyOperator(task_id="upstream")
+        mapped = MockOperator.partial(task_id="mapped").expand(arg2=[1, 2, 3, 4, 5])
+        downstream = EmptyOperator(task_id="downstream")
+        upstream >> mapped >> downstream
+
+    dr = dag_maker.create_dagrun()
+
+    for ti in dr.task_instances:
+        ti.task = dag.get_task(ti.task_id)
+        if ti.task_id == upstream.task_id:
+            ti.state = TaskInstanceState.SUCCESS
+        elif ti.task_id == mapped.task_id and ti.map_index < 4:
+            ti.state = TaskInstanceState.SUCCESS
+        elif ti.task_id == mapped.task_id:
+            ti.state = TaskInstanceState.REMOVED
+        else:
+            ti.state = None
+    session.flush()
+
+    schedulable_tis, _ = dr.update_state(session=session)
+
+    assert dr.state == DagRunState.RUNNING
+    assert [(ti.task_id, ti.map_index) for ti in schedulable_tis] == [(downstream.task_id, -1)]
+
+
 def test_mapped_literal_to_xcom_arg_verify_integrity(dag_maker, session):
     """Test that when we change from literal to a XComArg the TIs are removed"""
 
