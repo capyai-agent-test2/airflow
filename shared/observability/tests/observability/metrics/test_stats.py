@@ -693,6 +693,19 @@ class TestLegacyExport:
         mock_backend.timing.assert_any_call("operator_failures_EmptyOperator", 1.5)
         mock_backend.timing.assert_any_call("operator_failures", 1.5, tags={"operator_name": "EmptyOperator"})
 
+    def test_legacy_name_is_not_emitted_when_modern_name_is_not_allowed(self):
+        statsd_client = Mock(spec=statsd.StatsClient)
+        backend = SafeStatsdLogger(statsd_client, PatternAllowListValidator("test_task"))
+
+        with mock.patch("airflow_shared.observability.metrics.stats._get_backend", return_value=backend):
+            airflow_shared.observability.metrics.stats.timing(
+                "task.duration",
+                1.5,
+                tags={"dag_id": "test_dag", "task_id": "test_task"},
+            )
+
+        statsd_client.assert_not_called()
+
     def test_timer_times_both_when_legacy_name_exists(self, mock_backend):
         with airflow_shared.observability.metrics.stats.timer(
             "operator_failures",
