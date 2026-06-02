@@ -120,3 +120,23 @@ def validate_trigger_event(event: dict):
         RunState.from_json(event["run_state"])
     except Exception:
         raise AirflowException(f"Run state returned by the Trigger is incorrect: {event['run_state']}")
+
+
+def validate_serverless_task_settings(content: dict) -> None:
+    """Validate serverless task settings before submitting them to Databricks."""
+    if "environments" not in content:
+        return
+
+    task_settings = content.get("tasks")
+    tasks = task_settings if isinstance(task_settings, list) else [content]
+    serverless_task_types = {"notebook_task", "spark_python_task", "python_wheel_task", "dbt_task"}
+    cluster_fields = {"job_cluster_key", "existing_cluster_id", "new_cluster"}
+
+    for task in tasks:
+        if (
+            isinstance(task, dict)
+            and serverless_task_types.intersection(task)
+            and not cluster_fields.intersection(task)
+            and not task.get("environment_key")
+        ):
+            raise ValueError("environment_key is required for serverless Databricks tasks")
