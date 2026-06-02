@@ -145,9 +145,10 @@ def _get_backcompat_config(conf: ConfigParser) -> tuple[str | None, Resource | N
         host = conf.get("traces", "otel_host", fallback=None)
         port = conf.get("traces", "otel_port", fallback=None)
         ssl_active = conf.getboolean("traces", "otel_ssl_active", fallback=False)
-        if host and port:
+        if host:
             scheme = "https" if ssl_active else "http"
-            endpoint = f"{scheme}://{host}:{port}/v1/traces"
+            port_suffix = f":{port}" if port else ""
+            endpoint = f"{scheme}://{host}{port_suffix}/v1/traces"
     return endpoint, resource
 
 

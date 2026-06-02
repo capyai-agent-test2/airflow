@@ -17,12 +17,15 @@
 # under the License.
 from __future__ import annotations
 
+from configparser import ConfigParser
+
 from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags, TraceState
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from airflow_shared.observability.traces import (
     DEFAULT_TASK_SPAN_DETAIL_LEVEL,
     TASK_SPAN_DETAIL_LEVEL_KEY,
+    _get_backcompat_config,
     build_trace_state_entries,
     get_task_span_detail_level,
     new_dagrun_trace_carrier,
@@ -48,6 +51,35 @@ class TestBuildTraceStateEntries:
     def test_with_invalid_string(self):
         # Non-integer string should not raise; returns empty
         assert build_trace_state_entries("not-a-number") == []
+
+
+class TestBackcompatConfig:
+    def test_builds_endpoint_without_port(self, monkeypatch):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+        conf = ConfigParser()
+        conf.add_section("traces")
+        conf.set("traces", "otel_host", "otlp-ingest/ot")
+        conf.set("traces", "otel_port", "")
+        conf.set("traces", "otel_ssl_active", "True")
+
+        endpoint, resource = _get_backcompat_config(conf)
+
+        assert endpoint == "https://otlp-ingest/ot/v1/traces"
+        assert resource is None
+
+    def test_builds_endpoint_with_port(self, monkeypatch):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+        conf = ConfigParser()
+        conf.add_section("traces")
+        conf.set("traces", "otel_host", "localhost")
+        conf.set("traces", "otel_port", "4318")
+
+        endpoint, resource = _get_backcompat_config(conf)
+
+        assert endpoint == "http://localhost:4318/v1/traces"
+        assert resource is None
 
 
 class TestNewDagrunTraceCarrier:
