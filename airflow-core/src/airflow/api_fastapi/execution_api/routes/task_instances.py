@@ -21,6 +21,8 @@ import contextlib
 import io
 import itertools
 import json
+import sys
+import threading
 from collections import defaultdict
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Annotated, Any, cast
@@ -102,6 +104,73 @@ ti_id_router = VersionedAPIRouter(
 
 log = structlog.get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+_STDIO_PROXY_LOCK = threading.Lock()
+_STDIO_PROXY_USERS = 0
+_STDOUT_PROXY: _ThreadLocalOutputProxy | None = None
+_STDERR_PROXY: _ThreadLocalOutputProxy | None = None
+
+
+class _ThreadLocalOutputProxy:
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+        self._local = threading.local()
+
+    def set_buffer(self, buffer: io.StringIO) -> None:
+        self._local.buffer = buffer
+
+    def clear_buffer(self) -> None:
+        with contextlib.suppress(AttributeError):
+            del self._local.buffer
+
+    def write(self, value: str) -> int:
+        buffer = getattr(self._local, "buffer", None)
+        if buffer is None:
+            return self._wrapped.write(value)
+        return buffer.write(value)
+
+    def flush(self) -> None:
+        buffer = getattr(self._local, "buffer", None)
+        if buffer is None:
+            self._wrapped.flush()
+            return
+        buffer.flush()
+
+    def __getattr__(self, name: str):
+        return getattr(self._wrapped, name)
+
+
+@contextlib.contextmanager
+def _capture_thread_output() -> Iterator[io.StringIO]:
+    global _STDERR_PROXY, _STDIO_PROXY_USERS, _STDOUT_PROXY
+
+    output = io.StringIO()
+    with _STDIO_PROXY_LOCK:
+        if _STDIO_PROXY_USERS == 0:
+            _STDOUT_PROXY = _ThreadLocalOutputProxy(sys.stdout)
+            _STDERR_PROXY = _ThreadLocalOutputProxy(sys.stderr)
+            sys.stdout = cast("Any", _STDOUT_PROXY)
+            sys.stderr = cast("Any", _STDERR_PROXY)
+        _STDIO_PROXY_USERS += 1
+        stdout_proxy = _STDOUT_PROXY
+        stderr_proxy = _STDERR_PROXY
+
+    if stdout_proxy is None or stderr_proxy is None:
+        raise RuntimeError("Failed to initialize stdio capture")
+
+    stdout_proxy.set_buffer(output)
+    stderr_proxy.set_buffer(output)
+    try:
+        yield output
+    finally:
+        stdout_proxy.clear_buffer()
+        stderr_proxy.clear_buffer()
+        with _STDIO_PROXY_LOCK:
+            _STDIO_PROXY_USERS -= 1
+            if _STDIO_PROXY_USERS == 0:
+                sys.stdout = cast("Any", stdout_proxy._wrapped)
+                sys.stderr = cast("Any", stderr_proxy._wrapped)
+                _STDOUT_PROXY = None
+                _STDERR_PROXY = None
 
 
 @ti_id_router.patch(
@@ -598,8 +667,7 @@ def _create_ti_state_update_query_and_update_state(
             )
         elif isinstance(ti_patch_payload, TISuccessStatePayload):
             if ti is not None:
-                listener_output = io.StringIO()
-                with contextlib.redirect_stdout(listener_output), contextlib.redirect_stderr(listener_output):
+                with _capture_thread_output() as listener_output:
                     TI.register_asset_changes_in_db(
                         ti,
                         ti_patch_payload.task_outlets,
