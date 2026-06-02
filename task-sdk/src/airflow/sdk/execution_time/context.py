@@ -302,10 +302,10 @@ def _get_variable(key: str, deserialize_json: bool) -> Any:
             )
 
     # If no backend found the variable, raise a not found error (mirrors _get_connection)
-    from airflow.sdk.exceptions import AirflowRuntimeError, ErrorType
+    from airflow.sdk.exceptions import AirflowVariableNotFoundError, ErrorType
     from airflow.sdk.execution_time.comms import ErrorResponse
 
-    raise AirflowRuntimeError(
+    raise AirflowVariableNotFoundError(
         ErrorResponse(error=ErrorType.VARIABLE_NOT_FOUND, detail={"message": f"Variable {key} not found"})
     )
 
