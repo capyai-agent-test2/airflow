@@ -2927,20 +2927,24 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         """Mark any "deferred" task as failed if the trigger or execution timeout has passed."""
         for attempt in run_with_db_retries(max_retries, logger=self.log):
             with attempt:
-                result = session.execute(
-                    update(TI)
-                    .where(
-                        TI.state == TaskInstanceState.DEFERRED,
-                        TI.trigger_timeout < timezone.utcnow(),
+                try:
+                    result = session.execute(
+                        update(TI)
+                        .where(
+                            TI.state == TaskInstanceState.DEFERRED,
+                            TI.trigger_timeout < timezone.utcnow(),
+                        )
+                        .values(
+                            state=TaskInstanceState.SCHEDULED,
+                            next_method=TRIGGER_FAIL_REPR,
+                            next_kwargs={"error": TriggerFailureReason.TRIGGER_TIMEOUT},
+                            scheduled_dttm=timezone.utcnow(),
+                            trigger_id=None,
+                        )
                     )
-                    .values(
-                        state=TaskInstanceState.SCHEDULED,
-                        next_method=TRIGGER_FAIL_REPR,
-                        next_kwargs={"error": TriggerFailureReason.TRIGGER_TIMEOUT},
-                        scheduled_dttm=timezone.utcnow(),
-                        trigger_id=None,
-                    )
-                )
+                except OperationalError:
+                    session.rollback()
+                    raise
                 num_timed_out_tasks = getattr(result, "rowcount", 0)
                 if num_timed_out_tasks:
                     self.log.info("Timed out %i deferred tasks without fired triggers", num_timed_out_tasks)

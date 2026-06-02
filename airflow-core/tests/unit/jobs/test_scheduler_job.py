@@ -7300,7 +7300,7 @@ class TestSchedulerJob:
             EmptyOperator(task_id="dummy1")
 
         # Mock the db failure within retry times
-        might_fail_session = MagicMock(wraps=session)
+        might_fail_session = MagicMock(wraps=session, spec=session)
 
         def check_if_trigger_timeout(max_retries: int):
             def make_side_effect():
@@ -7333,12 +7333,14 @@ class TestSchedulerJob:
                 ti2.state = State.DEFERRED
                 ti2.trigger_timeout = timezone.utcnow() + datetime.timedelta(seconds=60)
                 session.flush()
+                session.commit()
 
                 # Boot up the scheduler and make it check timeouts
                 scheduler_job = Job()
                 self.job_runner = SchedulerJobRunner(job=scheduler_job)
 
                 self.job_runner.check_trigger_timeouts(max_retries=max_retries, session=might_fail_session)
+                assert might_fail_session.rollback.call_count == retry_times - 1
 
                 # Make sure that TI1 is now scheduled to fail, and 2 wasn't touched
                 session.refresh(ti1)
@@ -7355,6 +7357,7 @@ class TestSchedulerJob:
         # Negative case: no retries, execute only once.
         with pytest.raises(OperationalError):
             check_if_trigger_timeout(1)
+        assert might_fail_session.rollback.call_count == retry_times
 
     def test_find_and_purge_task_instances_without_heartbeats_nothing(self):
         executor = MockExecutor(do_update=False)
