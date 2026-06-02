@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import suppress
 from json import JSONDecodeError
 from typing import Any, overload
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
@@ -29,6 +30,38 @@ from airflow.sdk.exceptions import AirflowException, AirflowNotFoundException, A
 from airflow.sdk.providers_manager_runtime import ProvidersManagerTaskRuntime
 
 log = logging.getLogger(__name__)
+_LEGACY_UNDERSCORED_CONN_TYPES = {
+    "adb_spark",
+    "alibaba_cloud",
+    "azure_batch",
+    "azure_compute",
+    "azure_container_instance",
+    "azure_container_registry",
+    "azure_container_volume",
+    "azure_cosmos",
+    "azure_data_explorer",
+    "azure_data_factory",
+    "azure_data_lake",
+    "azure_fileshare",
+    "azure_service_bus",
+    "azure_synapse",
+    "dbt_cloud",
+    "facebook_social",
+    "gcp_looker",
+    "google_ads",
+    "google_cloud_platform",
+    "hive_cli",
+    "hive_metastore",
+    "informatica_edc",
+    "jupyter_kernel",
+    "package_index",
+    "pagerduty_events",
+    "pig_cli",
+    "pinot_admin",
+    "spark_connect",
+    "spark_jdbc",
+    "spark_sql",
+}
 
 
 def _parse_netloc_to_hostname(uri_parts):
@@ -401,5 +434,10 @@ class Connection:
         if conn_type == "postgresql":
             conn_type = "postgres"
         elif "-" in conn_type:
-            conn_type = conn_type.replace("-", "_")
+            normalized_conn_type = conn_type.replace("-", "_")
+            if normalized_conn_type in _LEGACY_UNDERSCORED_CONN_TYPES:
+                return normalized_conn_type
+            with suppress(Exception):
+                if normalized_conn_type in ProvidersManagerTaskRuntime().hooks:
+                    return normalized_conn_type
         return conn_type

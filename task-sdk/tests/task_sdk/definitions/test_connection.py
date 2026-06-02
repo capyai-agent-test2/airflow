@@ -360,10 +360,15 @@ class TestConnectionFromUri:
         conn = Connection.from_uri(uri, conn_id="test_conn")
         assert conn.conn_type == "postgres"
 
-        # hyphen to underscore
+        # known underscored connection type
         uri = "google-cloud-platform://user:pass@host/db"
         conn = Connection.from_uri(uri, conn_id="test_conn")
         assert conn.conn_type == "google_cloud_platform"
+
+        # unknown hyphenated connection type
+        uri = "datahub-rest://test:test@test"
+        conn = Connection.from_uri(uri, conn_id="test_conn")
+        assert conn.conn_type == "datahub-rest"
 
     def test_from_uri_too_many_schemes_error(self):
         """Test that too many schemes in URI raises an error."""
