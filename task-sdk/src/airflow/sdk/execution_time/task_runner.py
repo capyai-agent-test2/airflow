@@ -1865,7 +1865,9 @@ def _execute_task(context: Context, ti: RuntimeTaskInstance, log: Logger):
     task = ti.task
     execute = task.execute
 
-    if ti._ti_context_from_server and (next_method := ti._ti_context_from_server.next_method):
+    is_resuming = bool(ti._ti_context_from_server and ti._ti_context_from_server.next_method)
+    if is_resuming:
+        next_method = ti._ti_context_from_server.next_method
         from airflow.sdk.serde import deserialize
 
         next_kwargs_data = ti._ti_context_from_server.next_kwargs or {}
@@ -1892,12 +1894,13 @@ def _execute_task(context: Context, ti: RuntimeTaskInstance, log: Logger):
 
     outlet_events = context_get_outlet_events(context)
 
-    if (pre_execute_hook := task._pre_execute_hook) is not None:
-        create_executable_runner(pre_execute_hook, outlet_events, logger=log).run(context)
-    if getattr(pre_execute_hook := task.pre_execute, "__func__", None) is not BaseOperator.pre_execute:
-        create_executable_runner(pre_execute_hook, outlet_events, logger=log).run(context)
+    if not is_resuming:
+        if (pre_execute_hook := task._pre_execute_hook) is not None:
+            create_executable_runner(pre_execute_hook, outlet_events, logger=log).run(context)
+        if getattr(pre_execute_hook := task.pre_execute, "__func__", None) is not BaseOperator.pre_execute:
+            create_executable_runner(pre_execute_hook, outlet_events, logger=log).run(context)
 
-    _run_task_state_change_callbacks(task, "on_execute_callback", context, log)
+        _run_task_state_change_callbacks(task, "on_execute_callback", context, log)
 
     log.info("::endgroup::")
 
