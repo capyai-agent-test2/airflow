@@ -36,7 +36,7 @@ from pydantic import JsonValue
 from sqlalchemy import and_, func, or_, tuple_, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import NoResultFound, SQLAlchemyError
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, undefer
 from sqlalchemy.sql import select
 from structlog.contextvars import bind_contextvars
 
@@ -253,7 +253,7 @@ def ti_run(
             session.scalars(
                 select(DR)
                 .filter_by(dag_id=ti.dag_id, run_id=ti.run_id)
-                .options(joinedload(DR.consumed_asset_events))
+                .options(joinedload(DR.consumed_asset_events), undefer(DR.conf))
             )
             .unique()
             .one_or_none()

@@ -1772,6 +1772,20 @@ class TestTaskInstance:
         params = process_params(ti.task.dag, ti.task, dag_run.conf, suppress_exception=False)
         assert params["override"] is True
 
+    def test_dag_run_conf_is_deferred_when_loading_task_instance(self, create_task_instance, session):
+        ti = create_task_instance()
+        ti.dag_run.conf = {"large": "x" * 1024}
+        ti_id = ti.id
+        session.commit()
+        session.expunge_all()
+
+        loaded_ti = session.scalar(select(TaskInstance).where(TaskInstance.id == ti_id))
+
+        assert loaded_ti is not None
+        assert "dag_run" not in sa_inspect(loaded_ti).unloaded
+        assert "conf" in sa_inspect(loaded_ti.dag_run).unloaded
+        assert loaded_ti.dag_run.conf == {"large": "x" * 1024}
+
     def test_overwrite_params_with_dag_run_none(self, create_task_instance):
         ti = create_task_instance()
         ti.task.params = {"override": False}

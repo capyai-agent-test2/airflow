@@ -338,6 +338,8 @@ class DagRun(StrictBaseModel):
         for field_name in cls.model_fields:
             if field_name in insp.dict:
                 values[field_name] = insp.dict[field_name]
+            elif field_name == "conf" and not insp.detached:
+                values["conf"] = data.conf
             elif field_name == "state":
                 if "_state" in insp.dict:
                     values["state"] = insp.dict["_state"]
