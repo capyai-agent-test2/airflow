@@ -40,6 +40,8 @@ OperatorExpandArgument = Union["MappedArgument", "XComArg", Sequence, dict[str, 
 # element being either an XComArg or a dict.
 OperatorExpandKwargsArgument = Union["XComArg", Sequence[Union["XComArg", Mapping[str, Any]]]]
 
+_DEFAULT_NOT_SET = object()
+
 
 class _NotFullyPopulated(RuntimeError):
     """
@@ -90,6 +92,7 @@ class MappedArgument(ResolveMixin):
 
     _input: ExpandInput = attrs.field()
     _key: str
+    _default: Any = attrs.field(default=_DEFAULT_NOT_SET, alias="default")
 
     @_input.validator
     def _validate_input(self, _, input):
@@ -101,8 +104,16 @@ class MappedArgument(ResolveMixin):
     def iter_references(self) -> Iterable[tuple[Operator, str]]:
         yield from self._input.iter_references()
 
+    def has_default(self) -> bool:
+        return self._default is not _DEFAULT_NOT_SET
+
+    def get_default(self) -> Any:
+        return self._default
+
     def resolve(self, context: Mapping[str, Any]) -> Any:
         data, _ = self._input.resolve(context)
+        if self._key not in data and self.has_default():
+            return self.get_default()
         return data[self._key]
 
 
