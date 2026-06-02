@@ -65,7 +65,7 @@ from airflow.dag_processing.processor import (
     _pre_import_airflow_modules,
 )
 from airflow.models import DagRun
-from airflow.sdk import DAG, BaseOperator
+from airflow.sdk import DAG, BaseOperator, task
 from airflow.sdk.api.client import Client
 from airflow.sdk.api.datamodels._generated import ConnectionResponse, DagRunState, VariableResponse
 from airflow.sdk.execution_time import comms
@@ -847,6 +847,83 @@ class TestExecuteDagCallbacks:
         # Check that we have template context variables from RuntimeTaskInstance
         assert "ts" in context_received
         assert "params" in context_received
+
+    def test_execute_dag_callbacks_with_unexpanded_mapped_downstream_task(self, spy_agency):
+        """Test Dag callbacks execute when the failed task has an unexpanded mapped downstream task."""
+        called = False
+        context_received = None
+
+        def on_failure(context):
+            nonlocal called, context_received
+            called = True
+            context_received = context
+
+        with DAG(dag_id="test_dag", on_failure_callback=on_failure) as dag:
+
+            @task
+            def get_ids() -> list[int]:
+                return [1, 2, 3]
+
+            @task
+            def process_id(i_process: int):
+                return i_process
+
+            process_id.expand(i_process=get_ids())
+
+        def fake_collect_dags(self, *args, **kwargs):
+            self.dags[dag.dag_id] = dag
+
+        spy_agency.spy_on(DagBag.collect_dags, call_fake=fake_collect_dags, owner=DagBag)
+
+        dagbag = DagBag()
+        dagbag.collect_dags()
+
+        current_time = timezone.utcnow()
+        dag_run_data = DRDataModel(
+            dag_id="test_dag",
+            run_id="test_run",
+            logical_date=current_time,
+            data_interval_start=current_time,
+            data_interval_end=current_time,
+            run_after=current_time,
+            start_date=current_time,
+            end_date=None,
+            run_type="manual",
+            state="failed",
+            consumed_asset_events=[],
+            partition_key=None,
+        )
+
+        ti_data = TIDataModel(
+            id=uuid.uuid4(),
+            dag_id="test_dag",
+            task_id="get_ids",
+            run_id="test_run",
+            map_index=-1,
+            try_number=1,
+            dag_version_id=uuid.uuid4(),
+        )
+
+        context_from_server = DagRunContext(dag_run=dag_run_data, last_ti=ti_data)
+
+        request = DagCallbackRequest(
+            filepath="test.py",
+            dag_id="test_dag",
+            run_id="test_run",
+            bundle_name="testing",
+            bundle_version=None,
+            context_from_server=context_from_server,
+            is_failure_callback=True,
+            msg="Test failure message",
+        )
+
+        log = structlog.get_logger()
+        _execute_dag_callbacks(dagbag, request, log)
+
+        assert called is True
+        assert context_received is not None
+        assert context_received["ti"].task_id == "get_ids"
+        assert context_received["reason"] == "Test failure message"
 
     def test_execute_dag_callbacks_without_context_from_server(self, spy_agency):
         """Test _execute_dag_callbacks falls back to simple context when context_from_server is None"""
