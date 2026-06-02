@@ -349,6 +349,29 @@ class TestGetAssets(TestAssets):
             "total_entries": 2,
         }
 
+    def test_should_show_inactive_assets_resolved_from_alias(self, test_client, session):
+        asset = AssetModel(
+            id=1,
+            name="alias-resolved",
+            uri="s3://bucket/alias-resolved",
+            group="asset",
+            extra={"foo": "bar"},
+            created_at=DEFAULT_DATE,
+            updated_at=DEFAULT_DATE,
+        )
+        asset.aliases.append(AssetAliasModel(name="example-alias"))
+        session.add_all([asset, AssetModel(id=2, name="inactive", uri="inactive")])
+        session.commit()
+
+        response = test_client.get("/assets")
+
+        assert response.status_code == 200
+        assert response.json()["total_entries"] == 1
+        assert response.json()["assets"][0]["uri"] == "s3://bucket/alias-resolved"
+        assert response.json()["assets"][0]["aliases"] == [
+            {"id": asset.aliases[0].id, "name": "example-alias", "group": ""}
+        ]
+
     def test_should_respond_200_with_watchers(self, test_client, session):
         """Test that assets with watchers return the watcher information in the API response."""
         asset1, asset2 = self.create_assets_with_watchers(session=session, num=2)

@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, cast
 
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import joinedload, subqueryload
 
@@ -118,7 +118,7 @@ class OnlyActiveFilter(BaseParam[bool]):
 
     def to_orm(self, select: Select) -> Select:
         if self.value and self.skip_none:
-            return select.where(AssetModel.active.has())
+            return select.where(or_(AssetModel.active.has(), AssetModel.aliases.any()))
         return select
 
     @classmethod
