@@ -88,11 +88,12 @@ def test_capture_thread_output_does_not_capture_other_thread_output(monkeypatch)
 
     with _capture_thread_output() as listener_output:
         print("listener output")
+        sys.stdout.writelines(["listener ", "writelines\n"])
         thread = threading.Thread(target=lambda: print("other thread output"))
         thread.start()
         thread.join()
 
-    assert listener_output.getvalue().splitlines() == ["listener output"]
+    assert listener_output.getvalue().splitlines() == ["listener output", "listener writelines"]
     assert stdout.getvalue().splitlines() == ["other thread output"]
 
 

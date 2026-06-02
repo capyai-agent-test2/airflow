@@ -135,6 +135,13 @@ class _ThreadLocalOutputProxy:
             return
         buffer.flush()
 
+    def writelines(self, lines) -> None:
+        buffer = getattr(self._local, "buffer", None)
+        if buffer is None:
+            self._wrapped.writelines(lines)
+            return
+        buffer.writelines(lines)
+
     def __getattr__(self, name: str):
         return getattr(self._wrapped, name)
 
