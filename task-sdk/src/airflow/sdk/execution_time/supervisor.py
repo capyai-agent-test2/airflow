@@ -900,7 +900,12 @@ class WatchedSubprocess:
                     token = otel_context.attach(ctx)
                 self._handle_request(msg, log, request.id)
             except ServerResponseError as e:
-                error_details = e.response.json() if e.response else None
+                error_details = None
+                if e.response:
+                    try:
+                        error_details = e.response.json()
+                    except ValueError:
+                        error_details = e.detail or e.response.text or None
                 log.error(
                     "API server error",
                     status_code=e.response.status_code,

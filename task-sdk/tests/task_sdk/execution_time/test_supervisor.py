@@ -3170,6 +3170,41 @@ class TestHandleRequest:
             "detail": error.response.json(),
         }
 
+    def test_handle_requests_redirect_error(self, watched_subprocess, mocker):
+        watched_subprocess, read_socket = watched_subprocess
+
+        response = httpx.Response(
+            301,
+            headers={"Location": "http://proxy.example/redirect"},
+            request=httpx.Request("GET", "http://test"),
+        )
+        error = ServerResponseError.from_response(response)
+        assert error is not None
+        watched_subprocess.client.task_instances.succeed = mocker.Mock(side_effect=error)
+
+        generator = watched_subprocess.handle_requests(log=mocker.Mock())
+        next(generator)
+
+        msg = SucceedTask(end_date=timezone.parse("2024-10-31T12:00:00Z"))
+        req_frame = _RequestFrame(id=randint(1, 2**32 - 1), body=msg.model_dump())
+        generator.send(req_frame)
+
+        read_socket.settimeout(0.1)
+        frame_len = int.from_bytes(read_socket.recv(4), "big")
+        bytes = read_socket.recv(frame_len)
+        frame = msgspec.msgpack.Decoder(_ResponseFrame).decode(bytes)
+
+        assert frame.id == req_frame.id
+        assert frame.error == {
+            "error": "API_SERVER_ERROR",
+            "detail": {
+                "status_code": 301,
+                "message": str(error),
+                "detail": None,
+            },
+            "type": "ErrorResponse",
+        }
+
     def test_handle_requests_network_exception_does_not_crash_loop(self, watched_subprocess, mocker):
         """A transient network error must not crash the IPC generator.
 
