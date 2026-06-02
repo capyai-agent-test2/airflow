@@ -1525,7 +1525,7 @@ class TestDagRun:
 @pytest.mark.parametrize(
     ("run_type", "expected_tis"),
     [
-        pytest.param(DagRunType.MANUAL, 1, id="manual"),
+        pytest.param(DagRunType.MANUAL, 3, id="manual"),
         pytest.param(DagRunType.BACKFILL_JOB, 3, id="backfill"),
     ],
 )
@@ -1533,7 +1533,7 @@ class TestDagRun:
 def test_verify_integrity_task_start_and_end_date(
     mock_get_backend, dag_maker, session, run_type, expected_tis
 ):
-    """Test that tasks with specific dates are only created for backfill runs"""
+    """Test that tasks with specific dates are created for user-requested runs."""
     mock_stats = mock.MagicMock(spec=StatsLogger)
     mock_get_backend.return_value = mock_stats
 
