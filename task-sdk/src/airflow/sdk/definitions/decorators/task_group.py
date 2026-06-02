@@ -169,7 +169,9 @@ class _TaskGroupFactory(ExpandableFactory, Generic[FParams, FReturn]):
         # We can't be sure how each argument is used in the function (well
         # technically we can with AST but let's not), so we have to create stubs
         # for every argument, including those with default values.
-        map_kwargs = (k for k in self.function_signature.parameters if k not in self.partial_kwargs)
+        map_kwargs = (
+            v for k, v in self.function_signature.parameters.items() if k not in self.partial_kwargs
+        )
         expand_input = ListOfDictsExpandInput(kwargs)
 
         # Similar to @task, @task_group should not be "mappable" over an XCom with a custom key. This will
@@ -179,7 +181,12 @@ class _TaskGroupFactory(ExpandableFactory, Generic[FParams, FReturn]):
         return self._create_task_group(
             functools.partial(MappedTaskGroup, expand_input=expand_input),
             **self.partial_kwargs,
-            **{k: MappedArgument(input=expand_input, key=k) for k in map_kwargs},
+            **{
+                param.name: MappedArgument(input=expand_input, key=param.name, default=param.default)
+                if param.default is not inspect.Parameter.empty
+                else MappedArgument(input=expand_input, key=param.name)
+                for param in map_kwargs
+            },
         )
 
 

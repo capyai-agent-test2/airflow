@@ -603,6 +603,8 @@ class BaseSerialization:
             return cls._encode(var.to_json(), type_=DAT.DAG_CALLBACK_REQUEST)
         elif isinstance(var, MappedArgument):
             data = {"input": encode_expand_input(var._input), "key": var._key}
+            if var.has_default():
+                data["default"] = cls.serialize(var.get_default(), strict=strict)
             return cls._encode(data, type_=DAT.MAPPED_ARGUMENT)
         else:
             return cls.default_serialization(strict, var)
@@ -694,7 +696,11 @@ class BaseSerialization:
         elif type_ == DAT.TASK_INSTANCE_KEY:
             return TaskInstanceKey(**var)
         elif type_ == DAT.MAPPED_ARGUMENT:
-            expand_input = create_expand_input(var["input"]["type"], var["input"]["value"])
+            expand_input = create_expand_input(var["input"]["type"], cls.deserialize(var["input"]["value"]))
+            if "default" in var:
+                return SchedulerMappedArgument(
+                    input=expand_input, key=var["key"], default=cls.deserialize(var["default"])
+                )
             return SchedulerMappedArgument(input=expand_input, key=var["key"])
         elif type_ == DAT.ARG_NOT_SET:
             from airflow.serialization.definitions.notset import NOTSET

@@ -64,7 +64,11 @@ from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import DAG, Asset, AssetAlias, BaseHook, TaskGroup, WeightRule, XComArg, teardown
 from airflow.sdk.bases.decorator import DecoratedOperator
 from airflow.sdk.bases.operator import OPERATOR_DEFAULTS, BaseOperator
-from airflow.sdk.definitions._internal.expandinput import EXPAND_INPUT_EMPTY
+from airflow.sdk.definitions._internal.expandinput import (
+    EXPAND_INPUT_EMPTY,
+    ListOfDictsExpandInput,
+    MappedArgument,
+)
 from airflow.sdk.definitions.operator_resources import Resources
 from airflow.sdk.definitions.param import Param, ParamsDict
 from airflow.security import permissions
@@ -3252,6 +3256,19 @@ def test_mapped_task_group_serde():
     serde_tg = serde_dag.task_group.children["tg"]
     assert isinstance(serde_tg, SerializedTaskGroup)
     assert serde_tg._expand_input == SchedulerDictOfListsExpandInput({"a": [".", ".."]})
+
+
+def test_mapped_argument_default_serde():
+    from airflow.models.expandinput import SchedulerListOfDictsExpandInput, SchedulerMappedArgument
+
+    expand_input = ListOfDictsExpandInput([{"a": "x"}])
+    serialized = BaseSerialization.serialize(MappedArgument(input=expand_input, key="b", default="default"))
+
+    assert BaseSerialization.deserialize(serialized) == SchedulerMappedArgument(
+        input=SchedulerListOfDictsExpandInput([{"a": "x"}]),
+        key="b",
+        default="default",
+    )
 
 
 @pytest.mark.db_test

@@ -45,6 +45,8 @@ __all__ = [
     "SchedulerListOfDictsExpandInput",
 ]
 
+_DEFAULT_NOT_SET = object()
+
 
 class NotFullyPopulated(RuntimeError):
     """
@@ -86,6 +88,7 @@ class SchedulerMappedArgument:
 
     _input: SchedulerExpandInput = attrs.field()
     _key: str
+    _default: Any = attrs.field(default=_DEFAULT_NOT_SET, alias="default")
 
     def iter_references(self) -> Iterable[tuple[Operator, str]]:
         yield from self._input.iter_references()

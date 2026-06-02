@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pendulum
 import pytest
@@ -271,6 +272,25 @@ def test_expand_kwargs_create_mapped():
     assert tg._expand_input == ListOfDictsExpandInput([{"b": "x"}, {"b": None}])
 
     assert saved == {"a": 1, "b": MappedArgument(input=tg._expand_input, key="b")}
+
+
+def test_expand_kwargs_resolves_task_group_defaults():
+    saved = {}
+
+    @dag(schedule=None, start_date=pendulum.datetime(2022, 1, 1))
+    def pipeline():
+        @task_group()
+        def tg(*, a, b="default"):
+            saved["a"] = a
+            saved["b"] = b
+
+        tg.expand_kwargs([{"a": "x"}, {"a": "y", "b": "override"}])
+
+    pipeline()
+
+    assert saved["a"].resolve({"ti": SimpleNamespace(map_index=0)}) == "x"
+    assert saved["b"].resolve({"ti": SimpleNamespace(map_index=0)}) == "default"
+    assert saved["b"].resolve({"ti": SimpleNamespace(map_index=1)}) == "override"
 
 
 def test_expand_kwargs_invalid_xcomarg_return_value():
