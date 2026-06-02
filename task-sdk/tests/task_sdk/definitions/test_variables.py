@@ -57,6 +57,31 @@ class TestVariables:
         assert var is not None
         assert var == expected_value
 
+    def test_var_get_not_found_raises_key_error(self, mock_supervisor_comms):
+        from airflow.sdk.exceptions import AirflowRuntimeError, AirflowVariableNotFoundError, ErrorType
+        from airflow.sdk.execution_time.comms import ErrorResponse
+
+        mock_supervisor_comms.send.return_value = ErrorResponse(
+            error=ErrorType.VARIABLE_NOT_FOUND, detail={"message": "Variable missing not found"}
+        )
+
+        with pytest.raises(KeyError) as exc_info:
+            Variable.get(key="missing")
+
+        assert isinstance(exc_info.value, AirflowVariableNotFoundError)
+        assert isinstance(exc_info.value, AirflowRuntimeError)
+
+    def test_var_get_not_found_returns_default(self, mock_supervisor_comms):
+        from airflow.sdk.exceptions import ErrorType
+        from airflow.sdk.execution_time.comms import ErrorResponse
+
+        default = {"task_id": "default_task_name"}
+        mock_supervisor_comms.send.return_value = ErrorResponse(
+            error=ErrorType.VARIABLE_NOT_FOUND, detail={"message": "Variable missing not found"}
+        )
+
+        assert Variable.get(key="missing", default=default) is default
+
     @pytest.mark.parametrize(
         ("key", "value", "description", "serialize_json"),
         [

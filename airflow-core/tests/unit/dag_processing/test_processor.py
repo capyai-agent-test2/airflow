@@ -220,6 +220,46 @@ class TestDagFileProcessor:
         if result.import_errors:
             assert "VARIABLE_NOT_FOUND" in next(iter(result.import_errors.values()))
 
+    def test_top_level_variable_access_not_found_can_be_caught(
+        self,
+        tmp_path: pathlib.Path,
+        inprocess_client,
+    ):
+        logger = MagicMock(spec=FilteringBoundLogger)
+        logger_filehandle = MagicMock(spec=BinaryIO)
+
+        def dag_in_a_fn():
+            from airflow.sdk import DAG, Variable
+
+            try:
+                task_id = Variable.get("myvar")
+            except KeyError:
+                task_id = "default_task_name"
+
+            with DAG(f"test_{task_id}"):
+                ...
+
+        path = write_dag_in_a_fn_to_file(dag_in_a_fn, tmp_path)
+        proc = DagFileProcessorProcess.start(
+            id=1,
+            path=path,
+            bundle_path=tmp_path,
+            bundle_name="testing",
+            dag_file_rel_path=str(path.relative_to(tmp_path)),
+            callbacks=[],
+            logger=logger,
+            logger_filehandle=logger_filehandle,
+            client=inprocess_client,
+        )
+
+        while not proc.is_ready:
+            proc._service_subprocess(0.1)
+
+        result = proc.parsing_result
+        assert result is not None
+        assert result.import_errors == {}
+        assert result.serialized_dags[0].dag_id == "test_default_task_name"
+
     def test_top_level_variable_set(self, tmp_path: pathlib.Path, inprocess_client):
         from airflow.models.variable import Variable as VariableORM
 

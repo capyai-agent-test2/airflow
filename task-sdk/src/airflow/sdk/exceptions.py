@@ -80,6 +80,10 @@ class AirflowRuntimeError(Exception):
         super().__init__(f"{error.error.value}: {error.detail}")
 
 
+class AirflowVariableNotFoundError(AirflowRuntimeError, KeyError):
+    """Raise when a variable is not found at runtime."""
+
+
 class AirflowTimetableInvalid(AirflowException):
     """Raise when a DAG has an invalid timetable."""
 
