@@ -17,50 +17,12 @@
  * under the License.
  */
 import { Spinner } from "@chakra-ui/react";
-import { type FC, lazy, Suspense } from "react";
+import { lazy, Suspense } from "react";
 import { useParams } from "react-router-dom";
 
 import type { ReactAppResponse } from "openapi/requests/types.gen";
 
-import { ErrorPage } from "./Error";
-
-export type PluginProps = {
-  dagId?: string;
-  mapIndex?: string;
-  runId?: string;
-  taskId?: string;
-};
-
-type PluginComponentType = FC<PluginProps>;
-
-const loadPlugin = (reactApp: ReactAppResponse): Promise<{ default: PluginComponentType }> =>
-  // We are assuming the plugin manager is trusted and the bundle_url is safe
-  import(/* @vite-ignore */ new URL(reactApp.bundle_url, document.baseURI).href)
-    .then(() => {
-      // Store components in globalThis[reactApp.name] to avoid conflicts with the shared globalThis.AirflowPlugin
-      // global variable.
-      let pluginComponent = (globalThis as Record<string, unknown>)[reactApp.name] as
-        | PluginComponentType
-        | undefined;
-
-      if (pluginComponent === undefined) {
-        pluginComponent = (globalThis as Record<string, unknown>).AirflowPlugin as PluginComponentType;
-
-        (globalThis as Record<string, unknown>)[reactApp.name] = pluginComponent;
-      }
-
-      if (typeof pluginComponent !== "function") {
-        throw new TypeError(`Expected function, got ${typeof pluginComponent} for plugin ${reactApp.name}`);
-      }
-
-      return { default: pluginComponent };
-    })
-    .catch((error: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error("Component failed to load:", error);
-
-      return { default: ErrorPage };
-    });
+import { loadPlugin, type PluginComponentType } from "./loadReactPlugin";
 
 export const ReactPlugin = ({ reactApp }: { readonly reactApp: ReactAppResponse }) => {
   const { dagId, mapIndex, runId, taskId } = useParams();
