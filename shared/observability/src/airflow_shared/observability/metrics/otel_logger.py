@@ -368,11 +368,10 @@ class MetricsMap:
         Delete a counter.
 
         :param name: The name of the counter to delete.
-        :param attributes: Counter attributes which were used to generate a unique key to store the counter.
+        :param attributes: Counter attributes, accepted for API compatibility.
         """
-        key = _generate_key_name(name, attributes)
-        if key in self.map.keys():
-            del self.map[key]
+        if name in self.map:
+            del self.map[name]
 
     def set_gauge_value(self, name: str, value: int | float, delta: bool, tags: Attributes):
         """

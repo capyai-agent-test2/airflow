@@ -148,6 +148,14 @@ class TestOtelMetrics:
             ]
         )
 
+    def test_del_counter_accepts_attributes(self, name):
+        tags = {"dag_id": "test_dag"}
+
+        self.stats.metrics_map.get_counter(full_name(name), tags)
+        self.stats.metrics_map.del_counter(full_name(name), tags)
+
+        assert full_name(name) not in self.map
+
     def test_incr_existing_metric(self, name):
         # Create the metric and set value to 1
         self.stats.incr(name)
