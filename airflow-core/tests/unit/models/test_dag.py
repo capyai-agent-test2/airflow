@@ -4111,3 +4111,23 @@ def test_calculate_dagrun_date_fields_preserves_future_pending_run(dag_maker):
     assert dag_model.next_dagrun == next_dagrun
     assert dag_model.next_dagrun_data_interval == next_dagrun_data_interval
     assert dag_model.next_dagrun_create_after == next_dagrun_create_after
+
+
+def test_calculate_dagrun_date_fields_clears_future_pending_run_when_unscheduled(dag_maker):
+    with dag_maker(schedule=None, start_date=TEST_DATE):
+        BashOperator(task_id="hi", bash_command="yo")
+
+    serdag = dag_maker.serialized_dag
+    dag_model = dag_maker.dag_model
+    dag_model.next_dagrun = TEST_DATE + timedelta(days=1)
+    dag_model.next_dagrun_data_interval = DataInterval(
+        TEST_DATE + timedelta(days=1), TEST_DATE + timedelta(days=2)
+    )
+    dag_model.next_dagrun_create_after = TEST_DATE + timedelta(days=2, hours=4)
+
+    with time_machine.travel(TEST_DATE + timedelta(days=2)):
+        dag_model.calculate_dagrun_date_fields(dag=serdag, last_automated_run=None)
+
+    assert dag_model.next_dagrun is None
+    assert dag_model.next_dagrun_data_interval is None
+    assert dag_model.next_dagrun_create_after is None
