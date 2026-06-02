@@ -37,7 +37,9 @@ def _convert_from_dict(obj, new_class):
         return obj
     if isinstance(obj, dict):
         api_client = ApiClient()
-        return api_client._ApiClient__deserialize_model(_convert_model_dict_keys(obj, new_class), new_class)
+        if hasattr(new_class, "attribute_map") and hasattr(new_class, "openapi_types"):
+            obj = _convert_model_dict_keys(obj, new_class)
+        return api_client._ApiClient__deserialize_model(obj, new_class)
     raise AirflowException(f"Expected dict or {new_class}, got {type(obj)}")
 
 
@@ -56,7 +58,14 @@ def _convert_model_dict_keys(obj: dict, new_class):
 
 
 def _convert_model_value(value, type_name):
-    if not isinstance(value, dict) or not type_name:
+    if not type_name:
+        return value
+    if type_name.startswith("list[") and type_name.endswith("]"):
+        nested_type = type_name.removeprefix("list[").removesuffix("]")
+        if isinstance(value, list):
+            return [_convert_model_value(item, nested_type) for item in value]
+        return value
+    if not isinstance(value, dict):
         return value
     nested_class = getattr(k8s, type_name.removeprefix("list[").removesuffix("]"), None)
     if not nested_class or not hasattr(nested_class, "attribute_map"):
