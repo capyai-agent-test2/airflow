@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Field, Stack } from "@chakra-ui/react";
+import { Field, Grid, GridItem } from "@chakra-ui/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -58,25 +58,34 @@ export const FieldRow = ({
   };
 
   return (
-    <Field.Root invalid={!isValid} orientation="horizontal" required={isRequired(param)}>
-      <Stack>
-        <Field.Label fontSize="md" style={{ flexBasis: "30%" }}>
-          {param.schema.title ?? name} <Field.RequiredIndicator />
-        </Field.Label>
-      </Stack>
-      <Stack css={{ flexBasis: "70%" }}>
-        <FieldSelector name={name} namespace={namespace} onUpdate={onUpdate} />
-        {param.description === null ? (
-          param.schema.description_md === undefined ? undefined : (
-            <Field.HelperText>
-              <ReactMarkdown>{param.schema.description_md}</ReactMarkdown>
-            </Field.HelperText>
-          )
-        ) : (
-          <Field.HelperText>{param.description}</Field.HelperText>
-        )}
-        {isValid ? undefined : <Field.ErrorText>{String(error)}</Field.ErrorText>}
-      </Stack>
+    <Field.Root invalid={!isValid} required={isRequired(param)}>
+      <Grid
+        alignItems="start"
+        columnGap={4}
+        data-testid={`field-row-${name}`}
+        rowGap={2}
+        templateColumns={{ base: "minmax(0, 1fr)", md: "minmax(0, 30%) minmax(0, 1fr)" }}
+        w="full"
+      >
+        <GridItem minW={0}>
+          <Field.Label fontSize="md" wordBreak="break-word">
+            {param.schema.title ?? name} <Field.RequiredIndicator />
+          </Field.Label>
+        </GridItem>
+        <GridItem minW={0}>
+          <FieldSelector name={name} namespace={namespace} onUpdate={onUpdate} />
+          {param.description === null ? (
+            param.schema.description_md === undefined ? undefined : (
+              <Field.HelperText>
+                <ReactMarkdown>{param.schema.description_md}</ReactMarkdown>
+              </Field.HelperText>
+            )
+          ) : (
+            <Field.HelperText>{param.description}</Field.HelperText>
+          )}
+          {isValid ? undefined : <Field.ErrorText>{String(error)}</Field.ErrorText>}
+        </GridItem>
+      </Grid>
     </Field.Root>
   );
 };
