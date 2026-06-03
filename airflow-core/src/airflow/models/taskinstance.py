@@ -93,7 +93,12 @@ from airflow.models.log import Log
 from airflow.models.taskinstancekey import TaskInstanceKey
 from airflow.models.taskmap import TaskMap
 from airflow.models.taskreschedule import TaskReschedule
-from airflow.models.xcom import XCOM_RETURN_KEY, LazyXComSelectSequence, XComModel
+from airflow.models.xcom import (
+    XCOM_RETURN_KEY,
+    LazyMappedXComSelectSequence,
+    LazyXComSelectSequence,
+    XComModel,
+)
 from airflow.serialization.enums import stringify_encoding_keys
 from airflow.settings import task_instance_mutation_hook
 from airflow.task.priority_strategy import validate_and_load_priority_weight_strategy
@@ -1993,8 +1998,8 @@ class TaskInstance(Base, LoggingMixin, BaseWorkload):
             if map_indexes is not None or first.map_index < 0:
                 return XComModel.deserialize_value(first)
 
-            return LazyXComSelectSequence.from_select(
-                query.with_only_columns(XComModel.value).order_by(None),
+            return LazyMappedXComSelectSequence.from_select(
+                query.with_only_columns(XComModel.map_index, XComModel.value).order_by(None),
                 order_by=[XComModel.map_index.expression],
                 session=session,
             )

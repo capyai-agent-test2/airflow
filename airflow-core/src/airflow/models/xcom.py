@@ -19,9 +19,9 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast, overload
 
 from sqlalchemy import (
     JSON,
@@ -404,6 +404,56 @@ class LazyXComSelectSequence(LazySelectSequence[Any]):
     @staticmethod
     def _process_row(row: Row) -> Any:
         return XComModel.deserialize_value(row)
+
+
+class LazyMappedXComSelectSequence(LazyXComSelectSequence):
+    """
+    List-like interface to lazily access mapped XCom values by map index.
+
+    :meta private:
+    """
+
+    @staticmethod
+    def _rebuild_select(stmt: TextClause) -> Select[tuple[Any]]:
+        return cast("Select[tuple[Any]]", select(XComModel.map_index, XComModel.value).from_statement(stmt))
+
+    def __len__(self) -> int:
+        if self._len is None:
+            query = self._select_asc.order_by(None).subquery()
+            max_map_index = self._session.scalar(select(func.max(query.c.map_index)))
+            self._len = 0 if max_map_index is None else max_map_index + 1
+        return self._len
+
+    @overload
+    def __getitem__(self, key: int) -> Any: ...
+
+    @overload
+    def __getitem__(self, key: slice) -> Sequence[Any]: ...
+
+    def __getitem__(self, key: int | slice) -> Any | Sequence[Any]:
+        if isinstance(key, int):
+            if key < 0:
+                key += len(self)
+            if key < 0:
+                raise IndexError(key)
+            stmt = self._select_asc.order_by(None).where(XComModel.map_index == key).limit(1)
+            if (row := self._session.execute(stmt).one_or_none()) is None:
+                raise IndexError(key)
+            return self._process_row(row)
+        if isinstance(key, slice):
+            map_indexes = list(range(*key.indices(len(self))))
+            if not map_indexes:
+                return []
+            rows = self._session.execute(
+                self._select_asc.order_by(None).where(XComModel.map_index.in_(map_indexes))
+            )
+            values_by_map_index = {row.map_index: self._process_row(row) for row in rows}
+            return [
+                values_by_map_index[map_index]
+                for map_index in map_indexes
+                if map_index in values_by_map_index
+            ]
+        raise TypeError(f"Sequence indices must be integers or slices, not {type(key).__name__}")
 
 
 __compat_imports = {

@@ -3278,6 +3278,38 @@ class TestMappedTaskInstanceReceiveValue:
             f"Expected LazyXComSelectSequence for mapped XComs, got {type(result)}"
         )
 
+    def test_xcom_pull_mapped_sequence_indexes_by_map_index(self, dag_maker, session):
+        """Test that sparse mapped XCom rows are accessed by their map index."""
+        with dag_maker(dag_id="test_xcom_sparse_mapped_values", session=session):
+
+            @task
+            def push_values(val):
+                return val
+
+            upstream = push_values.expand(val=[2, 4, 6])
+            downstream = PythonOperator(
+                task_id="downstream",
+                python_callable=lambda: None,
+            )
+            upstream >> downstream
+
+        dag_run = dag_maker.create_dagrun(logical_date=timezone.utcnow())
+        dag_maker.run_ti(upstream.operator.task_id, map_index=0, dag_run=dag_run, session=session)
+        dag_maker.run_ti(upstream.operator.task_id, map_index=2, dag_run=dag_run, session=session)
+
+        ti_downstream = dag_run.get_task_instance("downstream", session=session)
+        ti_downstream.task = dag_maker.dag.task_dict["downstream"]
+
+        result = ti_downstream.xcom_pull(task_ids=upstream.operator.task_id, session=session)
+
+        assert len(result) == 3
+        assert result[0] == 2
+        assert result[2] == 6
+        assert result[:] == [2, 6]
+        assert result[::-1] == [6, 2]
+        with pytest.raises(IndexError):
+            result[1]
+
 
 def _get_lazy_xcom_access_expected_sql_lines() -> list[str]:
     backend = os.environ.get("BACKEND")
