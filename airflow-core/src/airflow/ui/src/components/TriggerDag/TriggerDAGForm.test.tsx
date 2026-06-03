@@ -26,6 +26,14 @@ import TriggerDAGForm from "./TriggerDAGForm";
 
 const dagParams = vi.hoisted(() => ({
   paramsDict: {
+    enabled: {
+      description: "Enabled",
+      schema: {
+        title: "Enabled",
+        type: "boolean",
+      },
+      value: true,
+    },
     message: {
       description: "Message",
       schema: {
@@ -83,6 +91,29 @@ vi.mock("../JsonEditor", () => ({
 }));
 
 describe("TriggerDAGForm", () => {
+  it("renders run parameter rows in a two-column grid", async () => {
+    render(
+      <TriggerDAGForm
+        dagDisplayName="Params Trigger UI"
+        dagId="example_params_trigger_ui"
+        error={undefined}
+        hasSchedule={false}
+        isPartitioned={false}
+        isPaused={false}
+        isPending={false}
+        onSubmitTrigger={vi.fn()}
+        open
+      />,
+      { wrapper: Wrapper },
+    );
+
+    const booleanParamRow = await screen.findByTestId("field-row-enabled");
+
+    expect(booleanParamRow).toHaveStyle({
+      display: "grid",
+    });
+  });
+
   it("syncs Advanced Options JSON after Run Parameters edits in prefilled re-trigger mode", async () => {
     const { container } = render(
       <TriggerDAGForm
