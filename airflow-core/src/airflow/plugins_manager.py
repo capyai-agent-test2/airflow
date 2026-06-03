@@ -123,7 +123,7 @@ def _get_plugins() -> tuple[list[AirflowPlugin], dict[str, str]]:
             *_load_plugins_from_plugin_directory(
                 plugins_folder=settings.PLUGINS_FOLDER,
                 load_examples=load_examples,
-                example_plugins_module="airflow.example_dags.plugins" if load_examples else None,
+                example_plugins_module="airflow.example_plugins" if load_examples else None,
                 ignore_file_syntax=ignore_file_syntax,
             )
         )

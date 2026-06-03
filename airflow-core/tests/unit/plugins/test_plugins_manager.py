@@ -76,7 +76,7 @@ class TestPluginsManager:
         plugins, import_errors = plugins_manager._load_plugins_from_plugin_directory(
             plugins_folder=conf.get("core", "plugins_folder"),
             load_examples=conf.getboolean("core", "load_examples"),
-            example_plugins_module="airflow.example_dags.plugins",
+            example_plugins_module="airflow.example_plugins",
         )
 
         assert len(plugins) == 10
@@ -368,7 +368,7 @@ class TestPluginsManager:
             plugins=plugins_manager._load_plugins_from_plugin_directory(
                 plugins_folder=conf.get("core", "plugins_folder"),
                 load_examples=conf.getboolean("core", "load_examples"),
-                example_plugins_module="airflow.example_dags.plugins",
+                example_plugins_module="airflow.example_plugins",
             )[0]
         ):
             plugins_manager.integrate_listener_plugins(get_listener_manager())
@@ -378,7 +378,7 @@ class TestPluginsManager:
             listener_names = [el.__name__ if inspect.ismodule(el) else qualname(el) for el in listeners]
             # sort names as order of listeners is not guaranteed
             assert sorted(listener_names) == [
-                "airflow.example_dags.plugins.event_listener",
+                "airflow.example_plugins.event_listener",
                 "unit.listeners.class_listener.ClassBasedListener",
                 "unit.listeners.empty_listener",
             ]

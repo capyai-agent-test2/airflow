@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pendulum
 
-from airflow.example_dags.plugins.workday import AfterWorkdayTimetable
+from airflow.example_plugins.workday import AfterWorkdayTimetable
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.sdk import DAG
 
