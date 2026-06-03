@@ -155,7 +155,7 @@ class RuntimeTaskInstanceProtocol(Protocol):
         self,
         task_ids: str | Iterable[str] | None = None,
         dag_id: str | None = None,
-        key: str = BaseXCom.XCOM_RETURN_KEY,
+        key: str | None = BaseXCom.XCOM_RETURN_KEY,
         include_prior_dates: bool = False,
         *,
         map_indexes: int | Iterable[int] | None | ArgNotSet = NOTSET,

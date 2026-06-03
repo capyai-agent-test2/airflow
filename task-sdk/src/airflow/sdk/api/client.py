@@ -560,12 +560,19 @@ class XComOperations:
             raise RuntimeError(f"Unable to parse Content-Range header from HEAD {resp.request.url}")
         return XComCountResponse(len=int(content_range[len("map_indexes ") :]))
 
+    @staticmethod
+    def _build_xcom_path(dag_id: str, run_id: str, task_id: str, key: str | None = None) -> str:
+        path = f"xcoms/{dag_id}/{run_id}/{task_id}"
+        if key is not None:
+            path = f"{path}/{key}"
+        return path
+
     def get(
         self,
         dag_id: str,
         run_id: str,
         task_id: str,
-        key: str,
+        key: str | None,
         map_index: int | None = None,
         include_prior_dates: bool = False,
     ) -> XComResponse:
@@ -578,7 +585,7 @@ class XComOperations:
         if include_prior_dates:
             params.update({"include_prior_dates": include_prior_dates})
         try:
-            resp = self.client.get(f"xcoms/{dag_id}/{run_id}/{task_id}/{key}", params=params)
+            resp = self.client.get(self._build_xcom_path(dag_id, run_id, task_id, key), params=params)
         except ServerResponseError as e:
             if e.response.status_code == HTTPStatus.NOT_FOUND:
                 log.error(
@@ -594,7 +601,7 @@ class XComOperations:
                 # Airflow 2.x just ignores the absence of an XCom and moves on with a return value of None
                 # Hence returning with key as `key` and value as `None`, so that the message is sent back to task runner
                 # and the default value of None in xcom_pull is used.
-                return XComResponse(key=key, value=None)
+                return XComResponse(key=key or "", value=None)
             raise
         return XComResponse.model_validate_json(resp.read())
 
@@ -685,7 +692,7 @@ class XComOperations:
         dag_id: str,
         run_id: str,
         task_id: str,
-        key: str,
+        key: str | None,
         start: int | None,
         stop: int | None,
         step: int | None,
@@ -700,7 +707,13 @@ class XComOperations:
             params["step"] = step
         if include_prior_dates:
             params["include_prior_dates"] = include_prior_dates
-        resp = self.client.get(f"xcoms/{dag_id}/{run_id}/{task_id}/{key}/slice", params=params)
+        if key is None:
+            params["as_sequence"] = True
+            resp = self.client.get(self._build_xcom_path(dag_id, run_id, task_id), params=params)
+        else:
+            resp = self.client.get(
+                f"{self._build_xcom_path(dag_id, run_id, task_id, key)}/slice", params=params
+            )
         return XComSequenceSliceResponse.model_validate_json(resp.read())
 
 

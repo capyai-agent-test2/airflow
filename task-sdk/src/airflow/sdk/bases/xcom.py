@@ -164,7 +164,7 @@ class BaseXCom:
     def _get_xcom_db_ref(
         cls,
         *,
-        key: str,
+        key: str | None,
         dag_id: str,
         task_id: str,
         run_id: str,
@@ -213,7 +213,7 @@ class BaseXCom:
     def get_one(
         cls,
         *,
-        key: str,
+        key: str | None,
         dag_id: str,
         task_id: str,
         run_id: str,
@@ -277,7 +277,7 @@ class BaseXCom:
     def get_all(
         cls,
         *,
-        key: str,
+        key: str | None,
         dag_id: str,
         task_id: str,
         run_id: str,

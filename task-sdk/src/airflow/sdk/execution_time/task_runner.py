@@ -414,7 +414,7 @@ class RuntimeTaskInstance(TaskInstance):
         self,
         task_ids: str | Iterable[str] | None = None,
         dag_id: str | None = None,
-        key: str = BaseXCom.XCOM_RETURN_KEY,
+        key: str | None = BaseXCom.XCOM_RETURN_KEY,
         include_prior_dates: bool = False,
         *,
         map_indexes: int | Iterable[int] | None | ArgNotSet = NOTSET,
@@ -427,7 +427,7 @@ class RuntimeTaskInstance(TaskInstance):
         The pull can be filtered optionally by certain criterion.
 
         :param key: A key for the XCom. If provided, only XComs with matching
-            keys will be returned. The default key is ``'return_value'``, also
+            keys will be returned. Pass *None* to remove the filter. The default key is ``'return_value'``, also
             available as constant ``XCOM_RETURN_KEY``. This key is automatically
             given to XComs returned by tasks (as opposed to being pushed
             manually).

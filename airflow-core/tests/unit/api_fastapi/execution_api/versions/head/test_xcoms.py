@@ -58,10 +58,9 @@ def access_denied(client):
         dag_id: str = Path(),
         run_id: str = Path(),
         task_id: str = Path(),
-        xcom_key: str = Path(alias="key"),
         token=CurrentTIToken,
     ):
-        await has_xcom_access(dag_id, run_id, task_id, xcom_key, request, token)
+        await has_xcom_access(dag_id, run_id, task_id, request, token)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -117,6 +116,42 @@ class TestXComsGetEndpoint:
                 "reason": "not_found",
             }
         }
+
+    def test_xcom_get_without_key_filter(self, client, create_task_instance, session):
+        ti = create_task_instance()
+        x = XComModel(
+            key="xcom_1",
+            value="value1",
+            dag_run_id=ti.dag_run.id,
+            run_id=ti.run_id,
+            task_id=ti.task_id,
+            dag_id=ti.dag_id,
+        )
+        session.add(x)
+        session.commit()
+
+        response = client.get(f"/execution/xcoms/{ti.dag_id}/{ti.run_id}/{ti.task_id}")
+
+        assert response.status_code == 200
+        assert response.json() == {"key": "xcom_1", "value": "value1"}
+
+    def test_xcom_get_slice_key(self, client, create_task_instance, session):
+        ti = create_task_instance()
+        x = XComModel(
+            key="slice",
+            value="value1",
+            dag_run_id=ti.dag_run.id,
+            run_id=ti.run_id,
+            task_id=ti.task_id,
+            dag_id=ti.dag_id,
+        )
+        session.add(x)
+        session.commit()
+
+        response = client.get(f"/execution/xcoms/{ti.dag_id}/{ti.run_id}/{ti.task_id}/slice")
+
+        assert response.status_code == 200
+        assert response.json() == {"key": "slice", "value": "value1"}
 
     @pytest.mark.usefixtures("access_denied")
     def test_xcom_access_denied(self, client, caplog):
@@ -272,6 +307,38 @@ class TestXComsGetEndpoint:
         response = client.get(f"/execution/xcoms/dag/runid/task/xcom_1/slice?{urllib.parse.urlencode(qs)}")
         assert response.status_code == 200
         assert response.json() == ["f", "o", "b"][key]
+
+    def test_xcom_get_with_slice_without_key_filter(self, client, dag_maker, session):
+        with dag_maker(dag_id="dag"):
+            EmptyOperator(task_id="task")
+        dag_run = dag_maker.create_dagrun(run_id="runid")
+        ti = dag_run.get_task_instance("task")
+        session.add_all(
+            [
+                XComModel(
+                    key="xcom_1",
+                    value="value1",
+                    dag_run_id=ti.dag_run.id,
+                    run_id=ti.run_id,
+                    task_id=ti.task_id,
+                    dag_id=ti.dag_id,
+                ),
+                XComModel(
+                    key="xcom_2",
+                    value="value2",
+                    dag_run_id=ti.dag_run.id,
+                    run_id=ti.run_id,
+                    task_id=ti.task_id,
+                    dag_id=ti.dag_id,
+                ),
+            ]
+        )
+        session.commit()
+
+        response = client.get("/execution/xcoms/dag/runid/task?as_sequence=true")
+
+        assert response.status_code == 200
+        assert set(response.json()) == {"value1", "value2"}
 
     @pytest.mark.parametrize(
         ("include_prior_dates", "expected_xcoms"),

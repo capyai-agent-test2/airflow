@@ -856,7 +856,7 @@ class SkipDownstreamTasks(TISkippedDownstreamTasksStatePayload):
 
 
 class GetXCom(BaseModel):
-    key: str
+    key: str | None
     dag_id: str
     run_id: str
     task_id: str
@@ -885,7 +885,7 @@ class GetXComSequenceItem(BaseModel):
 
 
 class GetXComSequenceSlice(BaseModel):
-    key: str
+    key: str | None
     dag_id: str
     run_id: str
     task_id: str
