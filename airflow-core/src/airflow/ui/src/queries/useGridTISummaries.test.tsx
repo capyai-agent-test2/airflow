@@ -192,7 +192,7 @@ describe("useGridTiSummariesStream", () => {
 
     queryClient.setQueryData([useTaskInstanceServiceGetTaskInstancesKey], {});
 
-    let resolveReaderPromise: (value: ReadableStreamReadResult<Uint8Array>) => void;
+    let resolveReaderPromise!: (value: ReadableStreamReadResult<Uint8Array>) => void;
     const readerPromise = new Promise<ReadableStreamReadResult<Uint8Array>>((resolve) => {
       resolveReaderPromise = resolve;
     });
