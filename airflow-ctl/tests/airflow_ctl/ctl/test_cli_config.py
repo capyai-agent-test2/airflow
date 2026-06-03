@@ -26,6 +26,7 @@ import httpx
 import pytest
 
 from airflowctl.api.operations import ServerResponseError
+from airflowctl.ctl import cli_parser
 from airflowctl.ctl.cli_config import (
     ARG_AUTH_TOKEN,
     ActionCommand,
@@ -755,3 +756,14 @@ class TestCliConfigMethods:
                             "Help message should match the help_text.yaml"
                         )
                         return
+
+
+def test_tasks_state_command_is_registered():
+    parser = cli_parser.get_parser()
+    args = parser.parse_args(["tasks", "state", "dag_a", "run_a", "task_a", "--map-index", "2"])
+
+    assert args.subcommand == "state"
+    assert args.dag_id == "dag_a"
+    assert args.dag_run_id == "run_a"
+    assert args.task_id == "task_a"
+    assert args.map_index == 2
