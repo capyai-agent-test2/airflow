@@ -33,11 +33,12 @@ pytestmark = pytest.mark.db_test
 
 
 class TestNotInRetryPeriodDep:
-    def _get_task_instance(self, state, end_date=None, retry_delay=timedelta(minutes=15)):
+    def _get_task_instance(self, state, end_date=None, retry_delay=timedelta(minutes=15), start_date=None):
         task = SerializedBaseOperator(task_id="fake")
         task.retry_delay = retry_delay
         task.retry_exponential_backoff = 0
         ti = TaskInstance(task=task, state=state, dag_version_id=mock.MagicMock())
+        ti.start_date = start_date
         ti.end_date = end_date
         return ti
 
@@ -56,6 +57,20 @@ class TestNotInRetryPeriodDep:
         Task instance's that have had their retry period elapse should pass this dep
         """
         ti = self._get_task_instance(State.UP_FOR_RETRY, end_date=datetime(2016, 1, 1))
+        assert not ti.is_premature
+        assert NotInRetryPeriodDep().is_met(ti=ti)
+
+    @time_machine.travel("2016-01-01 15:44")
+    def test_retry_period_without_end_date(self):
+        ti = self._get_task_instance(State.UP_FOR_RETRY, start_date=datetime(2016, 1, 1, 15, 30))
+
+        assert ti.is_premature
+        assert not NotInRetryPeriodDep().is_met(ti=ti)
+
+    @time_machine.travel("2016-01-01 15:46")
+    def test_retry_period_without_end_date_after_delay(self):
+        ti = self._get_task_instance(State.UP_FOR_RETRY, start_date=datetime(2016, 1, 1, 15, 30))
+
         assert not ti.is_premature
         assert NotInRetryPeriodDep().is_met(ti=ti)
 
