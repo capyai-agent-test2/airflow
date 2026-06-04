@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+import jwt
 import pytest
 from fastapi import FastAPI
 
@@ -64,6 +65,18 @@ def test_expiring_token_is_reissued(
     response = client.get("/execution/variables/key1", headers={"Authorization": "Bearer dummy"})
 
     if expect_refreshed_token:
-        assert "Refreshed-API-Token" in response.headers
+        refreshed_claims = jwt.decode(
+            response.headers["Refreshed-API-Token"],
+            options={
+                "verify_signature": False,
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_nbf": False,
+                "verify_aud": False,
+            },
+        )
+        assert refreshed_claims["sub"] == auth.avalidated_claims.return_value["sub"]
+        assert refreshed_claims["exp"] > auth.avalidated_claims.return_value["exp"]
+        assert refreshed_claims["iat"] > auth.avalidated_claims.return_value["iat"]
     else:
         assert "Refreshed-API-Token" not in response.headers

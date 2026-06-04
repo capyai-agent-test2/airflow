@@ -51,6 +51,8 @@ from structlog.contextvars import bind_contextvars
 
 logger = structlog.get_logger(logger_name=__name__)
 
+_JWT_GENERATED_CLAIMS = frozenset({"aud", "exp", "iat", "iss", "jti", "nbf"})
+
 __all__ = [
     "create_task_execution_api_app",
     "lifespan",
@@ -86,6 +88,10 @@ def _jwt_generator():
         **get_signing_args(make_secret_key_if_needed=False),
     )
     return generator
+
+
+def get_token_refresh_claims(claims: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in claims.items() if key not in _JWT_GENERATED_CLAIMS}
 
 
 @svcs.fastapi.lifespan
@@ -155,7 +161,7 @@ class JWTReissueMiddleware(BaseHTTPMiddleware):
                     valid_left = int(claims.get("exp", 0)) - now
                     if valid_left <= refresh_when_less_than:
                         generator: JWTGenerator = await services.aget(JWTGenerator)
-                        refreshed_token = generator.generate(claims)
+                        refreshed_token = generator.generate(extras=get_token_refresh_claims(claims))
             except Exception as err:
                 # Do not block the response if refreshing fails; log a warning for visibility
                 logger.warning(
