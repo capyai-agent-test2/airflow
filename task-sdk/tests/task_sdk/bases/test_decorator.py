@@ -189,6 +189,19 @@ class TestDefaultFillingLogic:
         with pytest.raises(TypeError):
             make_op(dummy_task)
 
+    def test_bind_validation_error_mentions_decorated_task_name_collision(self):
+        def dummy_task():
+            return None
+
+        with pytest.raises(
+            TypeError,
+            match=(
+                r"Invalid arguments were passed to @task\.dummy-decorated function 'dummy_task': "
+                r"too many positional arguments.*decorated task object instead of the original function"
+            ),
+        ):
+            make_op(dummy_task, op_args=[3600])
+
     def test_variadic_and_keyword_only_params_are_not_assigned_defaults(self):
         """Construction succeeds when variadic and keyword-only params are present."""
 

@@ -365,10 +365,20 @@ class DecoratedOperator(BaseOperator):
         # check all the arguments we know are valid. Whether these are enough
         # can only be known at execution time, when unmapping happens, and this
         # is called without the _airflow_mapped_validation_only flag.
-        if kwargs.get("_airflow_mapped_validation_only"):
-            signature.bind_partial(*op_args, **op_kwargs)
-        else:
-            signature.bind(*op_args, **op_kwargs)
+        try:
+            if kwargs.get("_airflow_mapped_validation_only"):
+                signature.bind_partial(*op_args, **op_kwargs)
+            else:
+                signature.bind(*op_args, **op_kwargs)
+        except TypeError as err:
+            operator_name = getattr(self, "custom_operator_name", "decorated operator")
+            callable_name = getattr(python_callable, "__name__", repr(python_callable))
+            raise TypeError(
+                f"Invalid arguments were passed to {operator_name}-decorated function "
+                f"{callable_name!r}: {err}. This can happen if the function calls the "
+                "decorated task object instead of the original function, for example because both share "
+                "the same name."
+            ) from err
 
         # Params in injected_for_ordering are semantically required even though they received a
         # None default to satisfy Python's ordering constraint. Verify they are actually provided.
