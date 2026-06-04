@@ -34,6 +34,7 @@ from airflowctl.ctl.cli_config import (
     GroupCommand,
     add_auth_token_to_all_commands,
     merge_commands,
+    parse_json_object,
     safe_call_command,
 )
 from airflowctl.exceptions import (
@@ -105,7 +106,7 @@ def test_args_create():
                 "help": "dag_run_conf for backfill operation",
                 "action": None,
                 "default": None,
-                "type": dict,
+                "type": parse_json_object,
                 "dest": None,
             },
         ),
@@ -736,6 +737,23 @@ class TestCliConfigMethods:
 
         # Should return params unchanged for other datamodels
         assert result == params, "Params should be unchanged for non-TriggerDAGRunPostBody datamodels"
+
+    def test_parse_json_object_accepts_cli_conf(self):
+        assert parse_json_object('{"my-key": "my-value"}') == {"my-key": "my-value"}
+
+    @pytest.mark.parametrize("value", ['["not", "an", "object"]', "not-json"])
+    def test_parse_json_object_rejects_non_object_values(self, value):
+        with pytest.raises(argparse.ArgumentTypeError):
+            parse_json_object(value)
+
+    def test_dags_trigger_parser_parses_conf_as_json_object(self):
+        from airflowctl.ctl import cli_parser
+
+        parser = cli_parser.get_parser()
+
+        args = parser.parse_args(["dags", "trigger", "test-dag", "--conf", '{"my-key": "my-value"}'])
+
+        assert args.conf == {"my-key": "my-value"}
 
     @pytest.mark.parametrize(
         ("group_name", "subcommand_name", "expected_help"),
