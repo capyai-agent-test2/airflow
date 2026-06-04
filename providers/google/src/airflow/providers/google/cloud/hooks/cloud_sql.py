@@ -92,6 +92,15 @@ class CloudSqlOperationStatus:
     UNKNOWN = "UNKNOWN"
 
 
+NON_TERMINAL_CLOUD_SQL_OPERATION_STATUSES = frozenset(
+    {
+        CloudSqlOperationStatus.PENDING,
+        CloudSqlOperationStatus.RUNNING,
+        CloudSqlOperationStatus.UNKNOWN,
+    }
+)
+
+
 class CloudSQLHook(GoogleBaseHook):
     """
     Hook for Google Cloud SQL APIs.
@@ -427,6 +436,34 @@ class CloudSQLHook(GoogleBaseHook):
             .operations()
             .get(project=project_id, operation=operation_name)
             .execute(num_retries=self.num_retries)
+        )
+
+    @GoogleBaseHook.fallback_to_default_project_id
+    def get_operations(
+        self,
+        instance: str,
+        project_id: str,
+        max_results: int | None = None,
+        page_token: str | None = None,
+    ) -> dict:
+        request = (
+            self.get_conn()
+            .operations()
+            .list(
+                project=project_id,
+                instance=instance,
+                maxResults=max_results,
+                pageToken=page_token,
+            )
+        )
+        return request.execute(num_retries=self.num_retries)
+
+    @GoogleBaseHook.fallback_to_default_project_id
+    def is_instance_operation_in_progress(self, instance: str, project_id: str) -> bool:
+        response = self.get_operations(project_id=project_id, instance=instance, max_results=1)
+        return any(
+            operation.get("status") in NON_TERMINAL_CLOUD_SQL_OPERATION_STATUSES
+            for operation in response.get("items", [])
         )
 
     @GoogleBaseHook.fallback_to_default_project_id
