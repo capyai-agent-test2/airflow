@@ -104,7 +104,7 @@ class TestOtelMetrics:
         self.stats.prefix = prefix
 
         self.stats.incr(name)
-        self.meter.assert_not_called()
+        self.meter.get_meter().create_counter.assert_not_called()
 
     def test_old_name_exception_works(self, caplog):
         name = "task_instance_created_OperatorNameWhichIsSuperLongAndExceedsTheOpenTelemetryCharacterLimit/task_instance_created_OperatorNameWhichIsSuperLongAndExceedsTheOpenTelemetryCharacterLimit/task_instance_created_OperatorNameWhichIsSuperLongAndExceedsTheOpenTelemetryCharacterLimit"
