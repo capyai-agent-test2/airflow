@@ -36,12 +36,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from operator import attrgetter, itemgetter
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Literal, NamedTuple, cast
 
 import attrs
 import structlog
 from sqlalchemy import select, update
 from sqlalchemy.orm import load_only
+from structlog import _output as structlog_output
 from tabulate import tabulate
 from uuid6 import uuid7
 
@@ -148,6 +149,14 @@ def _config_bool_factory(section: str, key: str):
 
 def _config_get_factory(section: str, key: str):
     return functools.partial(conf.get, section, key)
+
+
+def _close_logger_filehandle(filehandle: BinaryIO) -> None:
+    try:
+        filehandle.close()
+    finally:
+        with contextlib.suppress(Exception):
+            structlog_output.WRITE_LOCKS.pop(filehandle, None)
 
 
 def _resolve_path(instance: Any, attribute: attrs.Attribute, val: str | os.PathLike[str] | None):
@@ -1089,7 +1098,7 @@ class DagFileProcessorManager(LoggingMixin):
                 self.log.warning("Stopping processor for %s", file_name)
                 stats.decr("dag_processing.processes", tags={"file_path": file_name, "action": "stop"})
                 processor.kill(signal.SIGKILL)
-                processor.logger_filehandle.close()
+                _close_logger_filehandle(processor.logger_filehandle)
                 self._file_stats.pop(file, None)
 
     @provide_session
@@ -1218,7 +1227,7 @@ class DagFileProcessorManager(LoggingMixin):
 
         for file in finished:
             processor = self._processors.pop(file)
-            processor.logger_filehandle.close()
+            _close_logger_filehandle(processor.logger_filehandle)
 
     def _get_log_dir(self) -> str:
         return os.path.join(self.base_log_dir, timezone.utcnow().strftime("%Y-%m-%d"))
@@ -1501,7 +1510,7 @@ class DagFileProcessorManager(LoggingMixin):
         # Clean up `self._processors` after iterating over it
         for proc in processors_to_remove:
             processor = self._processors.pop(proc)
-            processor.logger_filehandle.close()
+            _close_logger_filehandle(processor.logger_filehandle)
 
     def _add_files_to_queue(
         self,
