@@ -21,6 +21,7 @@ import base64
 import contextlib
 import json
 import pickle
+import warnings
 from types import SimpleNamespace
 from unittest import mock
 from unittest.mock import call, patch
@@ -112,6 +113,34 @@ class TestHttpOperator:
         with pytest.raises(TaskDeferred) as exc:
             operator.execute({})
         assert isinstance(exc.value.trigger, HttpTrigger), "Trigger is not a HttpTrigger"
+
+    @pytest.mark.parametrize("method", ["POST", "PUT", "DELETE", "PATCH"])
+    def test_async_warns_for_non_idempotent_methods(self, method):
+        operator = HttpOperator(
+            task_id="test_HTTP_op",
+            method=method,
+            deferrable=True,
+        )
+
+        with pytest.warns(
+            UserWarning,
+            match=rf"HttpOperator deferrable=True with method='{method}' may send duplicate requests",
+        ):
+            with pytest.raises(TaskDeferred):
+                operator.execute({})
+
+    @pytest.mark.parametrize("method", ["GET", "HEAD", "OPTIONS"])
+    def test_async_does_not_warn_for_idempotent_methods(self, method):
+        operator = HttpOperator(
+            task_id="test_HTTP_op",
+            method=method,
+            deferrable=True,
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(TaskDeferred):
+                operator.execute({})
 
     def test_async_execute_successfully(self, requests_mock):
         operator = HttpOperator(

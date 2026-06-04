@@ -17,6 +17,7 @@
 # under the License.
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -98,6 +99,7 @@ class HttpOperator(BaseOperator):
     template_fields_renderers = {"headers": "json", "data": "py"}
     template_ext: Sequence[str] = ()
     ui_color = "#f4a460"
+    _IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
     def __init__(
         self,
@@ -209,6 +211,15 @@ class HttpOperator(BaseOperator):
         return all_responses
 
     def execute_async(self, context: Context) -> None:
+        if self.method.upper() not in self._IDEMPOTENT_METHODS:
+            warnings.warn(
+                (
+                    f"HttpOperator deferrable=True with method={self.method!r} may send duplicate "
+                    "requests if the Triggerer restarts."
+                ),
+                UserWarning,
+                stacklevel=2,
+            )
         self.defer(
             trigger=HttpTrigger(
                 http_conn_id=self.http_conn_id,
