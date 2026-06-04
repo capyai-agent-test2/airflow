@@ -88,6 +88,9 @@ class HiveCliHook(BaseHook):
         This can make monitoring easier.
     :param hive_cli_params: Space separated list of hive command parameters to add to the
         hive command.
+    :param jdbc_parameters: Additional JDBC URL parameters appended to the beeline connection
+        string. This is intended for Dag-authored values that are not exposed as connection
+        extras.
     :param proxy_user: Run HQL code as this user.
     """
 
@@ -103,6 +106,7 @@ class HiveCliHook(BaseHook):
         mapred_queue_priority: str | None = None,
         mapred_job_name: str | None = None,
         hive_cli_params: str = "",
+        jdbc_parameters: Mapping[str, str] | None = None,
         auth: str | None = None,
         proxy_user: str | None = None,
     ) -> None:
@@ -123,6 +127,7 @@ class HiveCliHook(BaseHook):
         self.mapred_queue = mapred_queue or conf.get("hive", "default_hive_mapred_queue")
         self.mapred_queue_priority = mapred_queue_priority
         self.mapred_job_name = mapred_job_name
+        self.jdbc_parameters = jdbc_parameters or {}
         self.proxy_user = proxy_user
         self.high_availability = self.conn.extra_dejson.get("high_availability", False)
 
@@ -164,6 +169,26 @@ class HiveCliHook(BaseHook):
             return f"hive.server2.proxy.user={proxy_user_value}"
         return ""
 
+    def _get_jdbc_parameter_string(self) -> str:
+        """Build extra JDBC parameters for the beeline connection URL."""
+        if not self.jdbc_parameters:
+            return ""
+
+        invalid_parameter = next(
+            (
+                f"{key}={value}"
+                for key, value in self.jdbc_parameters.items()
+                if ";" in key or ";" in value or not key
+            ),
+            None,
+        )
+        if invalid_parameter is not None:
+            raise ValueError(
+                "JDBC parameters passed to HiveCliHook should have non-empty keys and must not contain ';': "
+                f"{invalid_parameter}"
+            )
+        return "".join(f";{key}={value}" for key, value in self.jdbc_parameters.items())
+
     def _prepare_cli_cmd(self) -> list[Any]:
         """Create the command list from available information."""
         conn = self.conn
@@ -200,6 +225,7 @@ class HiveCliHook(BaseHook):
             elif self.auth:
                 jdbc_url += ";auth=" + self.auth
 
+            jdbc_url += self._get_jdbc_parameter_string()
             jdbc_url = f'"{jdbc_url}"'
 
             cmd_extra += ["-u", jdbc_url]

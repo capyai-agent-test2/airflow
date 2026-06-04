@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
@@ -60,6 +60,8 @@ class HiveOperator(BaseOperator):
     :param mapred_job_name: This name will appear in the jobtracker.
         This can make monitoring easier.
     :param hive_cli_params: parameters passed to hive CLO
+    :param jdbc_parameters: Additional JDBC URL parameters appended to the beeline
+        connection string.
     :param auth: optional authentication option passed for the Hive connection
     :param proxy_user: Run HQL code as this user.
     """
@@ -94,6 +96,7 @@ class HiveOperator(BaseOperator):
         mapred_queue_priority: str | None = None,
         mapred_job_name: str | None = None,
         hive_cli_params: str = "",
+        jdbc_parameters: Mapping[str, str] | None = None,
         auth: str | None = None,
         proxy_user: str | None = None,
         **kwargs: Any,
@@ -109,6 +112,7 @@ class HiveOperator(BaseOperator):
         self.mapred_queue_priority = mapred_queue_priority
         self.mapred_job_name = mapred_job_name
         self.hive_cli_params = hive_cli_params
+        self.jdbc_parameters = jdbc_parameters
         self.auth = auth
         self.proxy_user = proxy_user
         job_name_template = conf.get_mandatory_value(
@@ -127,6 +131,7 @@ class HiveOperator(BaseOperator):
             mapred_queue_priority=self.mapred_queue_priority,
             mapred_job_name=self.mapred_job_name,
             hive_cli_params=self.hive_cli_params,
+            jdbc_parameters=self.jdbc_parameters,
             auth=self.auth,
             proxy_user=self.proxy_user,
         )

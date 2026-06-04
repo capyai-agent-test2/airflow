@@ -22,7 +22,7 @@ from unittest import mock
 
 import pytest
 
-from airflow.models import DagRun, TaskInstance
+from airflow.models import DAG, DagRun, TaskInstance
 from airflow.providers.apache.hive.operators.hive import HiveOperator
 from airflow.providers.common.compat.sdk import conf
 from airflow.utils import timezone
@@ -94,6 +94,22 @@ class HiveOperatorTest(TestHiveEnvironment):
             f"{fake_ti.hostname}.{self.dag.dag_id}.{op.task_id}.{fake_logical_date.isoformat()}"
             == mock_hook.mapred_job_name
         )
+
+
+def test_hook_receives_jdbc_parameters():
+    args = {"owner": "airflow", "start_date": DEFAULT_DATE}
+    dag = DAG("test_dag_id", schedule=None, default_args=args)
+    op = HiveOperator(
+        task_id="jdbc_params",
+        hql="SELECT 1",
+        jdbc_parameters={"transportMode": "http", "trustStorePassword": "secret"},
+        dag=dag,
+    )
+
+    assert op.hook.jdbc_parameters == {
+        "transportMode": "http",
+        "trustStorePassword": "secret",
+    }
 
 
 @pytest.mark.skipif(
