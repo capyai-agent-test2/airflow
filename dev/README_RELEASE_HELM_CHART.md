@@ -991,9 +991,15 @@ To update `index.yaml` for the newly released chart version, follow these steps:
 ```shell
 git clone https://github.com/apache/airflow-site.git airflow-site
 cd airflow-site
+# Wait until the newly released chart is available on archive.apache.org before
+# publishing an index entry that points to it.
+until curl -fsI "https://archive.apache.org/dist/airflow/helm-chart/${VERSION}/airflow-${VERSION}.tgz" >/dev/null; do
+  echo "airflow-${VERSION}.tgz is not on archive.apache.org yet; waiting 10 minutes..."
+  sleep 600
+done
 curl https://dist.apache.org/repos/dist/dev/airflow/helm-chart/${VERSION}${VERSION_SUFFIX}/index.yaml -o index.yaml
 cp ${AIRFLOW_SVN_RELEASE_HELM}/${VERSION}/airflow-${VERSION}.tgz .
-helm repo index --merge ./index.yaml . --url "https://downloads.apache.org/airflow/helm-chart/${VERSION}"
+helm repo index --merge ./index.yaml . --url "https://archive.apache.org/dist/airflow/helm-chart/${VERSION}"
 rm airflow-${VERSION}.tgz
 mv index.yaml landing-pages/site/static/index.yaml
 git checkout -b feature/new-chart-release-${VERSION}
@@ -1169,17 +1175,21 @@ Do not add `-dev` suffix to the version.
 
 ## Remove old releases
 
-We should keep the old version a little longer than a day or at least until the updated
-``index.yaml`` is published. This is to avoid errors for users who haven't run ``helm repo update``.
+The release index now points released chart versions at ``archive.apache.org``, so superseded
+versions remain downloadable after they are removed from ``dist/release``. Once the new version
+is available on the archive and the updated ``index.yaml`` is published, old versions can be
+removed from the release area immediately.
 
-It is probably ok if we leave last 2 versions on release svn repo too.
+The snippet below removes every version except the one you just released:
 
 ```shell
 # http://www.apache.org/legal/release-policy.html#when-to-archive
-cd cd ${AIRFLOW_REPO_ROOT}/asf-dist/release/airflow/helm-chart
-export PREVIOUS_VERSION=1.0.0
-svn rm ${PREVIOUS_VERSION}
-svn commit -m "Remove old Helm Chart release: ${PREVIOUS_VERSION}"
+cd "${AIRFLOW_SVN_RELEASE_HELM}"
+svn update
+for old_version in $(svn ls | sed 's:/$::' | grep -vx "${VERSION}"); do
+  svn rm "${old_version}"
+done
+svn commit -m "Remove superseded Helm Chart releases"
 ```
 
 # Additional processes
