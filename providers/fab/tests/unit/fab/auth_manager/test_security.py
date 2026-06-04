@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import json
 import logging
 from typing import TYPE_CHECKING
 from unittest import mock
@@ -389,6 +390,49 @@ def test_update_and_verify_permission_role(app, security_manager, role):
 def test_verify_public_role_has_no_permissions(security_manager):
     public = security_manager.find_role("Public")
     assert public.permissions == []
+
+
+def test_sync_roles_adds_custom_role_from_airflow_config(app, security_manager):
+    role_name = "ConfigDefinedRole"
+    config_value = json.dumps(
+        [{"role": role_name, "perms": [[permissions.ACTION_CAN_READ, permissions.RESOURCE_WEBSITE]]}]
+    )
+
+    with app.app_context():
+        with conf_vars({("fab", "custom_role_definitions"): config_value}):
+            security_manager.sync_roles()
+            role = security_manager.find_role(role_name)
+            assert role is not None
+            assert (permissions.ACTION_CAN_READ, permissions.RESOURCE_WEBSITE) in {
+                (permission.action.name, permission.resource.name) for permission in role.permissions
+            }
+
+    delete_role(app, role_name)
+
+
+def test_sync_roles_adds_custom_role_from_webserver_config(app, security_manager):
+    role_name = "WebserverConfigDefinedRole"
+    role_config = [
+        {"role": role_name, "perms": [[permissions.ACTION_CAN_READ, permissions.RESOURCE_WEBSITE]]}
+    ]
+
+    with app.app_context():
+        previous_value = app.config.get("AUTH_ROLE_CONFIGS")
+        app.config["AUTH_ROLE_CONFIGS"] = role_config
+        try:
+            security_manager.sync_roles()
+            role = security_manager.find_role(role_name)
+            assert role is not None
+            assert (permissions.ACTION_CAN_READ, permissions.RESOURCE_WEBSITE) in {
+                (permission.action.name, permission.resource.name) for permission in role.permissions
+            }
+        finally:
+            if previous_value is None:
+                app.config.pop("AUTH_ROLE_CONFIGS", None)
+            else:
+                app.config["AUTH_ROLE_CONFIGS"] = previous_value
+
+    delete_role(app, role_name)
 
 
 @patch.object(FabAuthManager, "is_logged_in")
