@@ -1063,6 +1063,52 @@ class TestWatchedSubprocess:
                 target=subprocess_main,
             )
 
+    @pytest.mark.parametrize("captured_logs", [logging.ERROR], indirect=True, ids=["log_level=error"])
+    def test_start_logs_server_error_to_task_log_before_killing_subprocess(self, captured_logs, mocker):
+        ti_id = uuid7()
+        detail = {
+            "reason": "invalid_state",
+            "message": "TI was not in the running state so it cannot be updated",
+            "previous_state": "failed",
+        }
+
+        def handle_request(request: httpx.Request) -> httpx.Response:
+            if request.url.path == f"/task-instances/{ti_id}/run":
+                return httpx.Response(409, json={"detail": detail})
+            return httpx.Response(status_code=204)
+
+        def subprocess_main():
+            CommsDecoder()._get_response()
+
+        with pytest.raises(ServerResponseError, match="Server returned error"):
+            ActivitySubprocess.start(
+                dag_rel_path=os.devnull,
+                bundle_info=FAKE_BUNDLE,
+                what=TaskInstanceDTO(
+                    id=ti_id,
+                    task_id="b",
+                    dag_id="c",
+                    run_id="d",
+                    try_number=1,
+                    dag_version_id=uuid7(),
+                    pool_slots=1,
+                    queue="default",
+                    priority_weight=1,
+                ),
+                client=make_client(transport=httpx.MockTransport(handle_request)),
+                target=subprocess_main,
+            )
+
+        assert {
+            "detail": detail,
+            "event": "Server refused to start task subprocess. Terminating process",
+            "level": "error",
+            "logger": "task",
+            "status_code": 409,
+            "timestamp": mocker.ANY,
+            "loc": mocker.ANY,
+        } in captured_logs
+
     @pytest.mark.parametrize("captured_logs", [logging.WARNING], indirect=True)
     def test_heartbeat_failures_handling(self, monkeypatch, mocker, captured_logs, time_machine):
         """

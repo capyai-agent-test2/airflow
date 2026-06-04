@@ -1358,7 +1358,17 @@ class ActivitySubprocess(WatchedSubprocess):
             ti_context = self.client.task_instances.start(ti.id, self.pid, datetime.now(tz=timezone.utc))
             self._should_retry = ti_context.should_retry
             self._last_successful_heartbeat = time.monotonic()
+        except ServerResponseError as e:
+            self.process_log.error(
+                "Server refused to start task subprocess. Terminating process",
+                status_code=e.response.status_code,
+                detail=e.detail,
+            )
+            # On any error kill that subprocess!
+            self.kill(signal.SIGKILL)
+            raise
         except Exception:
+            self.process_log.exception("Failed to start task subprocess. Terminating process")
             # On any error kill that subprocess!
             self.kill(signal.SIGKILL)
             raise
