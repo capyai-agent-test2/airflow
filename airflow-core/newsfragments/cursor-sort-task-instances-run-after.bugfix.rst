@@ -1,0 +1,1 @@
+Fix task instance cursor pagination when sorting by Dag-run-backed fields such as ``run_after`` so multi-page ``/api/v2/dags/.../taskInstances`` requests no longer fail while encoding the next cursor.

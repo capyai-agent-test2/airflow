@@ -1940,6 +1940,55 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
         assert body2["previous_cursor"] is not None
         assert body2["total_entries"] is None
 
+    def test_cursor_pagination_with_run_after_sort(self, test_client, session):
+        dag_id = "example_python_operator"
+        base_date = DEFAULT_DATETIME_1 + dt.timedelta(days=20)
+        dag_runs = [
+            DagRun(
+                dag_id=dag_id,
+                run_id=f"run_{i}",
+                run_type=DagRunType.MANUAL,
+                logical_date=base_date + dt.timedelta(days=i),
+                run_after=base_date + dt.timedelta(days=i, hours=1),
+            )
+            for i in range(5)
+        ]
+        session.add_all(dag_runs)
+        session.commit()
+
+        self.create_task_instances(
+            session,
+            task_instances=[
+                {"run_id": f"run_{i}", "start_date": base_date + dt.timedelta(minutes=i)} for i in range(5)
+            ],
+            dag_id=dag_id,
+        )
+
+        response = test_client.get(
+            "/dags/~/dagRuns/~/taskInstances",
+            params={"limit": 3, "order_by": ["-run_after"], "cursor": ""},
+        )
+        assert response.status_code == 200, response.json()
+        first_page = response.json()
+        assert len(first_page["task_instances"]) == 3
+        assert first_page["next_cursor"] is not None
+
+        next_cursor = first_page["next_cursor"]
+        assert next_cursor is not None
+        response = test_client.get(
+            "/dags/~/dagRuns/~/taskInstances",
+            params={"limit": 3, "order_by": ["-run_after"], "cursor": next_cursor},
+        )
+        assert response.status_code == 200, response.json()
+        second_page = response.json()
+        assert len(second_page["task_instances"]) == 2
+        assert second_page["next_cursor"] is None
+        assert second_page["previous_cursor"] is not None
+        first_page_ids = {ti["id"] for ti in first_page["task_instances"]}
+        second_page_ids = {ti["id"] for ti in second_page["task_instances"]}
+        assert first_page_ids.isdisjoint(second_page_ids)
+        assert len(first_page_ids | second_page_ids) == 5
+
     def test_cursor_pagination_forward_and_backward_consistency(self, test_client, session):
         """Walk all pages forward via next_cursor, then backward via previous_cursor, and compare."""
         dag_id = "example_python_operator"
