@@ -1040,6 +1040,55 @@ class TestHiveCli:
         with pytest.raises(RuntimeError, match="The principal should not contain the ';' character"):
             hook._prepare_cli_cmd()
 
+    def test_prepare_cli_cmd_with_jdbc_parameters(self):
+        hook = MockHiveCliHook()
+        hook.jdbc_parameters = {"transportMode": "http", "sslTrustStore": "/tmp/truststore.jks"}
+        returner = mock.MagicMock()
+        returner.extra_dejson = {}
+        returner.host = "localhost"
+        returner.port = 10000
+        returner.schema = "default"
+        returner.login = "admin"
+        hook.use_beeline = True
+        hook.conn = returner
+
+        result = hook._prepare_cli_cmd()
+
+        assert ";transportMode=http;sslTrustStore=/tmp/truststore.jks" in result[2]
+
+    def test_prepare_cli_cmd_with_positional_auth_and_proxy_user(self):
+        connection = mock.MagicMock()
+        connection.extra_dejson = {}
+
+        with mock.patch.object(HiveCliHook, "get_connection", return_value=connection):
+            hook = HiveCliHook("test", None, None, None, "", "KERBEROS", "alice")
+
+        assert hook.auth == "KERBEROS"
+        assert hook.proxy_user == "alice"
+
+    @pytest.mark.parametrize(
+        "jdbc_parameters",
+        [
+            {"": "http"},
+            {"transportMode": "http;ssl=true"},
+            {"transport;Mode": "http"},
+        ],
+    )
+    def test_prepare_cli_cmd_with_invalid_jdbc_parameters(self, jdbc_parameters):
+        hook = MockHiveCliHook()
+        hook.jdbc_parameters = jdbc_parameters
+        returner = mock.MagicMock()
+        returner.extra_dejson = {}
+        returner.host = "localhost"
+        returner.port = 10000
+        returner.schema = "default"
+        returner.login = "admin"
+        hook.use_beeline = True
+        hook.conn = returner
+
+        with pytest.raises(ValueError, match="JDBC parameters passed to HiveCliHook"):
+            hook._prepare_cli_cmd()
+
     @pytest.mark.parametrize(
         ("extra_dejson", "expected_keys"),
         [
