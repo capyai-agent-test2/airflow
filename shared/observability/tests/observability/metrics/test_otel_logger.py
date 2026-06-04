@@ -28,7 +28,6 @@ from opentelemetry.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import ExponentialBucketHistogramAggregation, View
 
 from airflow_shared.observability.common import get_otel_data_exporter
-from airflow_shared.observability.exceptions import InvalidStatsNameException
 from airflow_shared.observability.metrics.otel_logger import (
     OTEL_NAME_MAX_LENGTH,
     UP_DOWN_COUNTERS,
@@ -38,6 +37,7 @@ from airflow_shared.observability.metrics.otel_logger import (
     _is_up_down_counter,
     full_name,
     get_otel_logger,
+    name_is_otel_safe,
 )
 from airflow_shared.observability.metrics.validators import (
     BACK_COMPAT_METRIC_NAMES,
@@ -103,9 +103,7 @@ class TestOtelMetrics:
         name = invalid_stat_combo[1]
         self.stats.prefix = prefix
 
-        with pytest.raises(InvalidStatsNameException):
-            self.stats.incr(name)
-
+        self.stats.incr(name)
         self.meter.assert_not_called()
 
     def test_old_name_exception_works(self, caplog):
@@ -267,6 +265,14 @@ class TestOtelMetrics:
         # histogram created only once, but both observations are recorded
         self.meter.get_meter().create_histogram.assert_called_once_with(name=full_name(name), unit="ms")
         assert self.meter.get_meter().create_histogram.return_value.record.call_count == 2
+
+    def test_name_is_otel_safe_returns_false_for_non_ascii_name(self):
+        assert name_is_otel_safe("airflow", "dag.kmt_lista_preços_tasks.scheduled_duration") is False
+
+    def test_timing_skips_invalid_non_ascii_metric_name(self):
+        self.stats.timing("dag.kmt_lista_preços_tasks.scheduled_duration", dt=1)
+
+        self.meter.get_meter().create_histogram.assert_not_called()
 
     # For the four test_timer_foo tests below:
     #   time.perf_count() is called once to get the starting timestamp and again
