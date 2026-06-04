@@ -31,6 +31,7 @@ from kubernetes.client import (
     V1ContainerState,
     V1ContainerStateTerminated,
     V1ContainerStatus,
+    V1ObjectMeta,
     V1Pod,
     V1PodStatus,
 )
@@ -1597,6 +1598,44 @@ class TestSparkSubmitHook:
             match=r"container=spark-kubernetes-driver exit_code=42 reason=Error",
         ):
             hook._poll_k8s_driver_via_api()
+
+    @patch("time.sleep")
+    @patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
+    def test_poll_k8s_driver_ignores_terminated_container_while_pod_is_deleting(
+        self, mock_get_client, mock_sleep
+    ):
+        hook = SparkSubmitHook(conn_id="spark_k8s_cluster", track_driver_via_k8s_api=True)
+        hook._kubernetes_driver_pod = "spark-app-abc-driver"
+        hook._kubernetes_application_id = "spark-abc"
+
+        mock_client = mock_get_client.return_value
+        deleting_pod = V1Pod(
+            metadata=V1ObjectMeta(deletion_timestamp="2026-06-04T00:00:00Z"),
+            status=V1PodStatus(
+                phase="Running",
+                container_statuses=[
+                    V1ContainerStatus(
+                        name="spark-kubernetes-driver",
+                        image="spark:latest",
+                        image_id="spark:latest",
+                        ready=False,
+                        restart_count=0,
+                        state=V1ContainerState(
+                            terminated=V1ContainerStateTerminated(exit_code=143, reason="Terminated")
+                        ),
+                    )
+                ],
+            ),
+        )
+        mock_client.read_namespaced_pod.side_effect = [
+            deleting_pod,
+            kube_client.ApiException(status=404, reason="Not Found"),
+        ]
+
+        hook._poll_k8s_driver_via_api()
+
+        mock_sleep.assert_called_once()
+        mock_client.delete_namespaced_pod.assert_not_called()
 
     @patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
     def test_poll_k8s_driver_raises_after_consecutive_unknown(self, mock_get_client):

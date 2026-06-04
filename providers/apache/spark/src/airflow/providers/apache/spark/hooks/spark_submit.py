@@ -1173,6 +1173,9 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
                 self.log.info("Application status for %s (phase: %s)", app_id, phase)
                 if driver_termination:
+                    if pod.metadata and pod.metadata.deletion_timestamp:
+                        time.sleep(poll_interval)
+                        continue
                     if driver_termination.exit_code == 0:
                         break
                     raise RuntimeError(
