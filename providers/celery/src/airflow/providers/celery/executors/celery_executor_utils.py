@@ -117,6 +117,16 @@ def _get_celery_app() -> Celery:
     return Celery(celery_app_name, config_source=get_celery_configuration())
 
 
+@cache
+def get_cached_celery_app(team_name: str | None) -> Celery:
+    """Get a subprocess-local Celery app for the given team."""
+    if AIRFLOW_V_3_2_PLUS:
+        from airflow.executors.base_executor import ExecutorConf
+
+        return create_celery_app(ExecutorConf(team_name))
+    return create_celery_app(conf)
+
+
 def create_celery_app(team_conf: ExecutorConf | AirflowConfigParser) -> Celery:
     """
     Create a Celery app, supporting team-specific configuration.
@@ -389,24 +399,11 @@ def send_workload_to_executor(
     Send workload to executor (serialized and executed as a Celery task).
 
     This function is called in ProcessPoolExecutor subprocesses. To avoid pickling issues with
-    team-specific Celery apps, we pass the team_name and reconstruct the Celery app here.
+    team-specific Celery apps, we look up a subprocess-local app using the team name here.
     """
     key, args, queue, team_name = workload_tuple
 
-    # Reconstruct the Celery app from configuration, which may or may not be team-specific.
-    # ExecutorConf wraps config access to automatically use team-specific config where present.
-    if TYPE_CHECKING:
-        _conf: ExecutorConf | AirflowConfigParser
-    # Check if Airflow version is greater than or equal to 3.2 to import ExecutorConf.
-    if AIRFLOW_V_3_2_PLUS:
-        from airflow.executors.base_executor import ExecutorConf
-
-        _conf = ExecutorConf(team_name)
-    else:
-        # Airflow <3.2 ExecutorConf doesn't exist (at least not with the required attributes), fall back to global conf.
-        _conf = conf
-    # Create the Celery app with the correct configuration.
-    celery_app = create_celery_app(_conf)
+    celery_app = get_cached_celery_app(team_name if AIRFLOW_V_3_2_PLUS else None)
 
     celery_task_id = None
     if AIRFLOW_V_3_0_PLUS:
