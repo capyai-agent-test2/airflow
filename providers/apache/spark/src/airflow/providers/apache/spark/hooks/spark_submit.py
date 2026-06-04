@@ -53,6 +53,7 @@ DEFAULT_SPARK_BINARY = "spark-submit"
 ALLOWED_SPARK_BINARIES = [DEFAULT_SPARK_BINARY, "spark2-submit", "spark3-submit"]
 
 _K8S_WAIT_APP_COMPLETION_CONF = "spark.kubernetes.submission.waitAppCompletion"
+_K8S_DRIVER_CONTAINER_NAME = "spark-kubernetes-driver"
 
 
 class SparkSubmitHook(BaseHook, LoggingMixin):
@@ -1163,16 +1164,30 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                     continue
 
                 phase = pod.status.phase or "Initializing"
+                driver_container_status = self._get_k8s_driver_container_status(pod)
+                driver_termination = (
+                    driver_container_status.state.terminated
+                    if driver_container_status and driver_container_status.state
+                    else None
+                )
+
                 self.log.info("Application status for %s (phase: %s)", app_id, phase)
+                if driver_termination:
+                    if pod.metadata and pod.metadata.deletion_timestamp:
+                        time.sleep(poll_interval)
+                        continue
+                    if driver_termination.exit_code == 0:
+                        break
+                    raise RuntimeError(
+                        f"Spark application {app_id} failed "
+                        f"(container={_K8S_DRIVER_CONTAINER_NAME} "
+                        f"exit_code={driver_termination.exit_code} reason={driver_termination.reason})"
+                    )
+
                 if phase == "Succeeded":
                     break
                 if phase == "Failed":
-                    container_state = ""
-                    if pod.status.container_statuses:
-                        cs = pod.status.container_statuses[0]
-                        if cs.state and cs.state.terminated:
-                            container_state = f" exit_code={cs.state.terminated.exit_code} reason={cs.state.terminated.reason}"
-                    raise RuntimeError(f"Spark application {app_id} failed (phase=Failed{container_state})")
+                    raise RuntimeError(f"Spark application {app_id} failed (phase=Failed)")
                 if phase == "Pending":
                     consecutive_pending += 1
                     if consecutive_pending == pending_warn_threshold:
@@ -1199,6 +1214,15 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             self._delete_driver_pod()
         finally:
             self._run_post_submit_commands()
+
+    @staticmethod
+    def _get_k8s_driver_container_status(pod) -> Any | None:
+        container_statuses = pod.status.container_statuses if pod and pod.status else None
+        if not container_statuses:
+            return None
+        return next(
+            (status for status in container_statuses if status.name == _K8S_DRIVER_CONTAINER_NAME), None
+        )
 
     def _build_spark_driver_kill_command(self) -> list[str]:
         """
