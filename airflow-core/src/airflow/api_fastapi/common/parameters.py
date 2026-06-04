@@ -633,16 +633,12 @@ class SortParam(BaseParam[list[str]]):
             if isinstance(replacement, str):
                 return getattr(row, replacement, None)
             if replacement is not None:
-                # TODO: Column-form ``to_replace`` (e.g. ``{"last_run_state": DagRun.state}``)
-                # isn't supported for cursor pagination — no endpoint that uses cursor
-                # pagination needs it today. When one does, decide how the row exposes the
-                # value (projected label on the SELECT, eagerly loaded relationship, etc.)
-                # and wire it up here. Raising loudly so a future caller doesn't silently
-                # get ``None`` cursor tokens.
+                value = getattr(row, name, None)
+                if value is not None or hasattr(row, name):
+                    return value
                 raise NotImplementedError(
-                    f"Cursor pagination does not support column-form ``to_replace`` mapping for "
-                    f"``{name}``. Use a string alias in ``to_replace`` or sort by a primary-model "
-                    f"attribute."
+                    f"Cursor pagination could not read the row value for column-form ``to_replace`` mapping "
+                    f"``{name}``. Expose ``{name}`` on the row or use a string alias in ``to_replace``."
                 )
         return getattr(row, name, None)
 
