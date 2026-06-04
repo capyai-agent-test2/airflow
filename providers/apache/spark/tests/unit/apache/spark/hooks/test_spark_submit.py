@@ -27,7 +27,13 @@ from unittest.mock import MagicMock, call, mock_open, patch
 import kubernetes
 import pytest
 import requests
-from kubernetes.client import V1Pod, V1PodStatus
+from kubernetes.client import (
+    V1ContainerState,
+    V1ContainerStateTerminated,
+    V1ContainerStatus,
+    V1Pod,
+    V1PodStatus,
+)
 
 from airflow.models import Connection
 from airflow.providers.apache.spark.hooks.spark_submit import SparkSubmitHook
@@ -1523,6 +1529,73 @@ class TestSparkSubmitHook:
         mock_client.read_namespaced_pod.return_value = failed_pod
 
         with pytest.raises(RuntimeError, match="phase=Failed"):
+            hook._poll_k8s_driver_via_api()
+
+    @patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
+    def test_poll_k8s_driver_succeeds_when_driver_container_terminates_before_pod(self, mock_get_client):
+        hook = SparkSubmitHook(conn_id="spark_k8s_cluster", track_driver_via_k8s_api=True)
+        hook._kubernetes_driver_pod = "spark-app-abc-driver"
+        hook._kubernetes_application_id = "spark-abc"
+
+        mock_client = mock_get_client.return_value
+        driver_container = V1ContainerStatus(
+            name="spark-kubernetes-driver",
+            image="spark:latest",
+            image_id="spark:latest",
+            ready=False,
+            restart_count=0,
+            state=V1ContainerState(terminated=V1ContainerStateTerminated(exit_code=0, reason="Completed")),
+        )
+        sidecar_container = V1ContainerStatus(
+            name="istio-proxy",
+            image="istio:latest",
+            image_id="istio:latest",
+            ready=True,
+            restart_count=0,
+            state=V1ContainerState(),
+        )
+        running_pod = V1Pod(
+            status=V1PodStatus(phase="Running", container_statuses=[driver_container, sidecar_container])
+        )
+        mock_client.read_namespaced_pod.return_value = running_pod
+
+        with patch.object(hook, "_run_post_submit_commands"):
+            hook._poll_k8s_driver_via_api()
+
+        assert mock_client.delete_namespaced_pod.call_args.args[:2] == ("spark-app-abc-driver", "mynamespace")
+
+    @patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
+    def test_poll_k8s_driver_uses_driver_container_failure_details(self, mock_get_client):
+        hook = SparkSubmitHook(conn_id="spark_k8s_cluster", track_driver_via_k8s_api=True)
+        hook._kubernetes_driver_pod = "spark-app-abc-driver"
+        hook._kubernetes_application_id = "spark-abc"
+
+        mock_client = mock_get_client.return_value
+        sidecar_container = V1ContainerStatus(
+            name="istio-proxy",
+            image="istio:latest",
+            image_id="istio:latest",
+            ready=True,
+            restart_count=0,
+            state=V1ContainerState(),
+        )
+        driver_container = V1ContainerStatus(
+            name="spark-kubernetes-driver",
+            image="spark:latest",
+            image_id="spark:latest",
+            ready=False,
+            restart_count=0,
+            state=V1ContainerState(terminated=V1ContainerStateTerminated(exit_code=42, reason="Error")),
+        )
+        failed_pod = V1Pod(
+            status=V1PodStatus(phase="Failed", container_statuses=[sidecar_container, driver_container])
+        )
+        mock_client.read_namespaced_pod.return_value = failed_pod
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"container=spark-kubernetes-driver exit_code=42 reason=Error",
+        ):
             hook._poll_k8s_driver_via_api()
 
     @patch("airflow.providers.cncf.kubernetes.kube_client.get_kube_client")
