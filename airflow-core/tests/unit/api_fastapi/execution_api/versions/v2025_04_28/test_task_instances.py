@@ -94,5 +94,6 @@ class TestTIUpdateState:
         assert result["upstream_map_indexes"] is None
         assert result["dag_run"]["dag_id"] == "dag"
         assert result["task_reschedule_count"] == 0
+        assert "first_task_reschedule_start_date" not in result
         assert result["max_tries"] == 0
         assert result["should_retry"] is False

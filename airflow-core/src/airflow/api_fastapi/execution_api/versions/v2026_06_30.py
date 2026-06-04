@@ -17,7 +17,9 @@
 
 from __future__ import annotations
 
-from cadwyn import VersionChange, endpoint
+from cadwyn import ResponseInfo, VersionChange, convert_response_to_previous_version_for, endpoint, schema
+
+from airflow.api_fastapi.execution_api.datamodels.taskinstance import TIRunContext
 
 
 class AddVariableKeysEndpoint(VersionChange):
@@ -37,3 +39,18 @@ class AddConnectionTestEndpoint(VersionChange):
         endpoint("/connection-tests/{connection_test_id}", ["PATCH"]).didnt_exist,
         endpoint("/connection-tests/{connection_test_id}/connection", ["GET"]).didnt_exist,
     )
+
+
+class AddFirstTaskRescheduleStartDateField(VersionChange):
+    """Add ``first_task_reschedule_start_date`` to TIRunContext."""
+
+    description = __doc__
+
+    instructions_to_migrate_to_previous_version = (
+        schema(TIRunContext).field("first_task_reschedule_start_date").didnt_exist,
+    )
+
+    @convert_response_to_previous_version_for(TIRunContext)  # type: ignore[arg-type]
+    def remove_first_task_reschedule_start_date_field(response: ResponseInfo) -> None:  # type: ignore[misc]
+        """Remove first_task_reschedule_start_date for older API versions."""
+        response.body.pop("first_task_reschedule_start_date", None)

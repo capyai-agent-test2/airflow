@@ -240,6 +240,7 @@ class TestTIRunState:
                 "team_name": None,
             },
             "task_reschedule_count": 0,
+            "first_task_reschedule_start_date": None,
             "max_tries": max_tries,
             "should_retry": should_retry,
             "variables": [],
@@ -651,6 +652,7 @@ class TestTIRunState:
         assert response.json() == {
             "dag_run": mock.ANY,
             "task_reschedule_count": 0,
+            "first_task_reschedule_start_date": None,
             "max_tries": 0,
             "should_retry": False,
             "variables": [],
@@ -726,6 +728,7 @@ class TestTIRunState:
         assert result == {
             "dag_run": mock.ANY,
             "task_reschedule_count": 0,
+            "first_task_reschedule_start_date": None,
             "max_tries": 0,
             "should_retry": False,
             "variables": [],
@@ -737,6 +740,54 @@ class TestTIRunState:
         session.expunge_all()
         ti = session.get(TaskInstance, ti.id)
         assert ti.start_date == expected_start_date
+
+    def test_ti_run_state_includes_first_task_reschedule_start_date(
+        self,
+        client,
+        session,
+        create_task_instance,
+    ):
+        instant_str = "2024-09-30T12:00:00Z"
+        instant = timezone.parse(instant_str)
+        ti = create_task_instance(
+            task_id="test_ti_run_state_includes_first_task_reschedule_start_date",
+            state=State.QUEUED,
+            dagrun_state=DagRunState.RUNNING,
+            session=session,
+            start_date=instant,
+        )
+        session.add_all(
+            [
+                TaskReschedule(
+                    ti_id=ti.id,
+                    start_date=timezone.datetime(2024, 9, 30, 12, 5),
+                    end_date=timezone.datetime(2024, 9, 30, 12, 6),
+                    reschedule_date=timezone.datetime(2024, 9, 30, 12, 7),
+                ),
+                TaskReschedule(
+                    ti_id=ti.id,
+                    start_date=timezone.datetime(2024, 9, 30, 12, 8),
+                    end_date=timezone.datetime(2024, 9, 30, 12, 9),
+                    reschedule_date=timezone.datetime(2024, 9, 30, 12, 10),
+                ),
+            ]
+        )
+        session.commit()
+
+        response = client.patch(
+            f"/execution/task-instances/{ti.id}/run",
+            json={
+                "state": "running",
+                "hostname": "random-hostname",
+                "unixname": "random-unixname",
+                "pid": 100,
+                "start_date": instant_str,
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["task_reschedule_count"] == 2
+        assert response.json()["first_task_reschedule_start_date"] == "2024-09-30T12:05:00Z"
 
     def test_ti_run_resume_returns_original_start_date_in_context(
         self,
