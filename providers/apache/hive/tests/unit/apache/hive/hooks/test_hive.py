@@ -1056,6 +1056,16 @@ class TestHiveCli:
 
         assert ";transportMode=http;sslTrustStore=/tmp/truststore.jks" in result[2]
 
+    def test_prepare_cli_cmd_with_positional_auth_and_proxy_user(self):
+        connection = mock.MagicMock()
+        connection.extra_dejson = {}
+
+        with mock.patch.object(HiveCliHook, "get_connection", return_value=connection):
+            hook = HiveCliHook("test", None, None, None, "", "KERBEROS", "alice")
+
+        assert hook.auth == "KERBEROS"
+        assert hook.proxy_user == "alice"
+
     @pytest.mark.parametrize(
         "jdbc_parameters",
         [

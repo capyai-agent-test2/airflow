@@ -106,9 +106,9 @@ class HiveCliHook(BaseHook):
         mapred_queue_priority: str | None = None,
         mapred_job_name: str | None = None,
         hive_cli_params: str = "",
-        jdbc_parameters: Mapping[str, str] | None = None,
         auth: str | None = None,
         proxy_user: str | None = None,
+        jdbc_parameters: Mapping[str, str] | None = None,
     ) -> None:
         super().__init__()
         conn = self.get_connection(hive_cli_conn_id)
