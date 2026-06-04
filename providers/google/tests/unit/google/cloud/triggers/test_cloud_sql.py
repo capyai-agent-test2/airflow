@@ -23,7 +23,10 @@ from unittest import mock
 import pytest
 
 from airflow.providers.google.cloud.hooks.cloud_sql import CloudSQLHook
-from airflow.providers.google.cloud.triggers.cloud_sql import CloudSQLExportTrigger
+from airflow.providers.google.cloud.triggers.cloud_sql import (
+    CloudSQLExportTrigger,
+    CloudSQLNoOperationInProgressTrigger,
+)
 from airflow.triggers.base import TriggerEvent
 
 CLASSPATH = "airflow.providers.google.cloud.triggers.cloud_sql.CloudSQLExportTrigger"
@@ -190,3 +193,67 @@ class TestCloudSQLExportTrigger:
         # Verify the default universe branch not being called
         mock_async_get_op.assert_not_called()
         task.cancel()
+
+
+@pytest.fixture
+def no_operation_trigger():
+    return CloudSQLNoOperationInProgressTrigger(
+        instance="test-instance",
+        project_id=PROJECT_ID,
+        impersonation_chain=None,
+        gcp_conn_id=TEST_GCP_CONN_ID,
+        poke_interval=TEST_POLL_INTERVAL,
+    )
+
+
+class TestCloudSQLNoOperationInProgressTrigger:
+    def test_serialization(self, no_operation_trigger, sync_hook_mock):
+        classpath, kwargs = no_operation_trigger.serialize()
+        assert (
+            classpath
+            == "airflow.providers.google.cloud.triggers.cloud_sql.CloudSQLNoOperationInProgressTrigger"
+        )
+        assert kwargs == {
+            "instance": "test-instance",
+            "project_id": PROJECT_ID,
+            "impersonation_chain": None,
+            "gcp_conn_id": TEST_GCP_CONN_ID,
+            "poke_interval": TEST_POLL_INTERVAL,
+        }
+
+    @pytest.mark.asyncio
+    async def test_success(self, no_operation_trigger, sync_hook_mock):
+        sync_hook_mock.is_instance_operation_in_progress.return_value = False
+
+        generator = no_operation_trigger.run()
+        actual = await generator.asend(None)
+
+        assert (
+            TriggerEvent(
+                {
+                    "status": "success",
+                    "message": "Cloud SQL instance test-instance has no operation in progress.",
+                }
+            )
+            == actual
+        )
+
+    @pytest.mark.asyncio
+    async def test_running(self, no_operation_trigger, sync_hook_mock):
+        sync_hook_mock.is_instance_operation_in_progress.return_value = True
+
+        task = asyncio.create_task(no_operation_trigger.run().__anext__())
+        await asyncio.sleep(0.5)
+
+        assert task.done() is False
+
+        asyncio.get_event_loop().stop()
+
+    @pytest.mark.asyncio
+    async def test_exception(self, no_operation_trigger, sync_hook_mock):
+        sync_hook_mock.is_instance_operation_in_progress.side_effect = Exception("Test exception")
+
+        generator = no_operation_trigger.run()
+        actual = await generator.asend(None)
+
+        assert TriggerEvent({"status": "failed", "message": "Test exception"}) == actual

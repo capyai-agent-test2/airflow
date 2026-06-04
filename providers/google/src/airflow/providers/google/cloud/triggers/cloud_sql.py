@@ -117,3 +117,65 @@ class CloudSQLExportTrigger(BaseTrigger):
                     "message": str(e),
                 }
             )
+
+
+class CloudSQLNoOperationInProgressTrigger(BaseTrigger):
+    """Trigger that waits for a Cloud SQL instance to have no active operation."""
+
+    def __init__(
+        self,
+        instance: str,
+        project_id: str = PROVIDE_PROJECT_ID,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+        poke_interval: int = 20,
+    ):
+        super().__init__()
+        self.instance = instance
+        self.project_id = project_id
+        self.gcp_conn_id = gcp_conn_id
+        self.impersonation_chain = impersonation_chain
+        self.poke_interval = poke_interval
+        self.hook = CloudSQLAsyncHook(
+            gcp_conn_id=self.gcp_conn_id,
+            impersonation_chain=self.impersonation_chain,
+        )
+
+    def serialize(self):
+        return (
+            "airflow.providers.google.cloud.triggers.cloud_sql.CloudSQLNoOperationInProgressTrigger",
+            {
+                "instance": self.instance,
+                "project_id": self.project_id,
+                "gcp_conn_id": self.gcp_conn_id,
+                "impersonation_chain": self.impersonation_chain,
+                "poke_interval": self.poke_interval,
+            },
+        )
+
+    async def run(self):
+        try:
+            sync_hook = await self.hook.get_sync_hook()
+
+            while True:
+                if not await sync_to_async(sync_hook.is_instance_operation_in_progress)(
+                    project_id=self.project_id,
+                    instance=self.instance,
+                ):
+                    yield TriggerEvent(
+                        {
+                            "status": "success",
+                            "message": f"Cloud SQL instance {self.instance} has no operation in progress.",
+                        }
+                    )
+                    return
+
+                self.log.info(
+                    "Cloud SQL instance %s still has an operation in progress, sleeping for %s seconds.",
+                    self.instance,
+                    self.poke_interval,
+                )
+                await asyncio.sleep(self.poke_interval)
+        except Exception as e:
+            self.log.exception("Exception occurred while checking Cloud SQL instance operations.")
+            yield TriggerEvent({"status": "failed", "message": str(e)})

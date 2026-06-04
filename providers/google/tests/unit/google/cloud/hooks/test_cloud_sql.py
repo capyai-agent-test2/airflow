@@ -42,6 +42,7 @@ if AIRFLOW_V_3_1_PLUS:
 else:
     from airflow.models import Connection  # type: ignore[assignment,attr-defined,no-redef]
 from airflow.providers.google.cloud.hooks.cloud_sql import (
+    NON_TERMINAL_CLOUD_SQL_OPERATION_STATUSES,
     CloudSQLAsyncHook,
     CloudSQLDatabaseHook,
     CloudSQLHook,
@@ -186,6 +187,59 @@ class TestGcpSqlHookDefaultProjectId:
         get_method.assert_called_once_with(instance="instance", project="example-project")
         execute_method.assert_called_once_with(num_retries=5)
         wait_for_operation_to_complete.assert_not_called()
+        assert mock_get_credentials.call_count == 1
+
+    @mock.patch(
+        "airflow.providers.google.cloud.hooks.cloud_sql.CloudSQLHook.get_credentials_and_project_id",
+        return_value=(mock.MagicMock(), "example-project"),
+    )
+    @mock.patch("airflow.providers.google.cloud.hooks.cloud_sql.CloudSQLHook.get_conn")
+    def test_get_operations(self, get_conn, mock_get_credentials):
+        list_method = get_conn.return_value.operations.return_value.list
+        execute_method = list_method.return_value.execute
+        execute_method.return_value = {"items": []}
+
+        response = self.cloudsql_hook.get_operations(instance="instance", max_results=1, page_token="token")
+
+        assert response == {"items": []}
+        list_method.assert_called_once_with(
+            project="example-project", instance="instance", maxResults=1, pageToken="token"
+        )
+        execute_method.assert_called_once_with(num_retries=5)
+        assert mock_get_credentials.call_count == 1
+
+    @mock.patch(
+        "airflow.providers.google.cloud.hooks.cloud_sql.CloudSQLHook.get_credentials_and_project_id",
+        return_value=(mock.MagicMock(), "example-project"),
+    )
+    @mock.patch("airflow.providers.google.cloud.hooks.cloud_sql.CloudSQLHook.get_operations")
+    def test_is_instance_operation_in_progress(self, get_operations, mock_get_credentials):
+        get_operations.return_value = {
+            "items": [{"status": next(iter(NON_TERMINAL_CLOUD_SQL_OPERATION_STATUSES))}]
+        }
+
+        assert self.cloudsql_hook.is_instance_operation_in_progress(instance="instance") is True
+
+        get_operations.assert_called_once_with(
+            project_id="example-project", instance="instance", max_results=1
+        )
+        assert mock_get_credentials.call_count == 1
+
+    @mock.patch(
+        "airflow.providers.google.cloud.hooks.cloud_sql.CloudSQLHook.get_credentials_and_project_id",
+        return_value=(mock.MagicMock(), "example-project"),
+    )
+    @mock.patch("airflow.providers.google.cloud.hooks.cloud_sql.CloudSQLHook.get_operations")
+    def test_is_instance_operation_in_progress_returns_false_for_done_operation(
+        self, get_operations, mock_get_credentials
+    ):
+        get_operations.return_value = {"items": [{"status": "DONE"}]}
+
+        assert self.cloudsql_hook.is_instance_operation_in_progress(instance="instance") is False
+
+        get_operations.assert_called_once_with(
+            project_id="example-project", instance="instance", max_results=1
+        )
         assert mock_get_credentials.call_count == 1
 
     @mock.patch(
