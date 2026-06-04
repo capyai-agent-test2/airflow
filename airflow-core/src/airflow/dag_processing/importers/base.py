@@ -72,7 +72,7 @@ class DagImportWarning:
 
     file_path: str
     message: str
-    warning_type: str = "general"
+    warning_type: type[Warning] | str = Warning
     line_number: int | None = None
 
 

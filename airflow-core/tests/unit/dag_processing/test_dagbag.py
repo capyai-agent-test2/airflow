@@ -41,6 +41,12 @@ from airflow.dag_processing.dagbag import (
     _capture_with_reraise,
     _validate_executor_fields,
 )
+from airflow.dag_processing.importers import (
+    AbstractDagImporter,
+    DagImporterRegistry,
+    DagImportResult,
+    DagImportWarning,
+)
 from airflow.exceptions import UnknownExecutorException
 from airflow.executors.executor_loader import ExecutorLoader
 from airflow.models.dag import DagModel
@@ -1125,6 +1131,41 @@ with airflow.DAG(
             warning_zipped_dag_path: (
                 f"{in_zip_dag_file}:46: DeprecationWarning: Deprecated Parameter",
                 f"{in_zip_dag_file}:48: UserWarning: Some Warning",
+            )
+        }
+
+    def test_process_file_adds_dag_context_to_internal_warning(self, tmp_path):
+        dag_file = tmp_path / "test_dag.py"
+        dag_file.write_text("# airflow\n# DAG")
+        dagbag = DagBag(dag_folder=os.fspath(tmp_path), include_examples=False, collect_dags=False)
+        mock_importer = mock.create_autospec(AbstractDagImporter, instance=True)
+        mock_importer.import_file.return_value = DagImportResult(
+            file_path=os.fspath(dag_file),
+            warnings=[
+                DagImportWarning(
+                    file_path="/tmp/internal_warning.py",
+                    message="Deprecated Parameter",
+                    warning_type=DeprecationWarning,
+                    line_number=12,
+                )
+            ],
+        )
+        mock_registry = mock.create_autospec(DagImporterRegistry, instance=True)
+        mock_registry.get_importer.return_value = mock_importer
+
+        with (
+            mock.patch("airflow.dag_processing.dagbag.get_importer_registry", return_value=mock_registry),
+            pytest.warns(
+                DeprecationWarning,
+                match=rf"Deprecated Parameter \[dag file: {re.escape(os.fspath(dag_file))}\]",
+            ),
+        ):
+            dagbag.process_file(os.fspath(dag_file))
+
+        assert dagbag.captured_warnings == {
+            os.fspath(dag_file): (
+                f"/tmp/internal_warning.py:12: DeprecationWarning: Deprecated Parameter "
+                f"[dag file: {dag_file}]",
             )
         }
 
