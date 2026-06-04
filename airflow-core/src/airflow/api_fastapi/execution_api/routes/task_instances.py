@@ -292,12 +292,18 @@ def ti_run(
             )
             or 0
         )
+        first_task_reschedule_start_date = None
+        if task_reschedule_count:
+            first_task_reschedule_start_date = session.scalar(
+                select(func.min(TaskReschedule.start_date)).where(TaskReschedule.ti_id == task_instance_id)
+            )
 
         dr.team_name = get_team_name_for_ti(task_instance_id, session)
 
         context = TIRunContext(
             dag_run=dr,
             task_reschedule_count=task_reschedule_count,
+            first_task_reschedule_start_date=first_task_reschedule_start_date,
             max_tries=ti.max_tries,
             # TODO: Add variables and connections that are needed (and has perms) for the task
             variables=[],
