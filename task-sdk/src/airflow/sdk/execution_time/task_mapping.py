@@ -69,7 +69,12 @@ def _is_further_mapped_inside(operator: BaseOperator, container: TaskGroup) -> b
     return False
 
 
-def get_ti_count_for_task(task_id: str, dag_id: str, run_id: str) -> int:
+def get_ti_count_for_task(
+    task_id: str,
+    dag_id: str,
+    run_id: str,
+    states: list[str] | None = None,
+) -> int:
     """
     Query TI count for a specific task.
 
@@ -81,7 +86,9 @@ def get_ti_count_for_task(task_id: str, dag_id: str, run_id: str) -> int:
     # Import here because SUPERVISOR_COMMS is set at runtime, not import time
     from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
 
-    response = SUPERVISOR_COMMS.send(GetTICount(dag_id=dag_id, task_ids=[task_id], run_ids=[run_id]))
+    response = SUPERVISOR_COMMS.send(
+        GetTICount(dag_id=dag_id, task_ids=[task_id], run_ids=[run_id], states=states)
+    )
     if not isinstance(response, TICount):
         raise RuntimeError(f"Unexpected response type: {type(response)}")
     return response.count

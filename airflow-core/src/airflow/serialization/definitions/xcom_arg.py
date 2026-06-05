@@ -26,7 +26,6 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from airflow.models.referencemixin import ReferenceMixin
-from airflow.models.xcom import XCOM_RETURN_KEY
 from airflow.serialization.definitions.notset import NOTSET, is_arg_set
 from airflow.utils.db import exists_query
 from airflow.utils.state import State
@@ -155,7 +154,6 @@ def get_task_map_length(xcom_arg: SchedulerXComArg, run_id: str, *, session: Ses
 def _(xcom_arg: SchedulerPlainXComArg, run_id: str, *, session: Session) -> int | None:
     from airflow.models.taskinstance import TaskInstance
     from airflow.models.taskmap import TaskMap
-    from airflow.models.xcom import XComModel
     from airflow.serialization.definitions.mappedoperator import is_mapped
 
     dag_id = xcom_arg.operator.dag_id
@@ -177,12 +175,12 @@ def _(xcom_arg: SchedulerPlainXComArg, run_id: str, *, session: Session) -> int 
         )
         if unfinished_ti_exists:
             return None  # Not all of the expanded tis are done yet.
-        query = select(func.count(XComModel.map_index)).where(
-            XComModel.dag_id == dag_id,
-            XComModel.run_id == run_id,
-            XComModel.task_id == task_id,
-            XComModel.map_index >= 0,
-            XComModel.key == XCOM_RETURN_KEY,
+        query = select(func.count(TaskInstance.map_index)).where(
+            TaskInstance.dag_id == dag_id,
+            TaskInstance.run_id == run_id,
+            TaskInstance.task_id == task_id,
+            TaskInstance.map_index >= 0,
+            TaskInstance.state != State.REMOVED,
         )
     else:
         query = select(TaskMap.length).where(

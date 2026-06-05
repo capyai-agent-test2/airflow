@@ -3131,6 +3131,66 @@ def test_xcom_map_skip_raised(dag_maker, session):
     assert _task_ids(decision.schedulable_tis) == [("collect", -1)]
 
 
+def test_mapped_task_all_done_after_mixed_mapped_upstream_states(dag_maker, session):
+    from airflow.models.xcom import XCOM_RETURN_KEY, XComModel
+
+    results = set()
+
+    with dag_maker(session=session) as dag:
+
+        @dag.task
+        def make_list():
+            return [1, 2, 3]
+
+        @dag.task(trigger_rule=TriggerRule.ALL_DONE)
+        def double(value):
+            return value * 2
+
+        @dag.task(trigger_rule=TriggerRule.ALL_DONE)
+        def add_one(value):
+            results.add((get_current_context()["ti"].map_index, value))
+            return value
+
+        add_one.expand(value=double.expand(value=make_list()))
+
+    dr: DagRun = dag_maker.create_dagrun(session=session)
+
+    def _task_ids(tis):
+        return [(ti.task_id, ti.map_index) for ti in tis]
+
+    decision = dr.task_instance_scheduling_decisions(session=session)
+    assert _task_ids(decision.schedulable_tis) == [("make_list", -1)]
+    ti = decision.schedulable_tis[0]
+    ti.state = TaskInstanceState.SUCCESS
+    session.add(TaskMap.from_task_instance_xcom(ti, make_list.function()))
+    session.flush()
+
+    decision = dr.task_instance_scheduling_decisions(session=session)
+    assert _task_ids(decision.schedulable_tis) == [("double", 0), ("double", 1), ("double", 2)]
+
+    states = [TaskInstanceState.SUCCESS, TaskInstanceState.FAILED, TaskInstanceState.SKIPPED]
+    for ti, state in zip(decision.schedulable_tis, states):
+        ti.state = state
+        if state == TaskInstanceState.SUCCESS:
+            XComModel.set(
+                key=XCOM_RETURN_KEY,
+                value=2,
+                task_id=ti.task_id,
+                dag_id=dag.dag_id,
+                run_id=dr.run_id,
+                map_index=ti.map_index,
+                session=session,
+            )
+    session.flush()
+
+    decision = dr.task_instance_scheduling_decisions(session=session)
+    assert _task_ids(decision.schedulable_tis) == [("add_one", 0), ("add_one", 1), ("add_one", 2)]
+    for ti in decision.schedulable_tis:
+        dag_maker.run_ti(task_id=ti.task_id, map_index=ti.map_index, dag_run=dr, session=session)
+
+    assert results == {(0, "2"), (1, None), (2, None)}
+
+
 def test_clearing_task_and_moving_from_non_mapped_to_mapped(dag_maker, session):
     """
     Test that clearing a task and moving from non-mapped to mapped clears existing
