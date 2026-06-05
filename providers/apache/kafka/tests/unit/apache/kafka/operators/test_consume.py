@@ -32,6 +32,11 @@ from airflow.providers.common.compat.sdk import AirflowException
 log = logging.getLogger(__name__)
 
 
+class FakeMessage:
+    def value(self):
+        return b"message"
+
+
 def _no_op(*args, **kwargs) -> Any:
     """no_op A function that returns its arguments
 
@@ -124,6 +129,72 @@ class TestConsumeFromTopic:
 
         # execute the operator (this is essentially a no op as the broker isn't setup)
         operator.execute(context={})
+
+    def test_operator_returns_apply_function_results(self):
+        mock_consumer, mock_get_consumer, _ = create_mock_kafka_consumer(
+            message_count=3,
+            message_content=FakeMessage(),
+        )
+
+        def apply_function(message):
+            return message.value().decode()
+
+        with mock_get_consumer:
+            operator = ConsumeFromTopicOperator(
+                kafka_config_id="kafka_d",
+                topics=["test"],
+                apply_function=apply_function,
+                task_id="test",
+                poll_timeout=0.0001,
+                return_results=True,
+            )
+
+            assert operator.execute(context={}) == ["message", "message", "message"]
+
+        mock_consumer.close.assert_called_once()
+
+    def test_operator_returns_apply_function_batch_results(self):
+        mock_consumer, mock_get_consumer, _ = create_mock_kafka_consumer(
+            message_count=3,
+            message_content=FakeMessage(),
+        )
+
+        def apply_function_batch(messages):
+            return len(messages)
+
+        with mock_get_consumer:
+            operator = ConsumeFromTopicOperator(
+                kafka_config_id="kafka_d",
+                topics=["test"],
+                apply_function_batch=apply_function_batch,
+                task_id="test",
+                max_batch_size=2,
+                poll_timeout=0.0001,
+                return_results=True,
+            )
+
+            assert operator.execute(context={}) == [2, 1]
+
+        mock_consumer.close.assert_called_once()
+
+    def test_operator_discards_apply_function_results_by_default(self):
+        mock_consumer, mock_get_consumer, _ = create_mock_kafka_consumer(
+            message_count=3,
+            message_content=FakeMessage(),
+        )
+
+        with mock_get_consumer:
+            operator = ConsumeFromTopicOperator(
+                kafka_config_id="kafka_d",
+                topics=["test"],
+                apply_function=lambda message: object(),
+                task_id="test",
+                poll_timeout=0.0001,
+            )
+
+            assert operator.execute(context={}) is None
+
+        mock_consumer.close.assert_called_once()
 
     @pytest.mark.parametrize(
         ("max_messages", "expected_consumed_messages"),
