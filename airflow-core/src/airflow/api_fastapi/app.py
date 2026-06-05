@@ -37,6 +37,8 @@ from airflow.api_fastapi.core_api.app import (
 from airflow.api_fastapi.execution_api.app import create_task_execution_api_app
 from airflow.configuration import conf
 from airflow.exceptions import AirflowConfigException
+from airflow.sdk._shared.observability.metrics import stats
+from airflow.sdk.observability.metrics import stats_utils
 from airflow.utils.providers_configuration_loader import providers_configuration_loaded
 
 if TYPE_CHECKING:
@@ -74,6 +76,10 @@ class _AuthManagerState:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with AsyncExitStack() as stack:
+        stats.initialize(
+            factory=stats_utils.get_stats_factory(),
+            export_legacy_names=conf.getboolean("metrics", "legacy_names_on"),
+        )
         for route in app.routes:
             if isinstance(route, Mount) and isinstance(route.app, FastAPI):
                 await stack.enter_async_context(

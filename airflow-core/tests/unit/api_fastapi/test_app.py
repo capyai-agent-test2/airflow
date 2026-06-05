@@ -37,6 +37,21 @@ def test_main_app_lifespan(client):
         assert test_app.state.lifespan_called, "Lifespan not called on Execution API app."
 
 
+@mock.patch("airflow.api_fastapi.app.stats.initialize")
+@mock.patch("airflow.api_fastapi.app.stats_utils.get_stats_factory")
+def test_main_app_lifespan_initializes_task_sdk_stats(mock_get_stats_factory, mock_stats_initialize, client):
+    factory = object()
+    mock_get_stats_factory.return_value = factory
+
+    with client():
+        pass
+
+    mock_stats_initialize.assert_called_once_with(
+        factory=factory,
+        export_legacy_names=app_module.conf.getboolean("metrics", "legacy_names_on"),
+    )
+
+
 @mock.patch("airflow.api_fastapi.app.init_views")
 @mock.patch("airflow.api_fastapi.app.init_plugins")
 @mock.patch("airflow.api_fastapi.app.create_task_execution_api_app")
