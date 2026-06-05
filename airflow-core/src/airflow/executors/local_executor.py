@@ -30,12 +30,15 @@ import multiprocessing
 import multiprocessing.sharedctypes
 import os
 import sys
+import time
 from multiprocessing import Queue, SimpleQueue
 from typing import TYPE_CHECKING
 
 import structlog
 
 from airflow.executors.base_executor import BaseExecutor, get_execution_api_server_url
+
+_WORKER_JOIN_POLL_INTERVAL = 0.1
 
 # add logger to parameter of setproctitle to support logging
 if sys.platform == "darwin":
@@ -239,10 +242,69 @@ class LocalExecutor(BaseExecutor):
         self._check_workers()
 
     def _read_results(self):
-        while not self.result_queue.empty():
-            key, state, exc = self.result_queue.get()
+        while True:
+            try:
+                if self.result_queue.empty():
+                    break
+                key, state, exc = self.result_queue.get()
+            except (EOFError, OSError):
+                self.log.exception("Failed to read LocalExecutor worker results")
+                break
 
             self.change_state(key, state)
+
+    def _close_finished_workers(self) -> bool:
+        for pid, proc in list(self.workers.items()):
+            if proc.is_alive():
+                continue
+
+            proc.close()
+            del self.workers[pid]
+
+        return not self.workers
+
+    def _join_workers(self) -> None:
+        wait_time = self.conf.getint("core", "killed_task_cleanup_time")
+        end_time = time.monotonic() + wait_time
+
+        while not self._close_finished_workers():
+            self._read_results()
+            remaining_time = end_time - time.monotonic()
+            if remaining_time <= 0:
+                break
+
+            for proc in self.workers.values():
+                proc.join(timeout=min(_WORKER_JOIN_POLL_INTERVAL, remaining_time))
+                break
+
+        if not self.workers:
+            return
+
+        for proc in self.workers.values():
+            if proc.is_alive():
+                self.log.warning("Terminating LocalExecutor worker process %s", proc.pid)
+                proc.terminate()
+
+        end_time = time.monotonic() + wait_time
+        while not self._close_finished_workers():
+            self._read_results()
+            remaining_time = end_time - time.monotonic()
+            if remaining_time <= 0:
+                break
+
+            for proc in self.workers.values():
+                proc.join(timeout=min(_WORKER_JOIN_POLL_INTERVAL, remaining_time))
+                break
+
+        for proc in self.workers.values():
+            if proc.is_alive():
+                self.log.warning("Killing LocalExecutor worker process %s", proc.pid)
+                proc.kill()
+
+        for proc in self.workers.values():
+            proc.join(timeout=_WORKER_JOIN_POLL_INTERVAL)
+
+        self._close_finished_workers()
 
     def end(self) -> None:
         """End the executor."""
@@ -259,10 +321,7 @@ class LocalExecutor(BaseExecutor):
             if proc.is_alive():
                 self.activity_queue.put(None)
 
-        for proc in self.workers.values():
-            if proc.is_alive():
-                proc.join()
-            proc.close()
+        self._join_workers()
 
         # Process any extra results before closing
         self._read_results()
@@ -271,7 +330,10 @@ class LocalExecutor(BaseExecutor):
         self.result_queue.close()
 
     def terminate(self):
-        """Terminate the executor is not doing anything."""
+        """Terminate LocalExecutor workers."""
+        for proc in self.workers.values():
+            if proc.is_alive():
+                proc.terminate()
 
     def _process_workloads(self, workload_list):
         for workload in workload_list:

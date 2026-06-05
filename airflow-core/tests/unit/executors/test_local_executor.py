@@ -55,6 +55,21 @@ skip_fork_mp_start = pytest.mark.skipif(
 )
 
 
+class EmptyQueue:
+    def __init__(self):
+        self.items = []
+        self.closed = False
+
+    def put(self, item):
+        self.items.append(item)
+
+    def empty(self):
+        return True
+
+    def close(self):
+        self.closed = True
+
+
 def _make_task_workload():
     """Create a minimal ExecuteTask workload for tests."""
     return workloads.ExecuteTask(
@@ -259,6 +274,131 @@ class TestLocalExecutor:
             pass
         finally:
             executor.end()
+
+    def test_end_uses_bounded_worker_join(self):
+        class Worker:
+            pid = 123
+
+            def __init__(self):
+                self.join_timeouts = []
+                self.closed = False
+                self.terminated = False
+                self.killed = False
+                self.alive = True
+
+            def is_alive(self):
+                return self.alive
+
+            def join(self, timeout=None):
+                self.join_timeouts.append(timeout)
+                self.alive = False
+
+            def close(self):
+                self.closed = True
+
+            def terminate(self):
+                self.terminated = True
+
+            def kill(self):
+                self.killed = True
+
+        executor = LocalExecutor(parallelism=1)
+        worker = Worker()
+        executor.workers = {worker.pid: worker}
+        executor.activity_queue = EmptyQueue()
+        executor.result_queue = EmptyQueue()
+
+        executor.end()
+
+        assert worker.join_timeouts
+        assert all(timeout is not None for timeout in worker.join_timeouts)
+        assert worker.closed
+        assert not worker.terminated
+        assert not worker.killed
+
+    def test_end_terminates_workers_after_join_timeout(self):
+        class Worker:
+            pid = 123
+
+            def __init__(self):
+                self.terminated = False
+                self.closed = False
+                self.join_timeouts = []
+
+            def is_alive(self):
+                return not self.terminated
+
+            def join(self, timeout=None):
+                self.join_timeouts.append(timeout)
+
+            def close(self):
+                self.closed = True
+
+            def terminate(self):
+                self.terminated = True
+
+            def kill(self):
+                raise AssertionError("worker should not be killed after terminate succeeds")
+
+        executor = LocalExecutor(parallelism=1)
+        worker = Worker()
+        executor.workers = {worker.pid: worker}
+        executor.activity_queue = EmptyQueue()
+        executor.result_queue = EmptyQueue()
+
+        with conf_vars({("core", "killed_task_cleanup_time"): "0"}):
+            executor.end()
+
+        assert worker.terminated
+        assert worker.closed
+
+    def test_end_uses_team_scoped_shutdown_timeout(self):
+        class Worker:
+            pid = 123
+
+            def __init__(self):
+                self.terminated = False
+                self.closed = False
+
+            def is_alive(self):
+                return not self.terminated
+
+            def join(self, timeout=None):
+                pass
+
+            def close(self):
+                self.closed = True
+
+            def terminate(self):
+                self.terminated = True
+
+            def kill(self):
+                raise AssertionError("worker should not be killed after terminate succeeds")
+
+        executor = LocalExecutor(parallelism=1, team_name="ml_team")
+        worker = Worker()
+        executor.workers = {worker.pid: worker}
+        executor.activity_queue = EmptyQueue()
+        executor.result_queue = EmptyQueue()
+
+        with mock.patch.dict(os.environ, {"AIRFLOW__ML_TEAM___CORE__KILLED_TASK_CLEANUP_TIME": "0"}):
+            executor.end()
+
+        assert worker.terminated
+        assert worker.closed
+
+    def test_read_results_handles_broken_queue(self):
+        class BrokenQueue:
+            def empty(self):
+                return False
+
+            def get(self):
+                raise BrokenPipeError
+
+        executor = LocalExecutor(parallelism=1)
+        executor.result_queue = BrokenQueue()
+
+        executor._read_results()
 
     @pytest.mark.parametrize(
         ("conf_values", "expected_server"),
