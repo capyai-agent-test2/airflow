@@ -1329,8 +1329,37 @@ def assert_outputs_are_printed(expected_outputs: dict[str, str], stderr: str):
         ),
         pytest.param(
             ("go-sdk/sdk/variable.go",),
-            {"run-go-sdk-tests": "true"},
-            id="Run go tests for go-sdk",
+            {
+                "run-go-sdk-tests": "true",
+                "run-java-sdk-e2e-tests": "false",
+            },
+            id="Run go tests for go-sdk and skip java e2e tests for non-java change",
+        ),
+        pytest.param(
+            ("java-sdk/sdk/build.gradle.kts",),
+            {
+                "run-java-sdk-tests": "true",
+                "run-java-sdk-e2e-tests": "true",
+                "prod-image-build": "true",
+            },
+            id="Run java unit and e2e tests for java-sdk source change",
+        ),
+        pytest.param(
+            ("airflow-e2e-tests/docker/java.yml",),
+            {
+                "run-java-sdk-tests": "false",
+                "run-java-sdk-e2e-tests": "true",
+                "prod-image-build": "true",
+            },
+            id="Run java e2e tests when java compose override changes",
+        ),
+        pytest.param(
+            ("task-sdk/src/airflow/sdk/coordinators/java/coordinator.py",),
+            {
+                "run-java-sdk-e2e-tests": "true",
+                "prod-image-build": "true",
+            },
+            id="Run java e2e tests when JavaCoordinator changes",
         ),
         (
             pytest.param(
@@ -3618,6 +3647,37 @@ def test_large_pr_by_file_count(files, expected_outputs: dict[str, str]):
                 "full-tests-needed": "false",
             },
             id="Mixed PR with only 200 production lines does not trigger (test lines excluded)",
+        ),
+        # A large example-DAG diff in a "plain" provider (not standard/git, which
+        # have their own full-tests rule) must NOT force the full matrix. This is
+        # the exact shape of apache/airflow#68037.
+        pytest.param(
+            (
+                "providers/common/ai/src/airflow/providers/common/ai/example_dags/example_aip_progress_tracker.py",
+            ),
+            "600\t600\tproviders/common/ai/src/airflow/providers/common/ai/example_dags/example_aip_progress_tracker.py",
+            {
+                "full-tests-needed": "false",
+            },
+            id="Large provider example_dags-only PR does not trigger full tests",
+        ),
+        pytest.param(
+            ("airflow-core/src/airflow/example_dags/example_complex.py",),
+            "600\t600\tairflow-core/src/airflow/example_dags/example_complex.py",
+            {
+                "full-tests-needed": "false",
+            },
+            id="Large airflow-core example_dags-only PR does not trigger full tests",
+        ),
+        # Regression guard: a large *non-example* file in the same plain provider
+        # must still count as production code and trigger the full matrix.
+        pytest.param(
+            ("providers/arangodb/src/airflow/providers/arangodb/operators/arangodb.py",),
+            "600\t600\tproviders/arangodb/src/airflow/providers/arangodb/operators/arangodb.py",
+            {
+                "full-tests-needed": "true",
+            },
+            id="Large provider production (non-example) PR still triggers full tests",
         ),
     ],
 )

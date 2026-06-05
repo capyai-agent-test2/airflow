@@ -125,6 +125,7 @@ class FileGroupForCi(Enum):
     REMOTE_LOGGING_E2E_ELASTICSEARCH_FILES = auto()
     REMOTE_LOGGING_E2E_OPENSEARCH_FILES = auto()
     EVENT_DRIVEN_E2E_FILES = auto()
+    JAVA_SDK_E2E_FILES = auto()
     ALL_PYPROJECT_TOML_FILES = auto()
     ALL_PYTHON_FILES = auto()
     ALL_SOURCE_FILES = auto()
@@ -214,16 +215,31 @@ CI_FILE_GROUP_MATCHES: HashableDict[FileGroupForCi] = HashableDict(
             r"^providers/apache/kafka/.*",
             r"^providers/common/messaging/.*",
         ],
+        FileGroupForCi.JAVA_SDK_E2E_FILES: [
+            r"^java-sdk/.*",
+            r"^airflow-e2e-tests/tests/airflow_e2e_tests/java_sdk_tests/.*",
+            r"^airflow-e2e-tests/docker/java\.yml$",
+            r"^airflow-e2e-tests/docker/Dockerfile\.java$",
+            r"^task-sdk/src/airflow/sdk/coordinators/java/.*",
+        ],
         FileGroupForCi.PYTHON_PRODUCTION_FILES: [
             # Production Python source the runtime ships — excludes tests, docs,
             # dev tooling, and generated files within those trees. Used by
             # `run_python_scans` (SAST/SCA target) and the line-threshold check
             # in `_is_large_enough_pr` to decide whether a PR's diff is large
             # enough to force the full test matrix.
-            r"^airflow-core/src/airflow/(?!.*/(?:openapi-gen|i18n/locales)/).*\.py$",
+            #
+            # `example_dags/` are illustrative, not shipped runtime code, so a large
+            # example-DAG diff must not force the full matrix. They are still selected
+            # for their own tests via the broader `ALL_AIRFLOW_PYTHON_FILES` /
+            # `ALL_PROVIDERS_PYTHON_FILES` groups, so excluding them here only affects
+            # the line-count gate (and SAST target), not test selection. The
+            # `(?:.*/)?` covers both airflow-core's top-level `airflow/example_dags/`
+            # and the nested `providers/<name>/.../example_dags/` layout.
+            r"^airflow-core/src/airflow/(?!(?:.*/)?example_dags/)(?!.*/(?:openapi-gen|i18n/locales)/).*\.py$",
             r"^task-sdk/src/airflow/(?!.*_generated\.py$).*\.py$",
             r"^airflow-ctl/src/airflowctl/(?!.*generated\.py$).*\.py$",
-            r"^providers/(?:[^/]+/)+src/.*\.py$",
+            r"^providers/(?:[^/]+/)+src/(?!(?:.*/)?example_dags/).*\.py$",
             r"^shared/[^/]+/src/.*\.py$",
             r"^pyproject\.toml$",
             r"^hatch_build\.py$",
@@ -1025,6 +1041,10 @@ class SelectiveChecks:
         return self._should_be_run(FileGroupForCi.EVENT_DRIVEN_E2E_FILES)
 
     @cached_property
+    def run_java_sdk_e2e_tests(self) -> bool:
+        return self._should_be_run(FileGroupForCi.JAVA_SDK_E2E_FILES)
+
+    @cached_property
     def run_amazon_tests(self) -> bool:
         if self.providers_test_types_list_as_strings_in_json == "[]":
             return False
@@ -1140,6 +1160,7 @@ class SelectiveChecks:
             or self.run_remote_logging_elasticsearch_e2e_tests
             or self.run_remote_logging_opensearch_e2e_tests
             or self.run_event_driven_e2e_tests
+            or self.run_java_sdk_e2e_tests
             or self.run_ui_e2e_tests
         )
 
