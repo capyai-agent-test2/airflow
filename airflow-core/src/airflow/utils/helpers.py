@@ -150,17 +150,46 @@ def log_filename_template_renderer() -> Callable[..., str]:
     if "{{" in template:
         import jinja2
 
-        return jinja2.Template(template).render
+        def render_jinja(ti: TaskInstance, try_number: int | None = None) -> str:
+            return jinja2.Template(template).render(**build_log_filename_template_context(ti, try_number))
+
+        return render_jinja
 
     def f_str_format(ti: TaskInstance, try_number: int | None = None):
+        logical_date = ti.logical_date or ti.dag_run.partition_date
         return template.format(
             dag_id=ti.dag_id,
             task_id=ti.task_id,
-            logical_date=ti.logical_date.isoformat(),
+            logical_date=logical_date.isoformat(),
             try_number=try_number or ti.try_number,
         )
 
     return f_str_format
+
+
+def build_log_filename_template_context(ti: TaskInstance, try_number: int | None = None) -> dict[str, Any]:
+    """Build the context used to render task log filename templates."""
+    context: dict[str, Any] = {"ti": ti}
+    if try_number is not None:
+        context["try_number"] = try_number
+
+    logical_date = ti.logical_date or ti.dag_run.partition_date
+    if logical_date is None:
+        return context
+
+    ts = logical_date.isoformat()
+    ds = logical_date.strftime("%Y-%m-%d")
+    context.update(
+        {
+            "logical_date": logical_date,
+            "ds": ds,
+            "ds_nodash": ds.replace("-", ""),
+            "ts": ts,
+            "ts_nodash": logical_date.strftime("%Y%m%dT%H%M%S"),
+            "ts_nodash_with_tz": ts.replace("-", "").replace(":", ""),
+        }
+    )
+    return context
 
 
 def convert_camel_to_snake(camel_str: str) -> str:
