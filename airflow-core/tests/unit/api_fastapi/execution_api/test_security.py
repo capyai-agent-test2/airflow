@@ -23,6 +23,7 @@ import pytest
 import svcs
 from fastapi import APIRouter, FastAPI, Request, Security
 from fastapi.testclient import TestClient
+from sqlalchemy import update
 from structlog.testing import capture_logs
 
 from airflow.api_fastapi.auth.tokens import JWTValidator
@@ -31,6 +32,7 @@ from airflow.api_fastapi.execution_api.security import (
     ExecutionAPIRoute,
     _jwt_bearer,
     get_team_name_dep,
+    get_team_name_for_ti,
     require_auth,
 )
 
@@ -273,3 +275,71 @@ class TestGetTeamNameDep:
 
         assert result is None
         mock_create_session.assert_not_called()
+
+
+class TestGetTeamNameForTi:
+    @pytest.mark.db_test
+    def test_returns_team_name_for_active_task_instance(self, session, dag_maker):
+        from uuid import uuid4
+
+        from airflow.models import DagModel
+        from airflow.models.dagbundle import DagBundleModel
+        from airflow.models.team import Team
+        from airflow.providers.standard.operators.empty import EmptyOperator
+
+        from tests_common.test_utils.config import conf_vars
+
+        token = uuid4().hex[:8]
+        dag_id = f"team_lookup_active_{token}"
+        team_name = f"{dag_id}_team"
+        bundle_name = f"bundle_active_{token}"
+        with dag_maker(dag_id=dag_id, session=session):
+            EmptyOperator(task_id="task")
+        dag_run = dag_maker.create_dagrun(run_id="run_active")
+        ti = dag_run.get_task_instance(task_id="task", session=session)
+
+        bundle = DagBundleModel(name=bundle_name)
+        bundle.teams.append(Team(name=team_name))
+        session.add(bundle)
+        session.flush()
+        session.execute(update(DagModel).where(DagModel.dag_id == dag_id).values(bundle_name=bundle.name))
+        session.commit()
+
+        with conf_vars({("core", "multi_team"): "True"}):
+            assert get_team_name_for_ti(ti.id, session) == team_name
+
+    @pytest.mark.db_test
+    def test_returns_team_name_for_historical_task_instance(self, session, dag_maker):
+        from uuid import uuid4
+
+        from airflow.models import DagModel
+        from airflow.models.dagbundle import DagBundleModel
+        from airflow.models.taskinstancehistory import TaskInstanceHistory
+        from airflow.models.team import Team
+        from airflow.providers.standard.operators.empty import EmptyOperator
+
+        from tests_common.test_utils.config import conf_vars
+
+        token = uuid4().hex[:8]
+        dag_id = f"team_lookup_history_{token}"
+        team_name = f"{dag_id}_team"
+        bundle_name = f"bundle_history_{token}"
+        with dag_maker(dag_id=dag_id, session=session):
+            EmptyOperator(task_id="task")
+        dag_run = dag_maker.create_dagrun(run_id="run_history")
+        ti = dag_run.get_task_instance(task_id="task", session=session)
+
+        bundle = DagBundleModel(name=bundle_name)
+        bundle.teams.append(Team(name=team_name))
+        session.add(bundle)
+        session.flush()
+        session.execute(update(DagModel).where(DagModel.dag_id == dag_id).values(bundle_name=bundle.name))
+        session.flush()
+
+        old_ti_id = ti.id
+        TaskInstanceHistory.record_ti(ti, session=session)
+        ti.id = uuid4()
+        session.commit()
+
+        with conf_vars({("core", "multi_team"): "True"}):
+            assert get_team_name_for_ti(old_ti_id, session) == team_name

@@ -75,7 +75,7 @@ from fastapi.params import Security as SecurityParam
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPBearer, SecurityScopes
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, union_all
 
 from airflow.api_fastapi.auth.tokens import JWTValidator
 from airflow.api_fastapi.execution_api.datamodels.token import TIClaims, TIToken, TokenScope
@@ -264,9 +264,10 @@ def _team_name_for_ti_stmt(ti_id):
     """Build the select statement resolving ``TaskInstance.id -> Team.name``."""
     from airflow.models import DagModel, TaskInstance
     from airflow.models.dagbundle import DagBundleModel
+    from airflow.models.taskinstancehistory import TaskInstanceHistory
     from airflow.models.team import Team
 
-    return (
+    active_ti_stmt = (
         select(Team.name)
         .select_from(TaskInstance)
         .join(DagModel, DagModel.dag_id == TaskInstance.dag_id)
@@ -274,3 +275,12 @@ def _team_name_for_ti_stmt(ti_id):
         .join(DagBundleModel.teams)
         .where(TaskInstance.id == ti_id)
     )
+    historical_ti_stmt = (
+        select(Team.name)
+        .select_from(TaskInstanceHistory)
+        .join(DagModel, DagModel.dag_id == TaskInstanceHistory.dag_id)
+        .join(DagBundleModel, DagBundleModel.name == DagModel.bundle_name)
+        .join(DagBundleModel.teams)
+        .where(TaskInstanceHistory.task_instance_id == ti_id)
+    )
+    return union_all(active_ti_stmt, historical_ti_stmt).limit(1)
