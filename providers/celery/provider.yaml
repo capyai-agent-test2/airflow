@@ -185,6 +185,29 @@ config:
         type: boolean
         example: ~
         default: "true"
+      worker_soft_shutdown_timeout:
+        description: |
+          Number of seconds to wait during Celery worker soft shutdown before cancelling active tasks.
+          A positive value gives tasks that are running during worker termination time to finish before
+          Celery starts cold shutdown. This is useful when Kubernetes terminates workers during
+          autoscaling: set this lower than the worker pod termination grace period so Celery can cancel
+          long-running tasks and flush task cleanup, including remote logging, before Kubernetes sends
+          SIGKILL.
+          https://docs.celeryq.dev/en/stable/userguide/workers.html#soft-shutdown
+        version_added: ~
+        type: float
+        example: 30
+        default: "0.0"
+      worker_enable_soft_shutdown_on_idle:
+        description: |
+          Whether Celery workers should use soft shutdown even when they are idle.
+          This helps workers restore reserved ETA tasks during shutdown. It only has an effect when
+          worker_soft_shutdown_timeout is greater than 0.
+          https://docs.celeryq.dev/en/stable/userguide/workers.html#soft-shutdown
+        version_added: ~
+        type: boolean
+        example: ~
+        default: "false"
       broker_url:
         description: |
           The Celery broker URL. Celery supports multiple broker types. See:
