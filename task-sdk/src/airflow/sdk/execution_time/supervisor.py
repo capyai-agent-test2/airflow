@@ -1462,13 +1462,15 @@ class ActivitySubprocess(WatchedSubprocess):
         # record the resulting state only after the call returns successfully.
         self._pending_terminal_state_msg = msg
         if isinstance(msg, SucceedTask):
-            self.client.task_instances.succeed(
+            listener_logs = self.client.task_instances.succeed(
                 id=self.id,
                 when=msg.end_date,
                 task_outlets=msg.task_outlets,
                 outlet_events=msg.outlet_events,
                 rendered_map_index=self._rendered_map_index,
             )
+            for listener_log in listener_logs:
+                self.process_log.info(listener_log)
             self._terminal_state = msg.state
         elif isinstance(msg, RetryTask):
             self.client.task_instances.retry(

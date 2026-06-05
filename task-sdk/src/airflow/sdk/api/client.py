@@ -290,7 +290,9 @@ class TaskInstanceOperations:
         )
         self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
 
-    def succeed(self, id: uuid.UUID, when: datetime, task_outlets, outlet_events, rendered_map_index):
+    def succeed(
+        self, id: uuid.UUID, when: datetime, task_outlets, outlet_events, rendered_map_index
+    ) -> list[str]:
         """Tell the API server that this TI has succeeded."""
         body = TISuccessStatePayload(
             end_date=when,
@@ -298,7 +300,10 @@ class TaskInstanceOperations:
             outlet_events=outlet_events,
             rendered_map_index=rendered_map_index,
         )
-        self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
+        response = self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
+        if not response.content:
+            return []
+        return response.json().get("listener_logs", [])
 
     def defer(self, id: uuid.UUID, msg):
         """Tell the API server that this TI has been deferred."""

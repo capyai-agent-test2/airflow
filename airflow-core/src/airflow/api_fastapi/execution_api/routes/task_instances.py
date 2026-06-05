@@ -18,8 +18,11 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import itertools
 import json
+import sys
+import threading
 from collections import defaultdict
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Annotated, Any, cast
@@ -63,6 +66,7 @@ from airflow.api_fastapi.execution_api.datamodels.taskinstance import (
     TIRunContext,
     TISkippedDownstreamTasksStatePayload,
     TIStateUpdate,
+    TIStateUpdateResponse,
     TISuccessStatePayload,
     TITerminalStatePayload,
 )
@@ -105,6 +109,80 @@ ti_id_router = VersionedAPIRouter(
 
 log = structlog.get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+_STDIO_PROXY_LOCK = threading.Lock()
+_STDIO_PROXY_USERS = 0
+_STDOUT_PROXY: _ThreadLocalOutputProxy | None = None
+_STDERR_PROXY: _ThreadLocalOutputProxy | None = None
+
+
+class _ThreadLocalOutputProxy:
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+        self._local = threading.local()
+
+    def set_buffer(self, buffer: io.StringIO) -> None:
+        self._local.buffer = buffer
+
+    def clear_buffer(self) -> None:
+        with contextlib.suppress(AttributeError):
+            del self._local.buffer
+
+    def write(self, value: str) -> int:
+        buffer = getattr(self._local, "buffer", None)
+        if buffer is None:
+            return self._wrapped.write(value)
+        return buffer.write(value)
+
+    def flush(self) -> None:
+        buffer = getattr(self._local, "buffer", None)
+        if buffer is None:
+            self._wrapped.flush()
+            return
+        buffer.flush()
+
+    def writelines(self, lines) -> None:
+        buffer = getattr(self._local, "buffer", None)
+        if buffer is None:
+            self._wrapped.writelines(lines)
+            return
+        buffer.writelines(lines)
+
+    def __getattr__(self, name: str):
+        return getattr(self._wrapped, name)
+
+
+@contextlib.contextmanager
+def _capture_thread_output() -> Iterator[io.StringIO]:
+    global _STDERR_PROXY, _STDIO_PROXY_USERS, _STDOUT_PROXY
+
+    output = io.StringIO()
+    with _STDIO_PROXY_LOCK:
+        if _STDIO_PROXY_USERS == 0:
+            _STDOUT_PROXY = _ThreadLocalOutputProxy(sys.stdout)
+            _STDERR_PROXY = _ThreadLocalOutputProxy(sys.stderr)
+            sys.stdout = cast("Any", _STDOUT_PROXY)
+            sys.stderr = cast("Any", _STDERR_PROXY)
+        _STDIO_PROXY_USERS += 1
+        stdout_proxy = _STDOUT_PROXY
+        stderr_proxy = _STDERR_PROXY
+
+    if stdout_proxy is None or stderr_proxy is None:
+        raise RuntimeError("Failed to initialize stdio capture")
+
+    stdout_proxy.set_buffer(output)
+    stderr_proxy.set_buffer(output)
+    try:
+        yield output
+    finally:
+        stdout_proxy.clear_buffer()
+        stderr_proxy.clear_buffer()
+        with _STDIO_PROXY_LOCK:
+            _STDIO_PROXY_USERS -= 1
+            if _STDIO_PROXY_USERS == 0:
+                sys.stdout = cast("Any", stdout_proxy._wrapped)
+                sys.stderr = cast("Any", stderr_proxy._wrapped)
+                _STDOUT_PROXY = None
+                _STDERR_PROXY = None
 
 
 @ti_id_router.patch(
@@ -328,7 +406,6 @@ def ti_run(
 
 @ti_id_router.patch(
     "/{task_instance_id}/state",
-    status_code=status.HTTP_204_NO_CONTENT,
     responses=create_openapi_http_exception_doc(
         [
             (status.HTTP_404_NOT_FOUND, "Task Instance not found"),
@@ -343,6 +420,7 @@ def ti_run(
 def ti_update_state(
     task_instance_id: UUID,
     ti_patch_payload: Annotated[TIStateUpdate, Body()],
+    response: Response,
     session: SessionDep,
     dag_bag: DagBagDep,
 ):
@@ -426,8 +504,9 @@ def ti_update_state(
         data["_rendered_map_index"] = data.pop("rendered_map_index")
     query = update(TI).where(TI.id == task_instance_id).values(data)
 
+    listener_logs: list[str] = []
     try:
-        query, updated_state = _create_ti_state_update_query_and_update_state(
+        query, updated_state, listener_logs = _create_ti_state_update_query_and_update_state(
             ti_patch_payload=ti_patch_payload,
             task_instance_id=task_instance_id,
             session=session,
@@ -501,6 +580,13 @@ def ti_update_state(
                     task_id=task_id,
                 )
 
+    if listener_logs:
+        response.status_code = status.HTTP_200_OK
+        return TIStateUpdateResponse(listener_logs=listener_logs)
+
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return None
+
 
 def _emit_task_span(ti, state):
     # just to be safe
@@ -567,7 +653,8 @@ def _create_ti_state_update_query_and_update_state(
     session: SessionDep,
     dag_bag: DagBagDep,
     dag_id: str,
-) -> tuple[Update, TaskInstanceState]:
+) -> tuple[Update, TaskInstanceState, list[str]]:
+    listener_logs: list[str] = []
     if isinstance(ti_patch_payload, (TITerminalStatePayload, TIRetryStatePayload, TISuccessStatePayload)):
         ti = session.get(TI, task_instance_id, with_for_update={"of": TI})
         updated_state = TaskInstanceState(ti_patch_payload.state.value)
@@ -590,12 +677,14 @@ def _create_ti_state_update_query_and_update_state(
             )
         elif isinstance(ti_patch_payload, TISuccessStatePayload):
             if ti is not None:
-                TI.register_asset_changes_in_db(
-                    ti,
-                    ti_patch_payload.task_outlets,
-                    ti_patch_payload.outlet_events,
-                    session=session,
-                )
+                with _capture_thread_output() as listener_output:
+                    TI.register_asset_changes_in_db(
+                        ti,
+                        ti_patch_payload.task_outlets,
+                        ti_patch_payload.outlet_events,
+                        session=session,
+                    )
+                listener_logs = listener_output.getvalue().splitlines()
         try:
             _emit_task_span(ti, state=updated_state)
         except Exception:
@@ -659,7 +748,7 @@ def _create_ti_state_update_query_and_update_state(
                 ti = session.get(TI, task_instance_id, with_for_update={"of": TI})
                 if ti is not None:
                     _handle_fail_fast_for_dag(ti=ti, dag_id=dag_id, session=session, dag_bag=dag_bag)
-                return query, TaskInstanceState.FAILED
+                return query, TaskInstanceState.FAILED, listener_logs
 
         actual_start_date = timezone.utcnow()
         session.add(
@@ -681,7 +770,7 @@ def _create_ti_state_update_query_and_update_state(
     else:
         raise ValueError(f"Unexpected Payload Type {type(ti_patch_payload)}")
 
-    return query, updated_state
+    return query, updated_state, listener_logs
 
 
 @ti_id_router.patch(

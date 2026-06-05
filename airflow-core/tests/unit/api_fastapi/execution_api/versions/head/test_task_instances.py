@@ -17,7 +17,10 @@
 
 from __future__ import annotations
 
+import sys
+import threading
 from datetime import datetime
+from io import StringIO
 from typing import TYPE_CHECKING
 from unittest import mock
 from uuid import UUID, uuid4
@@ -41,7 +44,7 @@ from airflow._shared.timezones import timezone
 from airflow.api_fastapi.auth.tokens import JWTGenerator, JWTValidator
 from airflow.api_fastapi.execution_api.app import lifespan
 from airflow.api_fastapi.execution_api.datamodels.token import TIClaims, TIToken
-from airflow.api_fastapi.execution_api.routes.task_instances import _emit_task_span
+from airflow.api_fastapi.execution_api.routes.task_instances import _capture_thread_output, _emit_task_span
 from airflow.api_fastapi.execution_api.security import require_auth
 from airflow.exceptions import AirflowSkipException
 from airflow.models import RenderedTaskInstanceFields, TaskReschedule, Trigger
@@ -77,6 +80,21 @@ pytestmark = pytest.mark.db_test
 DEFAULT_START_DATE = timezone.parse("2024-10-31T11:00:00Z")
 DEFAULT_END_DATE = timezone.parse("2024-10-31T12:00:00Z")
 DEFAULT_RENDERED_MAP_INDEX = "test rendered map index"
+
+
+def test_capture_thread_output_does_not_capture_other_thread_output(monkeypatch):
+    stdout = StringIO()
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    with _capture_thread_output() as listener_output:
+        print("listener output")
+        sys.stdout.writelines(["listener ", "writelines\n"])
+        thread = threading.Thread(target=lambda: print("other thread output"))
+        thread.start()
+        thread.join()
+
+    assert listener_output.getvalue().splitlines() == ["listener output", "listener writelines"]
+    assert stdout.getvalue().splitlines() == ["other thread output"]
 
 
 def _where_column_keys(statement) -> set[str]:
@@ -1244,6 +1262,7 @@ class TestTIUpdateState:
 
         response = client.patch(
             f"/execution/task-instances/{ti.id}/state",
+            headers={"airflow-api-version": "2026-06-30"},
             json={
                 "state": "success",
                 "end_date": DEFAULT_END_DATE.isoformat(),
@@ -1260,6 +1279,34 @@ class TestTIUpdateState:
         assert len(event) == 1
         assert event[0].asset == AssetModel(name="my-task", uri="s3://bucket/my-task", extra={})
         assert event[0].extra == expected_extra
+
+    def test_ti_update_state_to_success_returns_asset_listener_logs(
+        self, client, session, create_task_instance, mocker
+    ):
+        ti = create_task_instance(
+            task_id="test_ti_update_state_to_success_returns_asset_listener_logs",
+            start_date=DEFAULT_START_DATE,
+            state=State.RUNNING,
+        )
+        session.commit()
+
+        def register_asset_changes_in_db(*args, **kwargs):
+            print("asset listener stdout")
+            print("asset listener stderr", file=sys.stderr)
+
+        mocker.patch.object(TaskInstance, "register_asset_changes_in_db", register_asset_changes_in_db)
+
+        response = client.patch(
+            f"/execution/task-instances/{ti.id}/state",
+            json={
+                "state": "success",
+                "end_date": DEFAULT_END_DATE.isoformat(),
+                "task_outlets": [{"name": "my-task", "uri": "s3://bucket/my-task", "type": "Asset"}],
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"listener_logs": ["asset listener stdout", "asset listener stderr"]}
 
     @pytest.mark.parametrize(
         ("outlet_events", "expected_extra"),

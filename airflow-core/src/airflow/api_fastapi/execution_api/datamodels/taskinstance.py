@@ -109,6 +109,12 @@ class TISuccessStatePayload(StrictBaseModel):
     rendered_map_index: str | None = None
 
 
+class TIStateUpdateResponse(BaseModel):
+    """Response returned when updating a TaskInstance state produces worker-visible logs."""
+
+    listener_logs: Annotated[list[str], Field(default_factory=list)]
+
+
 class TITargetStatePayload(StrictBaseModel):
     """Schema for updating TaskInstance to a target state, excluding terminal and running states."""
 
