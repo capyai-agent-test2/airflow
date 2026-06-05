@@ -20,7 +20,9 @@ from __future__ import annotations
 import itertools
 import re
 from typing import TYPE_CHECKING
+from unittest import mock
 
+import pendulum
 import pytest
 
 from airflow.exceptions import AirflowException
@@ -54,6 +56,53 @@ def clear_db():
 
 
 class TestHelpers:
+    def test_log_filename_template_renderer_uses_partition_date_when_logical_date_is_missing(
+        self, monkeypatch
+    ):
+        ti = mock.Mock(
+            dag_id="test_dag",
+            task_id="test_task",
+            logical_date=None,
+            try_number=2,
+        )
+        ti.dag_run = mock.Mock(partition_date=pendulum.datetime(2026, 1, 2, 3, 4, 5, tz="UTC"))
+
+        helpers.log_filename_template_renderer.cache_clear()
+        monkeypatch.setattr(
+            helpers.conf,
+            "get",
+            mock.Mock(
+                return_value=(
+                    "shared/{{ ti.dag_id }}/{{ ts_nodash }}/{{ ti.task_id }}"
+                    "/attempt_{{ try_number | default(ti.try_number) }}.log"
+                )
+            ),
+        )
+        path = helpers.log_filename_template_renderer()(ti=ti)
+        helpers.log_filename_template_renderer.cache_clear()
+
+        assert path == "shared/test_dag/20260102T030405/test_task/attempt_2.log"
+
+    def test_log_filename_template_renderer_uses_partition_date_for_legacy_format(self, monkeypatch):
+        ti = mock.Mock(
+            dag_id="test_dag",
+            task_id="test_task",
+            logical_date=None,
+            try_number=2,
+        )
+        ti.dag_run = mock.Mock(partition_date=pendulum.datetime(2026, 1, 2, 3, 4, 5, tz="UTC"))
+
+        helpers.log_filename_template_renderer.cache_clear()
+        monkeypatch.setattr(
+            helpers.conf,
+            "get",
+            mock.Mock(return_value="{dag_id}/{logical_date}/{task_id}/{try_number}.log"),
+        )
+        path = helpers.log_filename_template_renderer()(ti=ti)
+        helpers.log_filename_template_renderer.cache_clear()
+
+        assert path == "test_dag/2026-01-02T03:04:05+00:00/test_task/2.log"
+
     def test_chunks(self):
         with pytest.raises(ValueError, match=CHUNK_SIZE_POSITIVE_INT):
             list(helpers.chunks([1, 2, 3], 0))
