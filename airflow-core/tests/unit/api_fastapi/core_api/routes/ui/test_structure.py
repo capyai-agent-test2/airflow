@@ -775,6 +775,53 @@ class TestStructureDataEndpoint:
         assert mapped_node["operator"] == "BashOperator"
         assert len(data["edges"]) == 2
 
+    def test_mapped_trigger_dagrun_operator_external_dependency(self, dag_maker, test_client, session):
+        target_dag_id = "mapped_trigger_target_dag"
+        source_dag_id = "mapped_trigger_source_dag"
+        task_id = "trigger_dag_run"
+
+        with dag_maker(
+            dag_id=target_dag_id,
+            serialized=True,
+            session=session,
+            start_date=pendulum.DateTime(2023, 2, 1, 0, 0, 0, tzinfo=pendulum.UTC),
+        ):
+            EmptyOperator(task_id="empty")
+        dag_maker.sync_dagbag_to_db()
+
+        with dag_maker(
+            dag_id=source_dag_id,
+            serialized=True,
+            session=session,
+            start_date=pendulum.DateTime(2023, 2, 1, 0, 0, 0, tzinfo=pendulum.UTC),
+        ):
+            TriggerDagRunOperator.partial(task_id=task_id, trigger_dag_id=target_dag_id).expand(
+                conf=[{"a": 1}, {"b": 2}, {"c": 3}]
+            )
+        dag_maker.sync_dagbag_to_db()
+
+        response = test_client.get(
+            "/structure/structure_data",
+            params={"dag_id": source_dag_id, "external_dependencies": True},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        mapped_node = next(node for node in data["nodes"] if node["id"] == task_id)
+        assert mapped_node["is_mapped"] is True
+        assert mapped_node["operator"] == "TriggerDagRunOperator"
+
+        trigger_node_id = f"trigger:{source_dag_id}:{target_dag_id}:{task_id}"
+        assert {
+            "source_id": task_id,
+            "target_id": trigger_node_id,
+            "is_setup_teardown": None,
+            "label": None,
+            "is_source_asset": None,
+        } in data["edges"]
+        assert any(node["id"] == trigger_node_id and node["type"] == "trigger" for node in data["nodes"])
+
     def test_mapped_operator_in_task_group(self, dag_maker, test_client, session):
         """
         Test that mapped operators within task groups are handled correctly.
