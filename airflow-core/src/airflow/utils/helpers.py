@@ -150,8 +150,10 @@ def log_filename_template_renderer() -> Callable[..., str]:
     if "{{" in template:
         import jinja2
 
+        jinja_template = jinja2.Template(template)
+
         def render_jinja(ti: TaskInstance, try_number: int | None = None) -> str:
-            return jinja2.Template(template).render(**build_log_filename_template_context(ti, try_number))
+            return jinja_template.render(**build_log_filename_template_context(ti, try_number))
 
         return render_jinja
 
