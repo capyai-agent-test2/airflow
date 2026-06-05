@@ -86,6 +86,7 @@ from airflow.sdk.execution_time.context import (
     AssetStoreAccessors,
     ConnectionAccessor,
     InletEventsAccessors,
+    MacrosAccessor,
     OutletEventAccessor,
     OutletEventAccessors,
     TaskStoreAccessor,
@@ -321,6 +322,12 @@ class TestConnectionAccessor:
             "Failed to deserialize extra property `extra`, returning empty dictionary"
         )
 
+    def test_getattr_dunder_attribute_does_not_fetch_connection(self, mock_supervisor_comms):
+        accessor = ConnectionAccessor()
+
+        assert not hasattr(accessor, "__iter__")
+        mock_supervisor_comms.send.assert_not_called()
+
 
 class TestVariableAccessor:
     def test_getattr_variable(self, mock_supervisor_comms):
@@ -359,6 +366,20 @@ class TestVariableAccessor:
 
         val = accessor.get("nonexistent_var_key", default="default_value")
         assert val == "default_value"
+
+    def test_getattr_dunder_attribute_does_not_fetch_variable(self, mock_supervisor_comms):
+        accessor = VariableAccessor(deserialize_json=False)
+
+        assert not hasattr(accessor, "__iter__")
+        mock_supervisor_comms.send.assert_not_called()
+
+
+class TestMacrosAccessor:
+    def test_getattr_dunder_attribute_does_not_load_macros_module(self):
+        accessor = MacrosAccessor()
+
+        assert not hasattr(accessor, "__iter__")
+        assert accessor._macros_module is None
 
 
 class TestCurrentContext:
