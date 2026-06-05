@@ -19,25 +19,33 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import TYPE_CHECKING
 
 from sqlalchemy import or_, select
 
 from airflow.secrets import BaseSecretsBackend
-from airflow.utils.session import NEW_SESSION, provide_session
+from airflow.utils.session import NEW_SESSION, create_session
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
+
     from sqlalchemy.orm import Session
 
     from airflow.models import Connection
 
 
+def _get_backend_session(session: Session | None = NEW_SESSION) -> AbstractContextManager[Session]:
+    if session is NEW_SESSION:
+        return create_session(scoped=False)
+    return nullcontext(session)
+
+
 class MetastoreBackend(BaseSecretsBackend):
     """Retrieves Connection object and Variable from airflow metastore database."""
 
-    @provide_session
     def get_connection(
-        self, conn_id: str, team_name: str | None = None, *, session: Session = NEW_SESSION
+        self, conn_id: str, team_name: str | None = None, *, session: Session | None = NEW_SESSION
     ) -> Connection | None:
         """
         Get Airflow Connection from Metadata DB.
@@ -49,21 +57,21 @@ class MetastoreBackend(BaseSecretsBackend):
         """
         from airflow.models import Connection
 
-        conn = session.scalar(
-            select(Connection)
-            .where(
-                Connection.conn_id == conn_id,
-                or_(Connection.team_name == team_name, Connection.team_name.is_(None)),
+        with _get_backend_session(session) as session:
+            conn = session.scalar(
+                select(Connection)
+                .where(
+                    Connection.conn_id == conn_id,
+                    or_(Connection.team_name == team_name, Connection.team_name.is_(None)),
+                )
+                .limit(1)
             )
-            .limit(1)
-        )
-        if conn:
-            session.expunge(conn)
-        return conn
+            if conn:
+                session.expunge(conn)
+            return conn
 
-    @provide_session
     def get_variable(
-        self, key: str, team_name: str | None = None, *, session: Session = NEW_SESSION
+        self, key: str, team_name: str | None = None, *, session: Session | None = NEW_SESSION
     ) -> str | None:
         """
         Get Airflow Variable from Metadata DB.
@@ -75,12 +83,15 @@ class MetastoreBackend(BaseSecretsBackend):
         """
         from airflow.models import Variable
 
-        var_value = session.scalar(
-            select(Variable)
-            .where(Variable.key == key, or_(Variable.team_name == team_name, Variable.team_name.is_(None)))
-            .limit(1)
-        )
-        if var_value:
-            session.expunge(var_value)
-            return var_value.val
-        return None
+        with _get_backend_session(session) as session:
+            var_value = session.scalar(
+                select(Variable)
+                .where(
+                    Variable.key == key, or_(Variable.team_name == team_name, Variable.team_name.is_(None))
+                )
+                .limit(1)
+            )
+            if var_value:
+                session.expunge(var_value)
+                return var_value.val
+            return None
