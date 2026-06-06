@@ -3231,6 +3231,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         else:
             dag_id_to_team_name = {}
 
+        serialized_dags: dict[tuple[str, str], Any] = {}
         for ti in task_instances_without_heartbeats:
             task_instance_heartbeat_timeout_message_details = (
                 self._generate_task_instance_heartbeat_timeout_message_details(ti)
@@ -3248,12 +3249,27 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             # Backfill dag_version_id for legacy tasks (Pydantic requires uuid.UUID).
             if not _ensure_ti_has_dag_version_id(ti, session, self.log):
                 continue
+            try:
+                dag_key = (ti.dag_id, ti.run_id)
+                if dag_key not in serialized_dags:
+                    serialized_dags[dag_key] = self.scheduler_dag_bag.get_dag_for_run(
+                        dag_run=ti.dag_run, session=session
+                    )
+                if dag := serialized_dags[dag_key]:
+                    ti.task = dag.get_task(ti.task_id)
+            except Exception:
+                self.log.exception(
+                    "Could not load task definition for heartbeat timeout task instance %s", ti
+                )
             request = TaskCallbackRequest(
                 filepath=ti.dag_model.relative_fileloc or "",
                 bundle_name=_hb_bundle_name,
                 bundle_version=_hb_bundle_version,
                 ti=ti,
                 msg=str(task_instance_heartbeat_timeout_message_details),
+                task_callback_type=(
+                    TaskInstanceState.UP_FOR_RETRY if ti.is_eligible_to_retry() else TaskInstanceState.FAILED
+                ),
                 context_from_server=TIRunContext(
                     dag_run=DRDataModel.model_validate(ti.dag_run, from_attributes=True),
                     max_tries=ti.max_tries,
@@ -3281,6 +3297,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 request,
             )
             self.executor.send_callback(request)
+            ti.handle_failure(error=str(task_instance_heartbeat_timeout_message_details), session=session)
             executor = self._try_to_load_executor(
                 ti, session, team_name=dag_id_to_team_name.get(ti.dag_id, NOTSET)
             )

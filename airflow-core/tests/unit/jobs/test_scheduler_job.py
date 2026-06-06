@@ -8167,9 +8167,44 @@ class TestSchedulerJob:
         callback_request = mock_executor.send_callback.call_args[0][0]
 
         assert isinstance(callback_request, TaskCallbackRequest)
+        assert callback_request.task_callback_type == TaskInstanceState.FAILED
         assert callback_request.context_from_server is not None
         assert callback_request.context_from_server.dag_run.logical_date == dag_run.logical_date
         assert callback_request.context_from_server.max_tries == ti.max_tries
+
+    def test_heartbeat_timeout_only_sends_one_callback_for_same_attempt(self, dag_maker, session):
+        with dag_maker(dag_id="test_heartbeat_timeout_once", session=session):
+            EmptyOperator(task_id="test_task", retries=1, on_retry_callback=lambda context: None)
+
+        dag_run = dag_maker.create_dagrun(run_id="test_run", state=DagRunState.RUNNING)
+
+        mock_executor = MockExecutor()
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(scheduler_job, executors=[mock_executor])
+
+        ti = dag_run.get_task_instance(task_id="test_task")
+        ti.state = TaskInstanceState.RUNNING
+        ti.queued_by_job_id = scheduler_job.id
+        ti.last_heartbeat_at = timezone.utcnow() - timedelta(seconds=600)
+        session.merge(ti)
+        session.commit()
+
+        self.job_runner._find_and_purge_task_instances_without_heartbeats()
+        self.job_runner._find_and_purge_task_instances_without_heartbeats()
+
+        mock_executor.callback_sink.send.assert_called_once()
+        callback_request = mock_executor.callback_sink.send.call_args[0][0]
+        assert callback_request.task_callback_type == TaskInstanceState.UP_FOR_RETRY
+
+        updated_ti = session.scalar(
+            select(TaskInstance).where(
+                TaskInstance.dag_id == ti.dag_id,
+                TaskInstance.task_id == ti.task_id,
+                TaskInstance.run_id == ti.run_id,
+                TaskInstance.map_index == ti.map_index,
+            )
+        )
+        assert updated_ti.state == TaskInstanceState.UP_FOR_RETRY
 
     @pytest.mark.parametrize(
         ("retries", "callback_kind", "expected"),
