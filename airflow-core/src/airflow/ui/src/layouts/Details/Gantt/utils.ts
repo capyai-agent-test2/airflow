@@ -28,11 +28,14 @@ import { renderDuration } from "src/utils/datetimeUtils";
 import { buildTaskInstanceUrl } from "src/utils/links";
 
 export type GanttDataItem = {
+  duration?: number | null;
+  end_date?: string | null;
   isGroup?: boolean | null;
   isMapped?: boolean | null;
   /** Source try times for tooltips (matches TaskInstance `*_when` fields). */
   queued_when?: string | null;
   scheduled_when?: string | null;
+  start_date?: string | null;
   state?: TaskInstanceState | null;
   taskId: string;
   tryNumber?: number;
@@ -73,6 +76,36 @@ export const gridSummariesToTaskIdMap = (
   }
 
   return byId;
+};
+
+export const toTooltipSummary = (
+  segment: GanttDataItem,
+  node: GridTask,
+  gridSummary: LightGridTaskInstanceSummary | undefined,
+) => {
+  if (gridSummary !== undefined && (node.isGroup ?? node.is_mapped)) {
+    return gridSummary;
+  }
+
+  return {
+    child_states: null,
+    state: segment.state ?? null,
+    task_display_name: segment.y,
+    task_id: segment.taskId,
+    try_number: segment.tryNumber,
+    ...(segment.tryNumber === undefined
+      ? {
+          max_end_date: dayjs(segment.x[1]).toISOString(),
+          min_start_date: dayjs(segment.x[0]).toISOString(),
+        }
+      : {
+          duration: segment.duration,
+          end_date: segment.end_date,
+          queued_when: segment.queued_when,
+          scheduled_when: segment.scheduled_when,
+          start_date: segment.start_date,
+        }),
+  };
 };
 
 export const transformGanttData = ({
@@ -129,14 +162,21 @@ export const transformGanttData = ({
             const endDate: string | null = tryRow.end_date;
             const queuedDttm = tryRow.queued_dttm;
             const scheduledDttm = tryRow.scheduled_dttm;
+            const durationMs =
+              startDate !== null && endDate !== null
+                ? dayjs(endDate).valueOf() - dayjs(startDate).valueOf()
+                : null;
             const startMs = startDate === null ? undefined : dayjs(startDate).valueOf();
             const queuedMs = queuedDttm === null ? undefined : dayjs(queuedDttm).valueOf();
             const scheduledMs = scheduledDttm === null ? undefined : dayjs(scheduledDttm).valueOf();
 
             // Include scheduled/queued times in tooltip data whenever the timestamps exist.
             const tryWhenForTooltip = {
+              duration: durationMs === null ? null : durationMs / 1000,
+              end_date: endDate,
               ...(scheduledMs === undefined ? {} : { scheduled_when: scheduledDttm }),
               ...(queuedMs === undefined ? {} : { queued_when: queuedDttm }),
+              start_date: startDate,
             };
 
             let endMs: number;

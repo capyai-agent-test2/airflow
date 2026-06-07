@@ -259,6 +259,11 @@ describe("transformGanttData", () => {
     expect(result).toHaveLength(2);
     expect(result[0]?.state).toBe("queued");
     expect(result[1]?.state).toBe("success");
+    expect(result[0]).toMatchObject({
+      duration: 300,
+      end_date: "2024-03-14T10:05:00+00:00",
+      start_date: "2024-03-14T10:00:00+00:00",
+    });
   });
 
   it("produces 1 segment when scheduled_dttm and queued_dttm are null", () => {

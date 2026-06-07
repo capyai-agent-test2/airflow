@@ -30,8 +30,12 @@ import { getDuration, renderDuration, sortStateEntries } from "src/utils";
 
 /** Grid summary plus optional schedule/queue hints (e.g. Gantt segment tooltips). */
 type LightGridTaskInstanceSummaryWithWhen = {
+  readonly duration?: number | null;
+  readonly end_date?: string | null;
   readonly queued_when?: string | null;
   readonly scheduled_when?: string | null;
+  readonly start_date?: string | null;
+  readonly try_number?: number;
 } & LightGridTaskInstanceSummary;
 
 type Props = {
@@ -91,7 +95,7 @@ const TaskInstanceTooltip = ({ children, positioning, runId, taskInstance, toolt
                   {translate("taskInstance.queuedWhen")}: <Time datetime={taskInstance.queued_when} />
                 </Text>
               ) : undefined}
-              {"start_date" in taskInstance ? (
+              {"start_date" in taskInstance && taskInstance.start_date !== undefined ? (
                 <>
                   {taskInstance.try_number > 1 && (
                     <Text>
