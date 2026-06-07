@@ -34,7 +34,7 @@ from structlog.dev import BLUE, BRIGHT, CYAN, DIM, GREEN, MAGENTA, RESET_ALL as 
 from structlog.processors import CallsiteParameter
 
 from airflow_shared.logging import structlog as structlog_module
-from airflow_shared.logging.structlog import configure_logging
+from airflow_shared.logging.structlog import SourceLineExceptionDictTransformer, configure_logging
 
 # We avoid the caplog fixture for most tests here; the main purpose of this file is to capture the
 # _rendered_ output of the tests to make sure it is correct.
@@ -404,6 +404,7 @@ def test_json_exc(structlog_config, get_logger, monkeypatch):
                 "frames": [
                     {
                         "filename": __file__,
+                        "line": "1 / 0",
                         "lineno": lineno,
                         "name": "test_json_exc",
                     },
@@ -417,6 +418,33 @@ def test_json_exc(structlog_config, get_logger, monkeypatch):
         "logger": "logger",
         "timestamp": "1985-10-26T00:00:00.000001Z",
     }
+
+
+def test_source_line_exception_dict_transformer_enriches_nested_exception_frames():
+    nested_lineno = sys._getframe().f_lineno + 9
+    stack_dicts = [
+        {
+            "exceptions": [
+                [
+                    {
+                        "exceptions": [],
+                        "frames": [
+                            {
+                                "filename": __file__,
+                                "lineno": nested_lineno,
+                                "name": "nested",
+                            }
+                        ],
+                    }
+                ]
+            ],
+            "frames": [],
+        }
+    ]
+
+    SourceLineExceptionDictTransformer()._add_source_lines(stack_dicts)
+
+    assert stack_dicts[0]["exceptions"][0][0]["frames"][0]["line"] == '"filename": __file__,'
 
 
 @pytest.mark.parametrize(

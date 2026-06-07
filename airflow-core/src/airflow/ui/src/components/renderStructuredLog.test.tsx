@@ -86,6 +86,76 @@ describe("renderStructuredLog — TI context field stripping", () => {
   });
 });
 
+describe("renderStructuredLog — exception details", () => {
+  it("renders source lines from structured traceback frames", () => {
+    const result = renderStructuredLog({
+      index: 0,
+      logLink: "",
+      logMessage: {
+        error_detail: [
+          {
+            exc_notes: [],
+            exc_type: "Exception",
+            exc_value: "Down bad rn",
+            frames: [
+              {
+                filename: "/opt/airflow/dags/test_error.py",
+                line: 'raise Exception("Down bad rn")',
+                lineno: 13,
+                name: "failing_python_function",
+              },
+            ],
+            is_cause: false,
+            syntax_error: null,
+          },
+        ],
+        event: "Task failed",
+        level: "error",
+        timestamp: "2025-01-01T00:00:00Z",
+      },
+      renderingMode: "jsx",
+      translate: translate as never,
+    });
+
+    render(<Wrapper>{result}</Wrapper>);
+
+    expect(screen.getByText('raise Exception("Down bad rn")')).toBeInTheDocument();
+  });
+
+  it("includes source lines in text rendering", () => {
+    const result = renderStructuredLog({
+      index: 0,
+      logLink: "",
+      logMessage: {
+        error_detail: [
+          {
+            exc_notes: [],
+            exc_type: "Exception",
+            exc_value: "Down bad rn",
+            frames: [
+              {
+                filename: "/opt/airflow/dags/test_error.py",
+                line: 'raise Exception("Down bad rn")',
+                lineno: 13,
+                name: "failing_python_function",
+              },
+            ],
+            is_cause: false,
+            syntax_error: null,
+          },
+        ],
+        event: "Task failed",
+        level: "error",
+        timestamp: "2025-01-01T00:00:00Z",
+      },
+      renderingMode: "text",
+      translate: translate as never,
+    });
+
+    expect(result).toContain('raise Exception("Down bad rn")');
+  });
+});
+
 describe("renderTIContextPreamble", () => {
   it("text mode: returns key=value pairs joined by spaces, prefixed with label", () => {
     const result = renderTIContextPreamble(

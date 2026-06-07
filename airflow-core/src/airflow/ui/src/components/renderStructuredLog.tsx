@@ -30,6 +30,7 @@ import { LogLevel, logLevelColorMapping } from "src/utils/logs";
 
 type Frame = {
   filename: string;
+  line?: string;
   lineno: number;
   name: string;
 };
@@ -252,7 +253,9 @@ const renderStructuredLogImpl = ({
     details = (errorDetail as Array<ErrorDetail>).map((error) => {
       const errorLines = error.frames.map((frame) => {
         if (renderingMode === "text") {
-          return `    ${translate("components:logs.file")} ${frame.filename}, ${translate("components:logs.location", { line: frame.lineno, name: frame.name })}\n`;
+          const codeLine = frame.line === undefined ? "" : `      ${frame.line}\n`;
+
+          return `    ${translate("components:logs.file")} ${frame.filename}, ${translate("components:logs.location", { line: frame.lineno, name: frame.name })}\n${codeLine}`;
         }
 
         return (
@@ -260,6 +263,12 @@ const renderStructuredLogImpl = ({
             {translate("components:logs.file")}{" "}
             <chakra.span color="fg.info">{JSON.stringify(frame.filename)}</chakra.span>,{" "}
             {translate("components:logs.location", { line: frame.lineno, name: frame.name })}
+            {frame.line === undefined ? undefined : (
+              <>
+                <br />
+                <chakra.code ms={6}>{frame.line}</chakra.code>
+              </>
+            )}
           </chakra.p>
         );
       });
