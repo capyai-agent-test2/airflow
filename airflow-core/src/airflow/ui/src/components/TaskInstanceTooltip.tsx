@@ -95,7 +95,9 @@ const TaskInstanceTooltip = ({ children, positioning, runId, taskInstance, toolt
                   {translate("taskInstance.queuedWhen")}: <Time datetime={taskInstance.queued_when} />
                 </Text>
               ) : undefined}
-              {"start_date" in taskInstance && taskInstance.start_date !== undefined ? (
+              {"start_date" in taskInstance &&
+              taskInstance.start_date !== undefined &&
+              taskInstance.start_date !== null ? (
                 <>
                   {taskInstance.try_number > 1 && (
                     <Text>
