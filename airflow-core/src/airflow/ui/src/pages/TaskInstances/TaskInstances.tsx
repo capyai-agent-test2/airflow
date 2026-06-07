@@ -160,6 +160,14 @@ const taskInstanceColumns = ({
       ]),
   {
     accessorKey: "rendered_map_index",
+    cell: ({ row: { original } }) =>
+      Boolean(taskId) && Boolean(runId) && original.map_index >= 0 ? (
+        <RouterLink fontWeight="bold" to={getTaskInstanceLink(original)}>
+          {original.rendered_map_index ?? original.map_index}
+        </RouterLink>
+      ) : (
+        original.rendered_map_index
+      ),
     header: translate("mapIndex"),
   },
   {
