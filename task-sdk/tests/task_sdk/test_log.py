@@ -24,6 +24,7 @@ import structlog.testing
 from uuid6 import uuid7
 
 from airflow.sdk import log as sdk_log
+from airflow.sdk.configuration import conf
 
 
 def _make_ti():
@@ -40,10 +41,27 @@ def _make_logger():
 
 
 class TestUploadToRemote:
+    def test_silent_when_remote_logging_is_disabled(self):
+        ti = _make_ti()
+        with (
+            mock.patch.object(sdk_log, "load_remote_log_handler", return_value=None),
+            mock.patch.object(conf, "getboolean", return_value=False),
+            mock.patch.object(
+                conf,
+                "get",
+                side_effect=lambda section, key, fallback=None: fallback,
+            ),
+            structlog.testing.capture_logs() as captured,
+        ):
+            sdk_log.upload_to_remote(_make_logger(), ti)
+
+        assert captured == []
+
     def test_warns_when_handler_unavailable(self):
         ti = _make_ti()
         with (
             mock.patch.object(sdk_log, "load_remote_log_handler", return_value=None),
+            mock.patch.object(sdk_log, "_is_remote_log_handler_expected", return_value=True),
             structlog.testing.capture_logs() as captured,
         ):
             sdk_log.upload_to_remote(_make_logger(), ti)
