@@ -53,6 +53,20 @@ class _ActiveLoggingConfig:
         cls.logging_config_loaded = True
 
 
+def _is_remote_log_handler_expected() -> bool:
+    from airflow.sdk._shared.logging.factory import DEFAULT_LOGGING_CONFIG_PATH
+    from airflow.sdk.configuration import conf
+
+    if conf.getboolean("logging", "remote_logging", fallback=False):
+        return True
+
+    logging_class_path = (
+        conf.get("logging", "logging_config_class", fallback=DEFAULT_LOGGING_CONFIG_PATH)
+        or DEFAULT_LOGGING_CONFIG_PATH
+    )
+    return logging_class_path != DEFAULT_LOGGING_CONFIG_PATH
+
+
 def mask_logs(logger: Any, method_name: str, event_dict: EventDict) -> EventDict:
     event_dict = redact(event_dict)  # type: ignore[assignment]
     return event_dict
@@ -232,11 +246,12 @@ def upload_to_remote(logger: FilteringBoundLogger, ti: RuntimeTI):
 
     handler = load_remote_log_handler()
     if not handler:
-        upload_log.warning(
-            "remote_log_handler_unavailable",
-            ti_id=str(ti.id),
-            note="Remote log handler could not be loaded; logs will be available locally only.",
-        )
+        if _is_remote_log_handler_expected():
+            upload_log.warning(
+                "remote_log_handler_unavailable",
+                ti_id=str(ti.id),
+                note="Remote log handler could not be loaded; logs will be available locally only.",
+            )
         return
 
     try:
