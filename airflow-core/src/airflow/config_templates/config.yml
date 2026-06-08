@@ -2898,6 +2898,16 @@ triggerer:
       type: integer
       example: ~
       default: "30"
+    unreferenced_triggers_cleanup_batch_size:
+      description: |
+        Number of unreferenced trigger rows deleted per batch during triggerer cleanup.
+        Tune this on deployments with many deferred tasks to reduce how long each cleanup
+        transaction holds row locks on the ``trigger`` table. Set to 0 to delete all
+        matching rows in a single transaction.
+      version_added: 3.3.0
+      type: integer
+      example: "1000"
+      default: "1000"
     queues_enabled:
       description: |
         When set to True, deferred tasks will register triggers with the task queue they originated from,

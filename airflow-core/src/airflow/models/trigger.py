@@ -39,7 +39,7 @@ from airflow.serialization.enums import stringify_encoding_keys as _stringify_en
 from airflow.triggers.base import BaseTaskEndEvent
 from airflow.utils.retries import run_with_db_retries
 from airflow.utils.session import NEW_SESSION, provide_session
-from airflow.utils.sqlalchemy import UtcDateTime, get_dialect_name, with_row_locks
+from airflow.utils.sqlalchemy import UtcDateTime, with_row_locks
 from airflow.utils.state import TaskInstanceState
 
 if TYPE_CHECKING:
@@ -249,24 +249,30 @@ class Trigger(Base):
                     .values(trigger_id=None)
                 )
 
-        # Get all triggers that have no task instances, assets, or callbacks depending on them and delete them
-        ids = (
-            select(cls.id)
-            .where(~cls.assets.any(), ~cls.callback.has())
-            .join(TaskInstance, cls.id == TaskInstance.trigger_id, isouter=True)
-            .group_by(cls.id)
-            .having(func.count(TaskInstance.trigger_id) == 0)
-        )
-        if get_dialect_name(session) == "mysql":
-            # MySQL doesn't support DELETE with JOIN, so we need to do it in two steps
-            ids_list = list(session.scalars(ids).all())
+        batch_size = conf.getint("triggerer", "unreferenced_triggers_cleanup_batch_size")
+
+        while True:
+            ids = (
+                select(cls.id)
+                .where(~cls.assets.any(), ~cls.callback.has())
+                .join(TaskInstance, cls.id == TaskInstance.trigger_id, isouter=True)
+                .group_by(cls.id)
+                .having(func.count(TaskInstance.trigger_id) == 0)
+                .order_by(cls.id)
+            )
+            if batch_size > 0:
+                ids = ids.limit(batch_size)
+            ids_list = session.scalars(ids).all()
+            if not ids_list:
+                break
+
             session.execute(
                 delete(Trigger).where(Trigger.id.in_(ids_list)).execution_options(synchronize_session=False)
             )
-        else:
-            session.execute(
-                delete(Trigger).where(Trigger.id.in_(ids)).execution_options(synchronize_session=False)
-            )
+            session.commit()
+
+            if batch_size <= 0 or len(ids_list) < batch_size:
+                break
 
     @classmethod
     @provide_session
