@@ -177,6 +177,19 @@ def test_clean_unused(session, dag_maker):
     assert {result.id for result in results} == {trigger1.id, trigger4.id, trigger5.id, trigger6.id}
 
 
+@conf_vars({("triggerer", "unreferenced_triggers_cleanup_batch_size"): "2"})
+def test_clean_unused_batches_deletes(session):
+    triggers = [Trigger(classpath=f"airflow.triggers.testing.SuccessTrigger{i}", kwargs={}) for i in range(5)]
+    session.add_all(triggers)
+    session.flush()
+
+    with patch.object(session, "commit", wraps=session.commit) as mock_commit:
+        Trigger.clean_unused(session=session)
+
+    assert mock_commit.call_count == 3
+    assert session.scalar(select(func.count()).select_from(Trigger)) == 0
+
+
 @patch.object(TriggererCallback, "handle_event")
 def test_submit_event(mock_callback_handle_event, session, create_task_instance):
     """
