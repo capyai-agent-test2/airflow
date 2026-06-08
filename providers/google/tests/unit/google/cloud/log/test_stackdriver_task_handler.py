@@ -28,8 +28,10 @@ from google.cloud.logging import Resource
 from google.cloud.logging_v2.types import ListLogEntriesRequest, ListLogEntriesResponse, LogEntry
 
 from airflow.providers.google.cloud.log.stackdriver_task_handler import (
+    LABEL_RUN_ID,
     StackdriverRemoteLogIO,
     StackdriverTaskHandler,
+    _parse_labels_from_log_path,
 )
 from airflow.utils import timezone
 from airflow.utils.state import TaskInstanceState
@@ -88,6 +90,22 @@ class TestStackdriverRemoteLogIO:
         assert len(messages) == 1
         assert "Stackdriver" in messages[0]
         assert logs == ["MSG1\nMSG2"]
+        mock_client.return_value.list_log_entries.assert_called_once_with(
+            request=ListLogEntriesRequest(
+                resource_names=["projects/project_id"],
+                filter=(
+                    'resource.type="global"\n'
+                    'logName="projects/project_id/logs/airflow"\n'
+                    'labels.dag_id="test_dag"\n'
+                    'labels.run_id="run1"\n'
+                    'labels.task_id="test_task"\n'
+                    'labels.try_number="1"'
+                ),
+                order_by="timestamp asc",
+                page_size=1000,
+                page_token=None,
+            )
+        )
 
     @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.get_credentials_and_project_id")
     @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.LoggingServiceV2Client")
@@ -110,6 +128,43 @@ class TestStackdriverRemoteLogIO:
 
         assert len(messages) == 1
         assert logs == []
+
+    @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.get_credentials_and_project_id")
+    @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.LoggingServiceV2Client")
+    def test_read_logs_uses_path_labels_in_supervisor_context(
+        self, mock_client, mock_get_creds_and_project_id
+    ):
+        mock_client.return_value.list_log_entries.return_value.pages = iter(
+            [_create_list_log_entries_response_mock(["MSG1", "MSG2"], None)]
+        )
+        mock_get_creds_and_project_id.return_value = ("creds", "project_id")
+
+        ti = mock.MagicMock(spec=["dag_id", "task_id", "run_id", "try_number"])
+        ti.task_id = "different_task"
+        ti.dag_id = "different_dag"
+        ti.run_id = "different_run"
+        ti.try_number = 9
+
+        messages, logs = self.io.read("dag_id=test_dag/run_id=run1/task_id=test_task/attempt=1.log", ti)
+
+        assert len(messages) == 1
+        assert logs == ["MSG1\nMSG2"]
+        mock_client.return_value.list_log_entries.assert_called_once_with(
+            request=ListLogEntriesRequest(
+                resource_names=["projects/project_id"],
+                filter=(
+                    'resource.type="global"\n'
+                    'logName="projects/project_id/logs/airflow"\n'
+                    'labels.dag_id="test_dag"\n'
+                    'labels.run_id="run1"\n'
+                    'labels.task_id="test_task"\n'
+                    'labels.try_number="1"'
+                ),
+                order_by="timestamp asc",
+                page_size=1000,
+                page_token=None,
+            )
+        )
 
     @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.get_credentials_and_project_id")
     @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.gcp_logging.Client")
@@ -205,6 +260,23 @@ class TestStackdriverRemoteLogIO:
         assert 'labels.task_id="test_task"' in log_filter
         assert 'labels.dag_id="test_dag"' in log_filter
 
+    @pytest.mark.parametrize(
+        ("relative_path", "expected_labels"),
+        [
+            (
+                "dag_id=test_dag/run_id=run1/task_id=test_task/attempt=1.log",
+                {"dag_id": "test_dag", LABEL_RUN_ID: "run1", "task_id": "test_task", "try_number": "1"},
+            ),
+            (
+                "dag_id=test_dag/run_id=run1/task_id=test_task/map_index=0/attempt=2.log",
+                {"dag_id": "test_dag", LABEL_RUN_ID: "run1", "task_id": "test_task", "try_number": "2"},
+            ),
+            ("not/a/task/log/path.log", {}),
+        ],
+    )
+    def test_parse_labels_from_log_path(self, relative_path, expected_labels):
+        assert _parse_labels_from_log_path(relative_path) == expected_labels
+
     @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.get_credentials_and_project_id")
     def test_prepare_log_filter_with_custom_resource(self, mock_get_creds_and_project_id):
         mock_get_creds_and_project_id.return_value = ("creds", "project_id")
@@ -233,7 +305,10 @@ class TestStackdriverRemoteLogIO:
         mock_get_creds_and_project_id.return_value = ("creds", "project_id")
 
         mock_transport_type = mock.MagicMock()
-        with mock.patch("airflow.sdk.log.relative_path_from_logger", return_value="dag/task/1.log"):
+        with mock.patch(
+            "airflow.sdk.log.relative_path_from_logger",
+            return_value="dag_id=test_dag/run_id=run1/task_id=test_task/attempt=1.log",
+        ):
             io = StackdriverRemoteLogIO(
                 base_log_folder=self.local_log_location,
                 gcp_log_name="airflow",
@@ -256,8 +331,46 @@ class TestStackdriverRemoteLogIO:
         assert result is event
         mock_transport = mock_transport_type.return_value
         mock_transport.send.assert_called_once()
+        assert mock_transport.send.call_args.kwargs["labels"] == {
+            "env": "test",
+            "dag_id": "test_dag",
+            LABEL_RUN_ID: "run1",
+            "task_id": "test_task",
+            "try_number": "1",
+        }
         record = mock_transport.send.call_args[0][0]
         assert record.levelno == logging.INFO
+
+    @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="airflow.sdk.log only exists in Airflow 3+")
+    @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler._logger")
+    @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.get_credentials_and_project_id")
+    @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.gcp_logging.Client")
+    def test_processors_warns_when_transport_send_fails(
+        self, mock_client, mock_get_creds_and_project_id, mock_logger
+    ):
+        mock_get_creds_and_project_id.return_value = ("creds", "project_id")
+
+        transport = mock.MagicMock()
+        transport.send.side_effect = RuntimeError("boom")
+        mock_transport_type = mock.MagicMock(return_value=transport)
+        with mock.patch(
+            "airflow.sdk.log.relative_path_from_logger",
+            return_value="dag_id=test_dag/run_id=run1/task_id=test_task/attempt=1.log",
+        ):
+            io = StackdriverRemoteLogIO(
+                base_log_folder=self.local_log_location,
+                gcp_log_name="airflow",
+                transport_type=mock_transport_type,
+            )
+            result = io.processors[0](mock.MagicMock(), "info", {"event": "hello world"})
+
+        assert result == {"event": "hello world"}
+        mock_logger.warning.assert_called_once_with(
+            "Failed to send log entry to Cloud Logging: %s: %s",
+            "RuntimeError",
+            mock.ANY,
+        )
+        assert str(mock_logger.warning.call_args.args[2]) == "boom"
 
     @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="airflow.sdk.log only exists in Airflow 3+")
     @mock.patch("airflow.providers.google.cloud.log.stackdriver_task_handler.get_credentials_and_project_id")
