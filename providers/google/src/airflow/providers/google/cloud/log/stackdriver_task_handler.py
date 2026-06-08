@@ -77,6 +77,7 @@ _DEFAULT_SCOPESS = frozenset(
 LABEL_TASK_ID = "task_id"
 LABEL_DAG_ID = "dag_id"
 LABEL_LOGICAL_DATE = "logical_date" if AIRFLOW_V_3_0_PLUS else "execution_date"
+LABEL_RUN_ID = "run_id"
 LABEL_TRY_NUMBER = "try_number"
 
 
@@ -139,7 +140,8 @@ class StackdriverRemoteLogIO(LoggingMixin):
             method_name: str,
             event: structlog.typing.EventDict,
         ):
-            if not logger or not relative_path_from_logger(logger):
+            relative_path = relative_path_from_logger(logger) if logger else None
+            if not relative_path:
                 return event
 
             name = event.get("logger_name") or event.get("logger", "")
@@ -171,7 +173,12 @@ class StackdriverRemoteLogIO(LoggingMixin):
                 labels.update(self.labels)
             if ti:
                 labels.update(_task_instance_to_labels(ti))
-            _transport.send(record, str(msg.get("event", "")), resource=self.resource, labels=labels)
+            else:
+                labels.update(_parse_labels_from_log_path(relative_path))
+            try:
+                _transport.send(record, str(msg.get("event", "")), resource=self.resource, labels=labels)
+            except Exception as exc:
+                _logger.warning("Failed to send log entry to Cloud Logging: %s: %s", type(exc).__name__, exc)
             return event
 
         return (proc,)
@@ -198,7 +205,7 @@ class StackdriverRemoteLogIO(LoggingMixin):
 
     def read(self, relative_path: str, ti: RuntimeTI) -> LogResponse:
         """Read logs from Stackdriver Logging using task instance labels."""
-        ti_labels = _task_instance_to_labels(ti)
+        ti_labels = _parse_labels_from_log_path(relative_path) or _task_instance_to_labels(ti)
         log_filter = self.prepare_log_filter(ti_labels)
         messages, end_of_log, _ = self.read_logs(log_filter, next_page_token=None, all_pages=True)
         return [f"Reading remote log from Stackdriver for {relative_path}"], [messages] if messages else []
@@ -276,6 +283,25 @@ def _task_instance_to_labels(ti) -> dict[str, str]:
         else str(ti.execution_date.isoformat()),
         LABEL_TRY_NUMBER: str(ti.try_number),
     }
+
+
+def _parse_labels_from_log_path(relative_path: os.PathLike | str) -> dict[str, str]:
+    """Extract Cloud Logging labels from the structured Airflow task log path."""
+    parts = Path(relative_path).parts
+    labels: dict[str, str] = {}
+    for part in parts:
+        key, separator, value = part.partition("=")
+        if not separator:
+            continue
+        if key in {LABEL_DAG_ID, LABEL_RUN_ID, LABEL_TASK_ID}:
+            labels[key] = value
+        elif key == "attempt":
+            labels[LABEL_TRY_NUMBER] = value.removesuffix(".log")
+
+    expected_labels = {LABEL_DAG_ID, LABEL_RUN_ID, LABEL_TASK_ID, LABEL_TRY_NUMBER}
+    if expected_labels.issubset(labels):
+        return labels
+    return {}
 
 
 class StackdriverTaskHandler(logging.Handler):
