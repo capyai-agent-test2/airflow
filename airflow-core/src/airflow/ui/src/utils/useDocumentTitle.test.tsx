@@ -34,6 +34,12 @@ const TestComponent = ({ pageTitle }: { readonly pageTitle?: string | null }) =>
   return null;
 };
 
+const DisabledDefaultTitleComponent = () => {
+  useDocumentTitle(undefined, false);
+
+  return null;
+};
+
 describe("useDocumentTitle", () => {
   beforeEach(() => {
     useConfigMock.mockReset();
@@ -66,5 +72,14 @@ describe("useDocumentTitle", () => {
     render(<TestComponent />, { wrapper: Wrapper });
 
     expect(document.title).toBe("Airflow");
+  });
+
+  it("does not change the title when default title handling is disabled", () => {
+    useConfigMock.mockReturnValue("My Airflow");
+    document.title = "Example Dag - My Airflow";
+
+    render(<DisabledDefaultTitleComponent />, { wrapper: Wrapper });
+
+    expect(document.title).toBe("Example Dag - My Airflow");
   });
 });

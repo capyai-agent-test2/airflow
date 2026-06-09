@@ -17,12 +17,14 @@
  * under the License.
  */
 import { render, waitFor } from "@testing-library/react";
+import type { Location } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseLayout } from "src/layouts/BaseLayout";
 import { Wrapper } from "src/utils/Wrapper";
 
 const useConfigMock = vi.fn<(key: string) => unknown>();
+const useLocationMock = vi.fn<() => Pick<Location, "pathname">>();
 
 vi.mock("src/queries/useConfig", () => ({
   useConfig: (key: string) => useConfigMock(key),
@@ -47,9 +49,19 @@ vi.mock("src/layouts/Nav", () => ({
   Nav: () => null,
 }));
 
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
+
+  return {
+    ...actual,
+    useLocation: () => useLocationMock(),
+  };
+});
+
 describe("BaseLayout", () => {
   beforeEach(() => {
     useConfigMock.mockReset();
+    useLocationMock.mockReturnValue({ pathname: "/" });
   });
 
   it("uses the configured instance name as the default browser title", async () => {
@@ -66,5 +78,15 @@ describe("BaseLayout", () => {
     render(<BaseLayout />, { wrapper: Wrapper });
 
     await waitFor(() => expect(document.title).toBe("Airflow"));
+  });
+
+  it("does not override Dag-specific page titles", async () => {
+    useConfigMock.mockImplementation((key: string) => (key === "instance_name" ? "My Airflow" : undefined));
+    useLocationMock.mockReturnValue({ pathname: "/dags/example" });
+    document.title = "Example Dag - My Airflow";
+
+    render(<BaseLayout />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(document.title).toBe("Example Dag - My Airflow"));
   });
 });
