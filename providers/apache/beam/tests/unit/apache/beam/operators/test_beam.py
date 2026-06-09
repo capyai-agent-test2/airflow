@@ -1032,11 +1032,12 @@ class TestBeamRunPythonPipelineOperatorAsync:
         )
         beam_hook_mock.return_value.start_python_pipeline.assert_called_once()
 
+    @mock.patch(BEAM_OPERATOR_PATH.format("DataflowJobLink.persist"))
     @mock.patch(BEAM_OPERATOR_PATH.format("BeamHook"))
     @mock.patch(BEAM_OPERATOR_PATH.format("DataflowHook"))
     @mock.patch(BEAM_OPERATOR_PATH.format("GCSHook"))
     def test_exec_dataflow_runner_without_job_id_falls_back_to_sync_wait(
-        self, gcs_hook_mock, dataflow_hook_mock, beam_hook_mock
+        self, gcs_hook_mock, dataflow_hook_mock, beam_hook_mock, persist_mock
     ):
         dataflow_config = DataflowConfiguration(impersonation_chain=TEST_IMPERSONATION_ACCOUNT)
         op = BeamRunPythonPipelineOperator(
@@ -1174,11 +1175,12 @@ class TestBeamRunJavaPipelineOperatorAsync:
         )
         beam_hook_mock.return_value.start_python_pipeline.assert_not_called()
 
+    @mock.patch(BEAM_OPERATOR_PATH.format("DataflowJobLink.persist"))
     @mock.patch(BEAM_OPERATOR_PATH.format("BeamHook"))
     @mock.patch(BEAM_OPERATOR_PATH.format("DataflowHook"))
     @mock.patch(BEAM_OPERATOR_PATH.format("GCSHook"))
     def test_exec_dataflow_runner_without_job_id_falls_back_to_sync_wait(
-        self, gcs_hook_mock, dataflow_hook_mock, beam_hook_mock
+        self, gcs_hook_mock, dataflow_hook_mock, beam_hook_mock, persist_mock
     ):
         dataflow_config = DataflowConfiguration(impersonation_chain=TEST_IMPERSONATION_ACCOUNT)
         op = BeamRunJavaPipelineOperator(
