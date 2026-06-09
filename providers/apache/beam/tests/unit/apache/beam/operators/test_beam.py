@@ -1003,6 +1003,9 @@ class TestBeamRunPythonPipelineOperatorAsync:
             dataflow_config=dataflow_config,
             **self.default_op_kwargs,
         )
+        beam_hook_mock.return_value.start_python_pipeline.side_effect = lambda **kwargs: kwargs[
+            "process_line_callback"
+        ](f"Created job with id: [{JOB_ID}]")
         magic_mock = mock.MagicMock()
         if AIRFLOW_V_3_0_PLUS:
             with pytest.raises(TaskDeferred):
@@ -1031,14 +1034,39 @@ class TestBeamRunPythonPipelineOperatorAsync:
 
     @mock.patch(BEAM_OPERATOR_PATH.format("DataflowJobLink.persist"))
     @mock.patch(BEAM_OPERATOR_PATH.format("BeamHook"))
+    @mock.patch(BEAM_OPERATOR_PATH.format("DataflowHook"))
+    @mock.patch(BEAM_OPERATOR_PATH.format("GCSHook"))
+    def test_exec_dataflow_runner_without_job_id_falls_back_to_sync_wait(
+        self, gcs_hook_mock, dataflow_hook_mock, beam_hook_mock, persist_mock
+    ):
+        dataflow_config = DataflowConfiguration(impersonation_chain=TEST_IMPERSONATION_ACCOUNT)
+        op = BeamRunPythonPipelineOperator(
+            runner="DataflowRunner",
+            dataflow_config=dataflow_config,
+            **self.default_op_kwargs,
+        )
+
+        assert op.execute(context=mock.MagicMock()) == {"dataflow_job_id": None}
+        dataflow_hook_mock.return_value.wait_for_done.assert_called_once_with(
+            job_name=op.dataflow_job_name,
+            job_id=None,
+            location=dataflow_config.location,
+            multiple_jobs=False,
+            project_id=dataflow_config.project_id,
+        )
+
+    @mock.patch(BEAM_OPERATOR_PATH.format("DataflowJobLink.persist"))
+    @mock.patch(BEAM_OPERATOR_PATH.format("BeamHook"))
     @mock.patch(BEAM_OPERATOR_PATH.format("GCSHook"))
     @mock.patch(BEAM_OPERATOR_PATH.format("DataflowHook"))
     def test_on_kill_dataflow_runner(self, dataflow_hook_mock, _, __, ___):
         op = BeamRunPythonPipelineOperator(runner="DataflowRunner", **self.default_op_kwargs)
         dataflow_cancel_job = dataflow_hook_mock.return_value.cancel_job
+        __.return_value.start_python_pipeline.side_effect = lambda **kwargs: kwargs["process_line_callback"](
+            f"Created job with id: [{JOB_ID}]"
+        )
         with pytest.raises(TaskDeferred):
             op.execute(context=mock.MagicMock())
-        op.dataflow_job_id = JOB_ID
         op.on_kill()
         dataflow_cancel_job.assert_called_once_with(
             job_id=JOB_ID, project_id=op.dataflow_config.project_id, location=op.dataflow_config.location
@@ -1050,20 +1078,7 @@ class TestBeamRunPythonPipelineOperatorAsync:
     def test_on_kill_direct_runner(self, _, dataflow_mock, __):
         dataflow_cancel_job = dataflow_mock.return_value.cancel_job
         op = BeamRunPythonPipelineOperator(runner="DataflowRunner", **self.default_op_kwargs)
-        if AIRFLOW_V_3_0_PLUS:
-            with pytest.raises(TaskDeferred):
-                op.execute(mock.MagicMock())
-        else:
-            exception_msg = (
-                "GoogleBaseLink.persist method call with no extra value is Deprecated for Airflow 3."
-                " The method calls (only with context) needs to be removed after the Airflow 3 Migration"
-                " completed!"
-            )
-            with (
-                pytest.raises(TaskDeferred),
-                pytest.warns(AirflowProviderDeprecationWarning, match=exception_msg),
-            ):
-                op.execute(mock.MagicMock())
+        assert op.execute(mock.MagicMock()) == {"dataflow_job_id": None}
         op.on_kill()
         dataflow_cancel_job.assert_not_called()
 
@@ -1131,6 +1146,9 @@ class TestBeamRunJavaPipelineOperatorAsync:
             runner="DataflowRunner", dataflow_config=dataflow_config, **self.default_op_kwargs
         )
         dataflow_hook_mock.return_value.is_job_dataflow_running.return_value = False
+        beam_hook_mock.return_value.start_java_pipeline.side_effect = lambda **kwargs: kwargs[
+            "process_line_callback"
+        ](f"Submitted job: {JOB_ID}")
         magic_mock = mock.MagicMock()
         if AIRFLOW_V_3_0_PLUS:
             with pytest.raises(TaskDeferred):
@@ -1159,15 +1177,39 @@ class TestBeamRunJavaPipelineOperatorAsync:
 
     @mock.patch(BEAM_OPERATOR_PATH.format("DataflowJobLink.persist"))
     @mock.patch(BEAM_OPERATOR_PATH.format("BeamHook"))
+    @mock.patch(BEAM_OPERATOR_PATH.format("DataflowHook"))
+    @mock.patch(BEAM_OPERATOR_PATH.format("GCSHook"))
+    def test_exec_dataflow_runner_without_job_id_falls_back_to_sync_wait(
+        self, gcs_hook_mock, dataflow_hook_mock, beam_hook_mock, persist_mock
+    ):
+        dataflow_config = DataflowConfiguration(impersonation_chain=TEST_IMPERSONATION_ACCOUNT)
+        op = BeamRunJavaPipelineOperator(
+            runner="DataflowRunner", dataflow_config=dataflow_config, **self.default_op_kwargs
+        )
+        dataflow_hook_mock.return_value.is_job_dataflow_running.return_value = False
+
+        assert op.execute(context=mock.MagicMock()) == {"dataflow_job_id": None}
+        dataflow_hook_mock.return_value.wait_for_done.assert_called_once_with(
+            job_name=op.dataflow_job_name,
+            job_id=None,
+            location=dataflow_config.location,
+            multiple_jobs=False,
+            project_id=dataflow_config.project_id,
+        )
+
+    @mock.patch(BEAM_OPERATOR_PATH.format("DataflowJobLink.persist"))
+    @mock.patch(BEAM_OPERATOR_PATH.format("BeamHook"))
     @mock.patch(BEAM_OPERATOR_PATH.format("GCSHook"))
     @mock.patch(BEAM_OPERATOR_PATH.format("DataflowHook"))
     def test_on_kill_dataflow_runner(self, dataflow_hook_mock, _, __, ___):
         dataflow_hook_mock.return_value.is_job_dataflow_running.return_value = False
         dataflow_cancel_job = dataflow_hook_mock.return_value.cancel_job
         op = BeamRunJavaPipelineOperator(runner="DataflowRunner", **self.default_op_kwargs)
+        __.return_value.start_java_pipeline.side_effect = lambda **kwargs: kwargs["process_line_callback"](
+            f"Submitted job: {JOB_ID}"
+        )
         with pytest.raises(TaskDeferred):
             op.execute(context=mock.MagicMock())
-        op.dataflow_job_id = JOB_ID
         op.on_kill()
         dataflow_cancel_job.assert_called_once_with(
             job_id=JOB_ID, project_id=op.dataflow_config.project_id, location=op.dataflow_config.location
