@@ -20,19 +20,26 @@ import { useEffect } from "react";
 
 import { useConfig } from "src/queries/useConfig";
 
-export const useDocumentTitle = (pageTitle?: string | null) => {
+export const useDocumentTitle = (pageTitle?: string | null, shouldSetDefaultTitle = true) => {
   const instanceConfig = useConfig("instance_name");
-  const instanceName = typeof instanceConfig === "string" ? instanceConfig : "Airflow";
+  const instanceName = typeof instanceConfig === "string" && instanceConfig.length > 0 ? instanceConfig : "Airflow";
 
   useEffect(() => {
     const previousTitle = document.title;
+    let didSetTitle = false;
 
     if (typeof pageTitle === "string" && pageTitle.length > 0) {
       document.title = `${pageTitle} - ${instanceName}`;
+      didSetTitle = true;
+    } else if (shouldSetDefaultTitle) {
+      document.title = instanceName;
+      didSetTitle = true;
     }
 
     return () => {
-      document.title = previousTitle;
+      if (didSetTitle) {
+        document.title = previousTitle;
+      }
     };
-  }, [pageTitle, instanceName]);
+  }, [pageTitle, instanceName, shouldSetDefaultTitle]);
 };

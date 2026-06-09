@@ -19,19 +19,32 @@
 import { Box, LocaleProvider } from "@chakra-ui/react";
 import { useEffect, type PropsWithChildren } from "react";
 import { useTranslation } from "react-i18next";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 import { usePluginServiceGetPlugins } from "openapi/queries";
 import type { ReactAppResponse } from "openapi/requests/types.gen";
 import { ReactPlugin } from "src/pages/ReactPlugin";
 import { useConfig } from "src/queries/useConfig";
+import { useDocumentTitle } from "src/utils";
 
 import { Nav } from "./Nav";
 
 export const BaseLayout = ({ children }: PropsWithChildren) => {
   const { i18n } = useTranslation();
   const { data: pluginData } = usePluginServiceGetPlugins();
+  const { pathname } = useLocation();
   const theme = useConfig("theme") as unknown as { icon?: string; icon_dark_mode?: string } | undefined;
+  const pathSegments = pathname.split("/").filter(Boolean);
+  const isDagPage =
+    pathSegments[0] === "dags" &&
+    (pathSegments.length === 2 ||
+      (pathSegments.length === 3 &&
+        ["backfills", "calendar", "code", "details", "events", "required_actions", "runs", "tasks"].includes(
+          pathSegments[2] ?? "",
+        )) ||
+      (pathSegments.length >= 4 && pathSegments[2] === "plugin"));
+
+  useDocumentTitle(undefined, !isDagPage);
 
   const baseReactPlugins =
     pluginData?.plugins
