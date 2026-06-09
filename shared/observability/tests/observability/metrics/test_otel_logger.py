@@ -248,6 +248,12 @@ class TestOtelMetrics:
         assert mock_random.call_count == 2
         assert mock_set_value.call_count == 1
 
+    @mock.patch.object(MetricsMap, "set_gauge_value")
+    def test_gauge_invalid_name_is_skipped(self, mock_set_gauge_value):
+        self.stats.gauge("bad name", value=1)
+
+        mock_set_gauge_value.assert_not_called()
+
     def test_gauge_value_is_correct(self, name):
         self.stats.gauge(name, value=1)
 
@@ -333,6 +339,17 @@ class TestOtelMetrics:
         assert timer.duration == expected_value
         assert mock_time.call_count == 2
         self.meter.get_meter().create_histogram.assert_called_once_with(name=full_name(name), unit="ms")
+
+    @mock.patch.object(time, "perf_counter", side_effect=[0.0, 3.14])
+    @mock.patch.object(MetricsMap, "record_histogram_value")
+    def test_timer_invalid_name_is_skipped(self, mock_record_histogram_value, mock_time):
+        with self.stats.timer("bad name") as timer:
+            pass
+
+        assert isinstance(timer.duration, float)
+        assert timer.duration == 3140.0
+        assert mock_time.call_count == 2
+        mock_record_histogram_value.assert_not_called()
 
     @pytest.mark.parametrize(
         (

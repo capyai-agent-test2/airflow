@@ -167,7 +167,13 @@ class _OtelTimer(Timer):
 
     def stop(self, send: bool = True) -> None:
         super().stop(send)
-        if self.name and send and self.duration is not None:
+        if (
+            self.name
+            and send
+            and self.duration is not None
+            and self.otel_logger.metrics_validator.test(self.name)
+            and name_is_otel_safe(self.otel_logger.prefix, self.name)
+        ):
             self.otel_logger.metrics_map.record_histogram_value(
                 full_name(prefix=self.otel_logger.prefix, name=self.name), self.duration, self.tags
             )
@@ -270,12 +276,16 @@ class SafeOtelLogger:
         if _skip_due_to_rate(rate):
             return
 
-        if back_compat_name and self.metrics_validator.test(back_compat_name):
+        if (
+            back_compat_name
+            and self.metrics_validator.test(back_compat_name)
+            and name_is_otel_safe(self.prefix, back_compat_name)
+        ):
             self.metrics_map.set_gauge_value(
                 full_name(prefix=self.prefix, name=back_compat_name), value, delta, tags
             )
 
-        if self.metrics_validator.test(stat):
+        if self.metrics_validator.test(stat) and name_is_otel_safe(self.prefix, stat):
             self.metrics_map.set_gauge_value(full_name(prefix=self.prefix, name=stat), value, delta, tags)
 
     def timing(
