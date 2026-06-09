@@ -35,6 +35,7 @@ import { isStatePending, useAutoRefresh } from "src/utils";
 
 import ClearTaskInstanceConfirmationDialog from "./ClearTaskInstanceConfirmationDialog";
 import { getRunOnLatestVersionState } from "./runOnLatestVersion";
+import { buildTaskIdSelector } from "./taskIds";
 
 // Discriminated union: callers pass either `allMapped: true` together with
 // `dagId`/`dagRunId`/`taskId` (clears every mapped TI of the task), or a full
@@ -144,7 +145,7 @@ const ClearTaskInstanceDialog = (props: Props) => {
       include_upstream: upstream,
       only_failed: onlyFailed,
       run_on_latest_version: runOnLatestVersion,
-      task_ids: allMapped ? [taskId] : [[taskId, mapIndex as number]],
+      task_ids: [buildTaskIdSelector(taskId, allMapped ? undefined : mapIndex)],
     },
   });
 
@@ -178,7 +179,7 @@ const ClearTaskInstanceDialog = (props: Props) => {
   );
 
   const checkedTaskIds = useMemo<ClearTaskInstancesBody["task_ids"]>(
-    () => keptTaskInstances.map((ti) => (ti.map_index < 0 ? ti.task_id : [ti.task_id, ti.map_index])),
+    () => keptTaskInstances.map((ti) => buildTaskIdSelector(ti.task_id, ti.map_index)),
     [keptTaskInstances],
   );
 
@@ -311,7 +312,7 @@ const ClearTaskInstanceDialog = (props: Props) => {
               for (const ti of keptTaskInstances) {
                 const ids = idsByRun.get(ti.dag_run_id) ?? [];
 
-                ids.push(ti.map_index < 0 ? ti.task_id : [ti.task_id, ti.map_index]);
+                ids.push(buildTaskIdSelector(ti.task_id, ti.map_index));
                 idsByRun.set(ti.dag_run_id, ids);
               }
 
@@ -350,7 +351,7 @@ const ClearTaskInstanceDialog = (props: Props) => {
                 note: noteChanged ? note : undefined,
                 only_failed: onlyFailed,
                 run_on_latest_version: runOnLatestVersion,
-                task_ids: allMapped ? [taskId] : [[taskId, mapIndex as number]],
+                task_ids: [buildTaskIdSelector(taskId, allMapped ? undefined : mapIndex)],
                 ...(preventRunningTask ? { prevent_running_task: true } : {}),
               },
             });
