@@ -289,6 +289,58 @@ class BeamBasePipelineOperator(BaseOperator, BeamDataflowMixin, ABC):
             "job_id": self.dataflow_job_id,
         }
 
+    def _defer_or_wait_for_dataflow_job(
+        self,
+        *,
+        job_name: str,
+        location: str | None,
+        multiple_jobs: bool = False,
+    ) -> None:
+        if not self.dataflow_hook:
+            raise AirflowException("Dataflow hook is not defined.")
+
+        location = location or DEFAULT_DATAFLOW_LOCATION
+
+        if self.deferrable and self.dataflow_job_id:
+            trigger_args = {
+                "job_id": self.dataflow_job_id,
+                "project_id": self.dataflow_config.project_id,
+                "location": location,
+                "gcp_conn_id": self.gcp_conn_id,
+            }
+            trigger: DataflowJobStatusTrigger | DataflowJobStateCompleteTrigger
+
+            if GOOGLE_PROVIDER_DATAFLOW_JOB_STATE_COMPLETE_TRIGGER_AVAILABLE:
+                trigger = DataflowJobStateCompleteTrigger(
+                    wait_until_finished=self.dataflow_config.wait_until_finished,
+                    **trigger_args,
+                )
+            else:
+                trigger = DataflowJobStatusTrigger(
+                    expected_statuses={DataflowJobStatus.JOB_STATE_DONE},
+                    **trigger_args,
+                )
+
+            self.defer(
+                trigger=trigger,
+                method_name="execute_complete",
+            )
+
+        if self.deferrable:
+            self.log.warning(
+                "Beam launcher output did not include a Dataflow job id for job '%s'; "
+                "falling back to synchronous wait by job name.",
+                job_name,
+            )
+
+        self.dataflow_hook.wait_for_done(
+            job_name=job_name,
+            location=location,
+            job_id=self.dataflow_job_id,
+            multiple_jobs=multiple_jobs,
+            project_id=self.dataflow_config.project_id,
+        )
+
     def execute_complete(self, context: Context, event: dict[str, Any]):
         """
         Execute when the trigger fires - returns immediately.
@@ -467,36 +519,7 @@ class BeamRunPythonPipelineOperator(BeamBasePipelineOperator):
             project_id=self.dataflow_config.project_id,
         )
 
-        if self.deferrable:
-            trigger_args = {
-                "job_id": self.dataflow_job_id,
-                "project_id": self.dataflow_config.project_id,
-                "location": location,
-                "gcp_conn_id": self.gcp_conn_id,
-            }
-            trigger: DataflowJobStatusTrigger | DataflowJobStateCompleteTrigger
-
-            if GOOGLE_PROVIDER_DATAFLOW_JOB_STATE_COMPLETE_TRIGGER_AVAILABLE:
-                trigger = DataflowJobStateCompleteTrigger(
-                    wait_until_finished=self.dataflow_config.wait_until_finished,
-                    **trigger_args,
-                )
-            else:
-                trigger = DataflowJobStatusTrigger(
-                    expected_statuses={DataflowJobStatus.JOB_STATE_DONE},
-                    **trigger_args,
-                )
-
-            self.defer(
-                trigger=trigger,
-                method_name="execute_complete",
-            )
-        self.dataflow_hook.wait_for_done(
-            job_name=self.dataflow_job_name,
-            location=self.dataflow_config.location,
-            job_id=self.dataflow_job_id,
-            project_id=self.dataflow_config.project_id,
-        )
+        self._defer_or_wait_for_dataflow_job(job_name=self.dataflow_job_name, location=location)
         return {"dataflow_job_id": self.dataflow_job_id}
 
     def on_kill(self) -> None:
@@ -661,38 +684,10 @@ class BeamRunJavaPipelineOperator(BeamBasePipelineOperator):
                     job_id=self.dataflow_job_id,
                     project_id=self.dataflow_config.project_id,
                 )
-                if self.deferrable:
-                    trigger_args = {
-                        "job_id": self.dataflow_job_id,
-                        "project_id": self.dataflow_config.project_id,
-                        "location": self.dataflow_config.location,
-                        "gcp_conn_id": self.gcp_conn_id,
-                    }
-                    trigger: DataflowJobStatusTrigger | DataflowJobStateCompleteTrigger
-
-                    if GOOGLE_PROVIDER_DATAFLOW_JOB_STATE_COMPLETE_TRIGGER_AVAILABLE:
-                        trigger = DataflowJobStateCompleteTrigger(
-                            wait_until_finished=self.dataflow_config.wait_until_finished,
-                            **trigger_args,
-                        )
-                    else:
-                        trigger = DataflowJobStatusTrigger(
-                            expected_statuses={DataflowJobStatus.JOB_STATE_DONE},
-                            **trigger_args,
-                        )
-
-                    self.defer(
-                        trigger=trigger,
-                        method_name="execute_complete",
-                    )
-
-                multiple_jobs = self.dataflow_config.multiple_jobs or False
-                self.dataflow_hook.wait_for_done(
+                self._defer_or_wait_for_dataflow_job(
                     job_name=self.dataflow_job_name,
                     location=self.dataflow_config.location,
-                    job_id=self.dataflow_job_id,
-                    multiple_jobs=multiple_jobs,
-                    project_id=self.dataflow_config.project_id,
+                    multiple_jobs=self.dataflow_config.multiple_jobs or False,
                 )
         return {"dataflow_job_id": self.dataflow_job_id}
 
