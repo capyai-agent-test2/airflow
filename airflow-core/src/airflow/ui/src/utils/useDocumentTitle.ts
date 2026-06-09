@@ -22,14 +22,13 @@ import { useConfig } from "src/queries/useConfig";
 
 export const useDocumentTitle = (pageTitle?: string | null) => {
   const instanceConfig = useConfig("instance_name");
-  const instanceName = typeof instanceConfig === "string" ? instanceConfig : "Airflow";
+  const instanceName = typeof instanceConfig === "string" && instanceConfig.length > 0 ? instanceConfig : "Airflow";
 
   useEffect(() => {
     const previousTitle = document.title;
 
-    if (typeof pageTitle === "string" && pageTitle.length > 0) {
-      document.title = `${pageTitle} - ${instanceName}`;
-    }
+    document.title =
+      typeof pageTitle === "string" && pageTitle.length > 0 ? `${pageTitle} - ${instanceName}` : instanceName;
 
     return () => {
       document.title = previousTitle;
