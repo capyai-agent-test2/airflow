@@ -26,15 +26,20 @@ export const useDocumentTitle = (pageTitle?: string | null, shouldSetDefaultTitl
 
   useEffect(() => {
     const previousTitle = document.title;
+    let didSetTitle = false;
 
     if (typeof pageTitle === "string" && pageTitle.length > 0) {
       document.title = `${pageTitle} - ${instanceName}`;
+      didSetTitle = true;
     } else if (shouldSetDefaultTitle) {
       document.title = instanceName;
+      didSetTitle = true;
     }
 
     return () => {
-      document.title = previousTitle;
+      if (didSetTitle) {
+        document.title = previousTitle;
+      }
     };
   }, [pageTitle, instanceName, shouldSetDefaultTitle]);
 };

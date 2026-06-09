@@ -82,4 +82,17 @@ describe("useDocumentTitle", () => {
 
     expect(document.title).toBe("Example Dag - My Airflow");
   });
+
+  it("does not restore a stale title when disabled default title handling unmounts", () => {
+    useConfigMock.mockReturnValue("My Airflow");
+    document.title = "Example Dag - My Airflow";
+
+    const { rerender, unmount } = render(<DisabledDefaultTitleComponent />, { wrapper: Wrapper });
+
+    document.title = "Updated Dag - My Airflow";
+    rerender(<DisabledDefaultTitleComponent />);
+    unmount();
+
+    expect(document.title).toBe("Updated Dag - My Airflow");
+  });
 });
