@@ -37,6 +37,20 @@ describe("normalizeLegacyColorFunctions", () => {
     });
   });
 
+  it("converts unsupported CSS color functions regardless of function casing", () => {
+    const normalized = normalizeLegacyColorFunctions({
+      colors: {
+        brand: { "500": { value: "OKLCH(0.575 0.08 257.759)" } },
+      },
+    });
+
+    expect(normalized).toEqual({
+      colors: {
+        brand: { "500": { value: "#5b7aa8" } },
+      },
+    });
+  });
+
   it("leaves compatible CSS values and token references unchanged", () => {
     const normalized = normalizeLegacyColorFunctions({
       colors: {

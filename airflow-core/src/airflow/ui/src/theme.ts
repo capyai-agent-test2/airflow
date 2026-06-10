@@ -31,14 +31,16 @@ import type { CSSProperties } from "react";
 
 import type { Theme } from "openapi/requests/types.gen";
 
-const unsupportedLegacyColorFunction = /\b(?:oklch|oklab|lch|lab)\(/u;
+const unsupportedLegacyColorFunction = /\b(?:oklch|oklab|lch|lab)\(/iu;
 
 const normalizeLegacyColorValue = (value: string): string => {
   if (!unsupportedLegacyColorFunction.test(value)) {
     return value;
   }
 
-  return formatHex(parse(value)) ?? value;
+  const normalizedFunctionName = value.replace(/\b(?:oklch|oklab|lch|lab)\(/iu, (match) => match.toLowerCase());
+
+  return formatHex(parse(normalizedFunctionName)) ?? value;
 };
 
 const normalizeLegacyColorFunctionsInner = (value: unknown): unknown => {
