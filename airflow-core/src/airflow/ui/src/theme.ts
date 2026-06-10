@@ -26,9 +26,41 @@ import {
   type ThemingConfig,
   type SystemStyleObject,
 } from "@chakra-ui/react";
+import { formatHex, parse } from "culori";
 import type { CSSProperties } from "react";
 
 import type { Theme } from "openapi/requests/types.gen";
+
+const unsupportedLegacyColorFunction = /\b(?:oklch|oklab|lch|lab)\(/u;
+
+const normalizeLegacyColorValue = (value: string): string => {
+  if (!unsupportedLegacyColorFunction.test(value)) {
+    return value;
+  }
+
+  return formatHex(parse(value)) ?? value;
+};
+
+const normalizeLegacyColorFunctionsInner = (value: unknown): unknown => {
+  if (typeof value === "string") {
+    return normalizeLegacyColorValue(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeLegacyColorFunctionsInner(entry));
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, normalizeLegacyColorFunctionsInner(entry)]),
+    );
+  }
+
+  return value;
+};
+
+export const normalizeLegacyColorFunctions = <T,>(value: T): T =>
+  normalizeLegacyColorFunctionsInner(value) as T;
 
 const generateSemanticTokens = (color: string, darkContrast: string = "white") => ({
   solid: { value: `{colors.${color}.600}` },
@@ -444,12 +476,12 @@ const defaultAirflowTheme: ThemingConfig = {
 };
 
 export const createTheme = (userTheme?: Theme) => {
-  const defaultAirflowConfig = defineConfig({ theme: defaultAirflowTheme });
+  const defaultAirflowConfig = defineConfig({ theme: normalizeLegacyColorFunctions(defaultAirflowTheme) });
 
   const userConfig = userTheme
     ? defineConfig({
         ...(userTheme.tokens !== undefined && {
-          theme: { tokens: userTheme.tokens as Record<string, unknown> },
+          theme: { tokens: normalizeLegacyColorFunctions(userTheme.tokens as Record<string, unknown>) },
         }),
         ...(userTheme.globalCss !== undefined && {
           globalCss: userTheme.globalCss as Record<string, SystemStyleObject>,
