@@ -22,6 +22,7 @@ import pendulum
 import pytest
 
 from airflow._shared.module_loading import qualname
+from airflow.timetables.base import DagRunInfo, DataInterval, TimeRestriction, Timetable
 from airflow.timetables.simple import NullTimetable
 
 
@@ -199,3 +200,41 @@ def test_base_resolve_day_bound_is_pendulum_datetime():
     result = tt.resolve_day_bound(datetime.date(2026, 1, 1))
 
     assert isinstance(result, pendulum.DateTime)
+
+
+def test_dagrun_info_defaults_partition_fields_for_legacy_construction():
+    start = pendulum.datetime(2025, 1, 1, tz="UTC")
+    end = pendulum.datetime(2025, 1, 2, tz="UTC")
+
+    info = DagRunInfo(
+        run_after=end,
+        data_interval=DataInterval(start=start, end=end),
+    )
+
+    assert info.partition_date is None
+    assert info.partition_key is None
+
+
+def test_custom_timetable_can_return_legacy_dagrun_info():
+    class LegacyStyleTimetable(Timetable):
+        def infer_manual_data_interval(self, *, run_after):
+            return DataInterval.exact(run_after)
+
+        def next_dagrun_info(self, *, last_automated_data_interval, restriction):
+            return DagRunInfo(
+                run_after=restriction.earliest,
+                data_interval=DataInterval.exact(restriction.earliest),
+            )
+
+    run_after = pendulum.datetime(2025, 1, 2, tz="UTC")
+    info = LegacyStyleTimetable().next_dagrun_info_v2(
+        last_dagrun_info=None,
+        restriction=TimeRestriction(earliest=run_after, latest=None, catchup=True),
+    )
+
+    assert info == DagRunInfo(
+        run_after=run_after,
+        data_interval=DataInterval.exact(run_after),
+        partition_date=None,
+        partition_key=None,
+    )
