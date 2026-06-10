@@ -17,6 +17,7 @@
  * under the License.
  */
 import { act, render, screen } from "@testing-library/react";
+import dayjs from "dayjs";
 import type { PropsWithChildren, RefObject } from "react";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +28,7 @@ import type { GridTask } from "src/layouts/Details/Grid/utils";
 import { Wrapper } from "src/utils/Wrapper";
 
 import { GanttTimeline } from "./GanttTimeline";
-import type { GanttDataItem } from "./utils";
+import { toTooltipSummary, type GanttDataItem } from "./utils";
 
 // Mock the virtualizer so all items render regardless of scroll-container dimensions
 // (happy-dom does not perform layout, so getScrollElement always has height 0).
@@ -110,6 +111,48 @@ describe("GanttTimeline segment bars", () => {
 
     // One link per bar — only the execution bar should appear
     expect(screen.getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("keeps actual task instance start and end times in queued-segment tooltips", () => {
+    const queuedSegment: GanttDataItem = {
+      duration: 300,
+      end_date: "2024-03-14T10:05:00Z",
+      queued_when: "2024-03-14T09:59:00Z",
+      scheduled_when: "2024-03-14T09:58:00Z",
+      start_date: "2024-03-14T10:00:00Z",
+      state: "queued",
+      taskId: "task_1",
+      tryNumber: 1,
+      x: [new Date("2024-03-14T09:59:00Z").getTime(), new Date("2024-03-14T10:00:00Z").getTime()],
+      y: "task_1",
+    };
+
+    expect(toTooltipSummary(queuedSegment, BASE_NODE, undefined)).toMatchObject({
+      duration: 300,
+      end_date: "2024-03-14T10:05:00Z",
+      queued_when: "2024-03-14T09:59:00Z",
+      scheduled_when: "2024-03-14T09:58:00Z",
+      start_date: "2024-03-14T10:00:00Z",
+      state: "queued",
+      task_id: "task_1",
+      try_number: 1,
+    });
+  });
+
+  it("keeps aggregate bars backed by their rendered segment bounds", () => {
+    const groupSegment: GanttDataItem = {
+      state: "success",
+      taskId: "task_1",
+      x: [new Date("2024-03-14T10:00:00Z").getTime(), new Date("2024-03-14T10:05:00Z").getTime()],
+      y: "task_1",
+    };
+
+    expect(toTooltipSummary(groupSegment, { ...BASE_NODE, isGroup: true }, undefined)).toMatchObject({
+      max_end_date: dayjs(groupSegment.x[1]).toISOString(),
+      min_start_date: dayjs(groupSegment.x[0]).toISOString(),
+      state: "success",
+      task_id: "task_1",
+    });
   });
 
   it("renders two bars (queued + execution) when queued_dttm is present", () => {
