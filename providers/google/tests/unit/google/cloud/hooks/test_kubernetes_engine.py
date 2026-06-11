@@ -27,6 +27,7 @@ import pytest
 import pytest_asyncio
 from google.cloud.container_v1 import ClusterManagerAsyncClient
 from google.cloud.container_v1.types import Cluster
+from urllib3.connection import HTTPConnection
 
 from airflow.providers.common.compat.sdk import AirflowException
 from airflow.providers.google.cloud.hooks.kubernetes_engine import (
@@ -670,6 +671,27 @@ class TestGKEKubernetesHookPod:
         api_conn = gke_hook.get_conn()
         assert mock_enable.called is expected
         assert isinstance(api_conn, kubernetes.client.api_client.ApiClient)
+
+    @pytest.mark.platform("linux")
+    def test_enable_tcp_keepalive_sets_socket_options(self):
+        with mock.patch(
+            BASE_STRING.format("GoogleBaseHook.__init__"), new=mock_base_gcp_hook_default_project_id
+        ):
+            gke_hook = GKEKubernetesHook(
+                gcp_conn_id="test",
+                impersonation_chain=IMPERSONATE_CHAIN,
+                ssl_ca_cert=None,
+                cluster_url=None,
+                enable_tcp_keepalive=True,
+            )
+        gke_hook.get_credentials = self._get_credentials
+
+        api_conn = gke_hook.get_conn()
+
+        assert api_conn.configuration.socket_options is not None
+        assert api_conn.configuration.socket_options[: len(HTTPConnection.default_socket_options)] == (
+            HTTPConnection.default_socket_options
+        )
 
 
 class TestGKEKubernetesHookJob:
