@@ -367,6 +367,15 @@ class TestPostConnection(TestConnectionEndpoint):
             ]
         }
 
+    @pytest.mark.parametrize("port", [0, -1, 65536])
+    def test_post_should_respond_422_for_invalid_port(self, test_client, port):
+        response = test_client.post(
+            "/connections",
+            json={"connection_id": TEST_CONN_ID_2, "conn_type": TEST_CONN_TYPE_2, "port": port},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"] == ["body", "port"]
+
     @conf_vars({("core", "multi_team"): "False"})
     def test_post_rejects_team_name_when_multi_team_disabled(self, test_client):
         response = test_client.post(

@@ -630,6 +630,19 @@ class TestConnection:
         assert Connection.from_json(val).port == expected
 
     @pytest.mark.parametrize(
+        "val",
+        [
+            '{"port": 0}',
+            '{"port": -1}',
+            '{"port": 65536}',
+            '{"port": "abc"}',
+        ],
+    )
+    def test_from_json_invalid_port(self, val):
+        with pytest.raises(ValueError, match="port"):
+            Connection.from_json(val)
+
+    @pytest.mark.parametrize(
         ("val", "expected"),
         [
             ('pass :/!@#$%^&*(){}"', 'pass :/!@#$%^&*(){}"'),  # these are the same

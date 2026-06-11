@@ -221,6 +221,15 @@ class TestConnection:
             assert conn.schema == expected_schema
             assert conn.extra_dejson == expected_extra_dict
 
+    @pytest.mark.parametrize("port", [0, -1, 65536, "abc"])
+    def test_rejects_invalid_port(self, port):
+        with pytest.raises(ValueError, match="port"):
+            Connection(conn_id="test_conn", conn_type="postgres", port=port)
+
+    def test_rejects_invalid_port_in_uri(self):
+        with pytest.raises(ValueError, match="port"):
+            Connection(conn_id="test_conn", uri="postgres://localhost:0/database")
+
     @pytest.mark.parametrize(
         ("connection", "expected_uri"),
         [

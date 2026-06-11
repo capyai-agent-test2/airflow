@@ -753,6 +753,21 @@ class TestCliAddConnections:
             "alphanumeric characters, dashes, dots and underscores exclusively"
         )
 
+    @pytest.mark.parametrize("port", ["0", "-1", "65536"])
+    def test_cli_connections_add_invalid_port(self, port):
+        with pytest.raises(SystemExit, match=r"The `port` must be an integer between 1 and 65535"):
+            connection_command.connections_add(
+                self.parser.parse_args(
+                    [
+                        "connections",
+                        "add",
+                        "invalid-port",
+                        "--conn-type=hive_metastore",
+                        f"--conn-port={port}",
+                    ]
+                )
+            )
+
 
 class TestCliDeleteConnections:
     parser = cli_parser.get_parser()
