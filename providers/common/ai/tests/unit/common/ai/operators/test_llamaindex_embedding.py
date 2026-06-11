@@ -33,9 +33,18 @@ def _li(monkeypatch):
     """
     VectorStoreIndex = MagicMock(name="VectorStoreIndex")
     SentenceSplitter = MagicMock(name="SentenceSplitter")
+    embed_nodes = MagicMock(
+        name="embed_nodes",
+        side_effect=lambda nodes, **_: {node.node_id: node.embedding for node in nodes},
+    )
     monkeypatch.setattr("llama_index.core.VectorStoreIndex", VectorStoreIndex)
     monkeypatch.setattr("llama_index.core.node_parser.SentenceSplitter", SentenceSplitter)
-    return {"VectorStoreIndex": VectorStoreIndex, "SentenceSplitter": SentenceSplitter}
+    monkeypatch.setattr("llama_index.core.indices.utils.embed_nodes", embed_nodes)
+    return {
+        "VectorStoreIndex": VectorStoreIndex,
+        "SentenceSplitter": SentenceSplitter,
+        "embed_nodes": embed_nodes,
+    }
 
 
 def _node(text: str = "chunk text", metadata: dict | None = None, vector=None):
@@ -43,6 +52,7 @@ def _node(text: str = "chunk text", metadata: dict | None = None, vector=None):
     node.text = text
     node.metadata = metadata or {}
     node.embedding = vector
+    node.node_id = f"node-{text}"
     return node
 
 
@@ -154,6 +164,36 @@ class TestEmbeddingOperatorExecute:
         )
         result = op.execute(context=MagicMock())
 
+        assert result["chunks"] == [
+            {"text": "x", "metadata": {"k": "v"}, "vector": [1.0, 2.0]},
+            {"text": "y", "metadata": {"k": "v2"}, "vector": [3.0, 4.0]},
+        ]
+
+    @patch("llama_index.core.indices.utils.embed_nodes")
+    @patch("airflow.providers.common.ai.hooks.llamaindex.LlamaIndexHook.get_embedding_model")
+    def test_populates_vectors_on_original_nodes_before_index_build(
+        self, mock_get_embed, mock_embed_nodes, _li
+    ):
+        node_a = _node(text="x", metadata={"k": "v"}, vector=None)
+        node_b = _node(text="y", metadata={"k": "v2"}, vector=None)
+        _li["SentenceSplitter"].return_value.get_nodes_from_documents.return_value = [node_a, node_b]
+        mock_embed_nodes.return_value = {
+            node_a.node_id: [1.0, 2.0],
+            node_b.node_id: [3.0, 4.0],
+        }
+
+        op = LlamaIndexEmbeddingOperator(
+            task_id="test",
+            documents=[{"text": "doc"}],
+            embed_model="text-embedding-3-small",
+        )
+        result = op.execute(context=MagicMock())
+
+        mock_embed_nodes.assert_called_once_with(
+            [node_a, node_b], embed_model=mock_get_embed.return_value, show_progress=False
+        )
+        assert node_a.embedding == [1.0, 2.0]
+        assert node_b.embedding == [3.0, 4.0]
         assert result["chunks"] == [
             {"text": "x", "metadata": {"k": "v"}, "vector": [1.0, 2.0]},
             {"text": "y", "metadata": {"k": "v2"}, "vector": [3.0, 4.0]},
