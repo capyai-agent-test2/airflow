@@ -1184,7 +1184,8 @@ def _fetch_remote_logging_conn(conn_id: str, client: Client) -> Connection | Non
     else:
         result = None
 
-    _REMOTE_LOGGING_CONN_CACHE[conn_id] = result
+    if result is not None:
+        _REMOTE_LOGGING_CONN_CACHE[conn_id] = result
     return result
 
 
