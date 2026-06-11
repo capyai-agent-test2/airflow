@@ -31,6 +31,18 @@ from airflow.sdk.providers_manager_runtime import ProvidersManagerTaskRuntime
 log = logging.getLogger(__name__)
 
 
+def _coerce_port(port: int | str | None) -> int | None:
+    if port in (None, ""):
+        return None
+    try:
+        coerced_port = int(port)
+    except (TypeError, ValueError):
+        raise ValueError(f"Expected integer value for `port`, but got {port!r} instead.")
+    if not 1 <= coerced_port <= 65535:
+        raise ValueError(f"The `port` must be an integer between 1 and 65535, but got {coerced_port!r}.")
+    return coerced_port
+
+
 def _parse_netloc_to_hostname(uri_parts):
     """
     Parse a URI string to get the correct Hostname.
@@ -150,6 +162,7 @@ class Connection:
             )
         if uri is None:
             self.__attrs_init__(conn_id=conn_id, **kwargs)  # type: ignore[attr-defined]
+            self.port = _coerce_port(self.port)
         else:
             self.__dict__.update(attrs.asdict(self.from_uri(uri, conn_id=conn_id), recurse=False))
 
@@ -355,11 +368,8 @@ class Connection:
         if conn_type:
             kwargs["conn_type"] = cls._normalize_conn_type(conn_type)
         port = kwargs.pop("port", None)
-        if port:
-            try:
-                kwargs["port"] = int(port)
-            except ValueError:
-                raise ValueError(f"Expected integer value for `port`, but got {port!r} instead.")
+        if port is not None:
+            kwargs["port"] = _coerce_port(port)
         return cls(conn_id=conn_id, **kwargs)
 
     def as_json(self) -> str:

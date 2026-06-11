@@ -208,6 +208,24 @@ class TestConnections:
         assert connection.password == "secret"
         assert connection.schema == "production"
 
+    @pytest.mark.parametrize("port", [0, -1, 65536, "abc"])
+    def test_rejects_invalid_port(self, port):
+        with pytest.raises(ValueError, match="port"):
+            Connection(conn_id="test_conn", conn_type="postgres", port=port)
+
+    @pytest.mark.parametrize(
+        "json_data",
+        [
+            {"conn_type": "postgresql", "port": 0},
+            {"conn_type": "postgresql", "port": -1},
+            {"conn_type": "postgresql", "port": 65536},
+            {"conn_type": "postgresql", "port": "abc"},
+        ],
+    )
+    def test_from_json_rejects_invalid_port(self, json_data):
+        with pytest.raises(ValueError, match="port"):
+            Connection.from_json(json.dumps(json_data), conn_id="test_conn")
+
     def test_extra_dejson_property(self):
         """Test that extra_dejson property correctly deserializes JSON extra field."""
         connection = Connection(
