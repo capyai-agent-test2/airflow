@@ -321,12 +321,17 @@ class KubernetesHook(BaseHook, PodOperatorHookProtocol):
         if disable_verify_ssl is True:
             _disable_verify_ssl()
         if disable_tcp_keepalive is not True:
-            _enable_tcp_keepalive()
+            if self.client_configuration is None:
+                self.client_configuration = client.Configuration()
+            _enable_tcp_keepalive(self.client_configuration)
 
         if in_cluster:
             self.log.debug("loading kube_config from: in_cluster configuration")
             self._is_in_cluster = True
-            config.load_incluster_config()
+            if self.client_configuration is None:
+                config.load_incluster_config()
+            else:
+                config.load_incluster_config(client_configuration=self.client_configuration)
             return _TimeoutK8sApiClient(
                 configuration=self.client_configuration,
                 disable_verify_ssl=disable_verify_ssl is True,

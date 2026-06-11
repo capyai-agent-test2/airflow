@@ -21,7 +21,7 @@ from unittest import mock
 
 import pytest
 from kubernetes.client import Configuration
-from urllib3.connection import HTTPConnection, HTTPSConnection
+from urllib3.connection import HTTPConnection
 
 from airflow.providers.cncf.kubernetes.kube_client import (
     _disable_verify_ssl,
@@ -65,19 +65,23 @@ class TestClient:
 
     @pytest.mark.platform("linux")
     def test_enable_tcp_keepalive(self):
+        original_configuration = Configuration.get_default_copy()
         socket_options = [
             (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
             (socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 120),
             (socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 30),
             (socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 6),
         ]
-        expected_http_connection_options = HTTPConnection.default_socket_options + socket_options
-        expected_https_connection_options = HTTPSConnection.default_socket_options + socket_options
+        configuration = Configuration()
+        expected_socket_options = HTTPConnection.default_socket_options + socket_options
 
-        _enable_tcp_keepalive()
+        try:
+            _enable_tcp_keepalive(configuration)
 
-        assert HTTPConnection.default_socket_options == expected_http_connection_options
-        assert HTTPSConnection.default_socket_options == expected_https_connection_options
+            assert configuration.socket_options == expected_socket_options
+            assert Configuration.get_default_copy().socket_options == expected_socket_options
+        finally:
+            Configuration.set_default(original_configuration)
 
     def test_disable_verify_ssl(self):
         configuration = Configuration()

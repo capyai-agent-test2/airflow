@@ -51,7 +51,7 @@ except ImportError as e:
     _import_err = e
 
 
-def _enable_tcp_keepalive() -> None:
+def _enable_tcp_keepalive(configuration: Configuration | None = None) -> None:
     """
     Enable TCP keepalive mechanism.
 
@@ -64,7 +64,7 @@ def _enable_tcp_keepalive() -> None:
     """
     import socket
 
-    from urllib3.connection import HTTPConnection, HTTPSConnection
+    from urllib3.connection import HTTPConnection
 
     tcp_keep_idle = conf.getint("kubernetes_executor", "tcp_keep_idle")
     tcp_keep_intvl = conf.getint("kubernetes_executor", "tcp_keep_intvl")
@@ -87,17 +87,19 @@ def _enable_tcp_keepalive() -> None:
     else:
         log.debug("Unable to set TCP_KEEPCNT on this platform")
 
-    # Cast both the default options and our socket options
+    if configuration is None:
+        configuration = _get_default_configuration()
+
     socket_options_cast: list[tuple[int, int, int | bytes]] = [
         (level, opt, val) for level, opt, val in socket_options
     ]
+    default_options = configuration.socket_options or HTTPConnection.default_socket_options
     default_options_cast: list[tuple[int, int, int | bytes]] = [
-        (level, opt, val) for level, opt, val in HTTPSConnection.default_socket_options
+        (level, opt, val) for level, opt, val in default_options
     ]
 
-    # Then use the cast versions for both HTTPS and HTTP
-    HTTPSConnection.default_socket_options = default_options_cast + socket_options_cast
-    HTTPConnection.default_socket_options = default_options_cast + socket_options_cast
+    configuration.socket_options = default_options_cast + socket_options_cast
+    Configuration.set_default(configuration)
 
 
 def get_kube_client(
@@ -118,10 +120,9 @@ def get_kube_client(
     if not has_kubernetes:
         raise _import_err
 
-    if conf.getboolean("kubernetes_executor", "enable_tcp_keepalive"):
-        _enable_tcp_keepalive()
-
     configuration = _get_default_configuration()
+    if conf.getboolean("kubernetes_executor", "enable_tcp_keepalive"):
+        _enable_tcp_keepalive(configuration)
     api_client_retry_configuration = conf.getjson(
         "kubernetes_executor", "api_client_retry_configuration", fallback={}
     )

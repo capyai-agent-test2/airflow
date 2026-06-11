@@ -421,6 +421,12 @@ class TestKubernetesHook:
         assert mock_enable.called is expected
         assert isinstance(api_conn, kubernetes.client.api_client.ApiClient)
 
+    @patch("kubernetes.config.incluster_config.InClusterConfigLoader", new=MagicMock())
+    def test_enable_tcp_keepalive_sets_socket_options(self):
+        api_conn = KubernetesHook().get_conn()
+
+        assert api_conn.configuration.socket_options is not None
+
     @pytest.mark.parametrize(
         ("config_path_param", "conn_id", "call_path"),
         (
