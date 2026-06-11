@@ -87,6 +87,7 @@ def _enable_tcp_keepalive(configuration: Configuration | None = None) -> None:
     else:
         log.debug("Unable to set TCP_KEEPCNT on this platform")
 
+    should_set_default = configuration is None
     if configuration is None:
         configuration = _get_default_configuration()
 
@@ -99,7 +100,8 @@ def _enable_tcp_keepalive(configuration: Configuration | None = None) -> None:
     ]
 
     configuration.socket_options = default_options_cast + socket_options_cast
-    Configuration.set_default(configuration)
+    if should_set_default:
+        Configuration.set_default(configuration)
 
 
 def get_kube_client(
