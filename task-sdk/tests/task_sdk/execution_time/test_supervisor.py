@@ -3822,6 +3822,38 @@ def test_remote_logging_conn_caches_connection_not_client(monkeypatch):
         assert all(ref() is None for ref in clients), "Client instances should be garbage collected"
 
 
+def test_fetch_remote_logging_conn_does_not_cache_none(monkeypatch):
+    """Test that missing remote logging connections are re-fetched after auth changes."""
+    from airflow.sdk.api.datamodels._generated import ConnectionResponse
+
+    class ExampleBackend:
+        def __init__(self):
+            self.calls = 0
+
+        def get_connection(self, conn_id: str):
+            self.calls += 1
+            return None
+
+    backend = ExampleBackend()
+    client = MagicMock()
+    client.connections.get.side_effect = [
+        None,
+        ConnectionResponse(conn_id="test_conn", conn_type="s3"),
+    ]
+    monkeypatch.setattr(supervisor, "ensure_secrets_backend_loaded", lambda: [backend])
+    monkeypatch.setattr(supervisor, "_REMOTE_LOGGING_CONN_CACHE", {})
+
+    assert supervisor._fetch_remote_logging_conn("test_conn", client) is None
+
+    conn = supervisor._fetch_remote_logging_conn("test_conn", client)
+
+    assert conn is not None
+    assert conn.conn_id == "test_conn"
+    assert backend.calls == 2
+    assert client.connections.get.call_count == 2
+    assert supervisor._REMOTE_LOGGING_CONN_CACHE["test_conn"] == conn
+
+
 def test_process_log_messages_from_subprocess(monkeypatch, caplog):
     from airflow.sdk._shared.logging.structlog import PER_LOGGER_LEVELS
 
