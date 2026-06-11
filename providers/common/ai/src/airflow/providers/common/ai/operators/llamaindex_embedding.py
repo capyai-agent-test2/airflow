@@ -113,6 +113,7 @@ class LlamaIndexEmbeddingOperator(BaseOperator):
     def execute(self, context: Context) -> dict[str, Any]:
         try:
             from llama_index.core import Document, VectorStoreIndex
+            from llama_index.core.indices.utils import embed_nodes
             from llama_index.core.node_parser import SentenceSplitter
         except ImportError as e:
             raise AirflowOptionalProviderFeatureException(e)
@@ -125,9 +126,14 @@ class LlamaIndexEmbeddingOperator(BaseOperator):
         nodes = splitter.get_nodes_from_documents(llama_docs)
         self.log.info("Split %d documents into %d chunks", len(llama_docs), len(nodes))
 
-        # ``VectorStoreIndex(...)`` populates each node's ``.embedding`` as a
-        # side effect of building the index; capture the index so the
-        # variable isn't discarded.
+        node_embeddings = embed_nodes(nodes, embed_model=embed_model, show_progress=False)
+        for node in nodes:
+            node.embedding = node_embeddings[node.node_id]
+
+        # ``VectorStoreIndex(...)`` copies nodes before adding them to the
+        # vector store, so it does not backfill embeddings onto the originals.
+        # Populate the source nodes first so both the returned chunks and the
+        # index see the same vectors without duplicate embedder calls.
         index = VectorStoreIndex(nodes, embed_model=embed_model, show_progress=False)
 
         if self.persist_dir:
@@ -136,8 +142,7 @@ class LlamaIndexEmbeddingOperator(BaseOperator):
         # ``SentenceSplitter`` always returns ``TextNode`` instances, but the
         # base ``get_nodes_from_documents`` signature is typed as
         # ``list[BaseNode]`` (which has no ``.text``). Cast so mypy doesn't
-        # flag the ``.text`` access; ``node.embedding`` is populated by
-        # ``VectorStoreIndex`` for every node above.
+        # flag the ``.text`` access.
         text_nodes = cast("list[TextNode]", nodes)
         chunks = [
             {
