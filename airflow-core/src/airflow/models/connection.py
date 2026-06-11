@@ -191,6 +191,7 @@ class Connection(Base, FernetFieldsMixin, LoggingMixin):
             )
         if uri:
             self._parse_from_uri(uri)
+            self.port = _coerce_port(self.port)
         else:
             if conn_type is not None:
                 self.conn_type = conn_type
