@@ -3603,6 +3603,7 @@ def test_downstream_placeholder_handles_upstream_post_expansion(dag_maker, sessi
     result = downstream_ti.get_relevant_upstream_map_indexes(
         upstream=upstream_task,
         ti_count=upstream_expanded_ti_count,
+        use_post_expansion_placeholder=True,
         session=session,
     )
 
@@ -3624,6 +3625,7 @@ def test_downstream_placeholder_handles_upstream_post_expansion(dag_maker, sessi
     result = downstream_ti.get_relevant_upstream_map_indexes(
         upstream=upstream_task,
         ti_count=downstream_expanded_ti_count,
+        use_post_expansion_placeholder=True,
         session=session,
     )
 
