@@ -42,6 +42,7 @@ from airflow.providers.cncf.kubernetes.secret import Secret
 from airflow.providers.cncf.kubernetes.triggers.pod import ContainerState, KubernetesPodTrigger
 from airflow.providers.cncf.kubernetes.utils.pod_manager import (
     OnFinishAction,
+    PodLaunchTimeoutException,
     PodLoggingStatus,
     PodNotFoundException,
     PodPhase,
@@ -2288,6 +2289,37 @@ class TestKubernetesPodOperator:
         assert client != k.client
         assert hook != k.hook
         assert pod_manager != k.pod_manager
+
+    @patch(f"{POD_MANAGER_CLASS}.fetch_requested_init_container_logs")
+    @patch(f"{KUB_OP_PATH.format('post_complete_action')}")
+    @patch(f"{KPO_MODULE}.KubernetesPodOperator.find_pod")
+    def test_pending_pod_timeout_happens_before_init_container_log_following(
+        self, find_pod_mock, post_complete_action, fetch_requested_init_container_logs
+    ):
+        find_pod_mock.return_value = MagicMock()
+        self.await_start_mock.side_effect = PodLaunchTimeoutException("timed out")
+        k = KubernetesPodOperator(task_id="task", init_container_logs=True)
+        context = create_context(k)
+        context["ti"].xcom_push = MagicMock()
+
+        with pytest.raises(PodLaunchTimeoutException, match="timed out"):
+            k.execute(context=context)
+
+        fetch_requested_init_container_logs.assert_not_called()
+        post_complete_action.assert_called_once()
+
+    @patch(f"{POD_MANAGER_CLASS}.fetch_requested_init_container_logs")
+    def test_init_container_logs_are_fetched_after_pod_starts(self, fetch_requested_init_container_logs):
+        k = KubernetesPodOperator(task_id="task", init_container_logs=True)
+        pod, _ = self.run_pod(k)
+
+        fetch_requested_init_container_logs.assert_called_once_with(
+            pod=pod,
+            init_containers=True,
+            follow_logs=True,
+            container_name_log_prefix_enabled=True,
+            log_formatter=None,
+        )
 
     @pytest.mark.asyncio
     @patch(f"{POD_MANAGER_CLASS}.await_container_completion")
