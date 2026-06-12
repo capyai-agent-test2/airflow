@@ -29,7 +29,7 @@ from azure.storage.blob._models import BlobProperties
 
 from airflow.models import Connection
 from airflow.providers.common.compat.sdk import AirflowException
-from airflow.providers.microsoft.azure.hooks.wasb import WasbHook
+from airflow.providers.microsoft.azure.hooks.wasb import WasbAsyncHook, WasbHook
 
 pytestmark = pytest.mark.db_test
 
@@ -147,24 +147,27 @@ class TestWasbHook:
                 conn_id="sas_conn_id",
                 conn_type=self.connection_type,
                 login=self.login,
-                extra={"sas_token": "token", "proxies": self.proxies},
+                extra={"sas_token": "sig=token", "proxies": self.proxies},
             ),
             Connection(
                 conn_id=self.extra__wasb__sas_conn_id,
                 conn_type=self.connection_type,
                 login=self.login,
-                extra={"extra__wasb__sas_token": "token", "proxies": self.proxies},
+                extra={"extra__wasb__sas_token": "sig=token", "proxies": self.proxies},
             ),
             Connection(
                 conn_id=self.http_sas_conn_id,
                 conn_type=self.connection_type,
-                extra={"sas_token": "https://login.blob.core.windows.net/token", "proxies": self.proxies},
+                extra={
+                    "sas_token": "https://login.blob.core.windows.net/?sig=token",
+                    "proxies": self.proxies,
+                },
             ),
             Connection(
                 conn_id=self.extra__wasb__http_sas_conn_id,
                 conn_type=self.connection_type,
                 extra={
-                    "extra__wasb__sas_token": "https://login.blob.core.windows.net/token",
+                    "extra__wasb__sas_token": "https://login.blob.core.windows.net/?sig=token",
                     "proxies": self.proxies,
                 },
             ),
@@ -305,7 +308,8 @@ class TestWasbHook:
     ):
         WasbHook(wasb_conn_id="testconn").get_conn()
         mocked_blob_service_client.assert_called_once_with(
-            account_url="https://testaccountname.blob.core.windows.net/SAStoken",
+            account_url="https://testaccountname.blob.core.windows.net/",
+            credential="SAStoken",
             sas_token="SAStoken",
         )
 
@@ -362,9 +366,40 @@ class TestWasbHook:
         sas_token = hook_conn.extra_dejson[extra_key]
         assert isinstance(conn, BlobServiceClient)
         assert conn.url.startswith("https://")
-        if hook_conn.login:
-            assert hook_conn.login in conn.url
-        assert conn.url.endswith(sas_token + "/")
+        if sas_token.startswith("https://"):
+            assert conn.url == sas_token
+        else:
+            assert hook_conn.login
+            assert conn.url == f"https://{hook_conn.login}.blob.core.windows.net/?{sas_token}"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        argnames=("conn_id_str", "extra_key"),
+        argvalues=[
+            ("sas_conn_id", "sas_token"),
+            ("extra__wasb__sas_conn_id", "extra__wasb__sas_token"),
+            ("http_sas_conn_id", "sas_token"),
+            ("extra__wasb__http_sas_conn_id", "extra__wasb__sas_token"),
+        ],
+    )
+    @mock.patch("airflow.providers.microsoft.azure.hooks.wasb.AsyncBlobServiceClient")
+    @mock.patch("airflow.providers.microsoft.azure.hooks.wasb.get_async_connection")
+    async def test_async_sas_token_connection(
+        self, mock_get_async_connection, mock_async_blob_service_client, conn_id_str, extra_key
+    ):
+        mock_get_async_connection.return_value = self.connection_map[conn_id_str]
+
+        await WasbAsyncHook(wasb_conn_id=conn_id_str).get_async_conn()
+
+        hook_conn = self.connection_map[conn_id_str]
+        sas_token = hook_conn.extra_dejson[extra_key]
+        expected_kwargs = dict(hook_conn.extra_dejson)
+        if sas_token.startswith("https://"):
+            expected_kwargs["account_url"] = sas_token
+        else:
+            expected_kwargs["account_url"] = f"https://{hook_conn.login}.blob.core.windows.net/"
+            expected_kwargs["credential"] = sas_token
+        mock_async_blob_service_client.assert_called_once_with(**expected_kwargs)
 
     @pytest.mark.parametrize(
         argnames="conn_id_str",
