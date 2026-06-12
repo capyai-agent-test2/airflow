@@ -547,7 +547,11 @@ class RuntimeTaskInstance(TaskInstance):
         _xcom_push(self, key, value)
 
     def get_relevant_upstream_map_indexes(
-        self, upstream: BaseOperator, ti_count: int | None, session: Any
+        self,
+        upstream: BaseOperator,
+        ti_count: int | None,
+        session: Any,
+        use_post_expansion_placeholder: bool = False,
     ) -> int | range | None:
         """
         Compute the relevant upstream map indexes for XCom resolution.
@@ -555,6 +559,7 @@ class RuntimeTaskInstance(TaskInstance):
         :param upstream: The upstream operator
         :param ti_count: The total count of task instances for this task's expansion
         :param session: Not used (kept for API compatibility)
+        :param use_post_expansion_placeholder: Not used in SDK execution-time resolution
         :return: None (use entire value), int (single index), or range (subset of indexes)
         """
         from airflow.sdk.execution_time.task_mapping import get_relevant_map_indexes, get_ti_count_for_task
