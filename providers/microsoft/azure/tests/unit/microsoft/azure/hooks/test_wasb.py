@@ -29,7 +29,7 @@ from azure.storage.blob._models import BlobProperties
 
 from airflow.models import Connection
 from airflow.providers.common.compat.sdk import AirflowException
-from airflow.providers.microsoft.azure.hooks.wasb import WasbHook
+from airflow.providers.microsoft.azure.hooks.wasb import WasbAsyncHook, WasbHook
 
 pytestmark = pytest.mark.db_test
 
@@ -371,6 +371,35 @@ class TestWasbHook:
         else:
             assert hook_conn.login
             assert conn.url == f"https://{hook_conn.login}.blob.core.windows.net/?{sas_token}"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        argnames=("conn_id_str", "extra_key"),
+        argvalues=[
+            ("sas_conn_id", "sas_token"),
+            ("extra__wasb__sas_conn_id", "extra__wasb__sas_token"),
+            ("http_sas_conn_id", "sas_token"),
+            ("extra__wasb__http_sas_conn_id", "extra__wasb__sas_token"),
+        ],
+    )
+    @mock.patch("airflow.providers.microsoft.azure.hooks.wasb.AsyncBlobServiceClient")
+    @mock.patch("airflow.providers.microsoft.azure.hooks.wasb.get_async_connection")
+    async def test_async_sas_token_connection(
+        self, mock_get_async_connection, mock_async_blob_service_client, conn_id_str, extra_key
+    ):
+        mock_get_async_connection.return_value = self.connection_map[conn_id_str]
+
+        await WasbAsyncHook(wasb_conn_id=conn_id_str).get_async_conn()
+
+        hook_conn = self.connection_map[conn_id_str]
+        sas_token = hook_conn.extra_dejson[extra_key]
+        expected_kwargs = dict(hook_conn.extra_dejson)
+        if sas_token.startswith("https://"):
+            expected_kwargs["account_url"] = sas_token
+        else:
+            expected_kwargs["account_url"] = f"https://{hook_conn.login}.blob.core.windows.net/"
+            expected_kwargs["credential"] = sas_token
+        mock_async_blob_service_client.assert_called_once_with(**expected_kwargs)
 
     @pytest.mark.parametrize(
         argnames="conn_id_str",
