@@ -235,6 +235,34 @@ class TestDb:
         check_migrations(0)
         check_migrations(1)
 
+    def test_check_migrations_closes_external_db_sessions(self, mocker):
+        mock_context = mocker.MagicMock()
+        mock_context.get_current_heads.return_value = ["head"]
+        mock_env = mocker.MagicMock()
+        mock_env.script.get_heads.return_value = ["head"]
+        mock_env.get_context.return_value = mock_context
+        mocker.patch(
+            "airflow.utils.db._configured_alembic_environment"
+        ).return_value.__enter__.return_value = mock_env
+
+        mock_manager = mocker.MagicMock()
+        mock_manager.check_migration.side_effect = [False, True]
+        mocker.patch("airflow.utils.db.RunDBManager", return_value=mock_manager)
+
+        sessions = [mocker.MagicMock(), mocker.MagicMock()]
+        mocker.patch("airflow.utils.db.settings.Session", side_effect=sessions)
+        mock_sleep = mocker.patch("airflow.utils.db.time.sleep")
+
+        check_migrations(2)
+
+        assert sessions[0].close.call_count == 1
+        assert sessions[1].close.call_count == 1
+        assert mock_manager.check_migration.call_args_list == [
+            mocker.call(sessions[0]),
+            mocker.call(sessions[1]),
+        ]
+        mock_sleep.assert_called_once_with(1)
+
     @pytest.mark.parametrize(
         ("auth", "expected"),
         [
