@@ -917,8 +917,9 @@ def check_migrations(timeout):
         for ticker in range(timeout):
             source_heads = set(env.script.get_heads())
             db_heads = set(context.get_current_heads())
-            if source_heads == db_heads and external_db_manager.check_migration(settings.Session()):
-                return
+            with contextlib.closing(settings.Session()) as session:
+                if source_heads == db_heads and external_db_manager.check_migration(session):
+                    return
             time.sleep(1)
             log.info("Waiting for migrations... %s second(s)", ticker)
         raise TimeoutError(
